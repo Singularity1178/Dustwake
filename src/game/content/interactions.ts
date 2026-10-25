@@ -1,6 +1,7 @@
 // Interaction rules (data). For each interactable kind, the first rule whose
 // requirement is met decides which task the golem performs. Kinds with
-// bespoke branching (sockets, which can open the glyph picker) are handled in
+// bespoke branching (sockets, which can open the glyph picker; runes, whose
+// rule set depends on that rune's own flag) pick a rule list in
 // sim/interact.ts; everything else is described here.
 import type { ItemId } from "./items";
 import type { TaskSpec } from "./tasks";
@@ -31,4 +32,14 @@ export const RULES: Record<string, Rule[]> = {
   ],
   socketFilled: [{ task: { kind: "reach", dur: 0.45, effect: { op: "takeGlyph" } } }],
   socketEmpty: [{ task: { kind: "reach", dur: 0.4, effect: { op: "cue", cue: "scrape" } } }],
+  // ---- rune network
+  /** An active rune: channel, then travel. The first jump (end of tutorial) is the long cinematic one. */
+  rune: [
+    { when: { flags: [FLAGS.tutorialDone] }, task: { kind: "channel", dur: 2.2, effect: { op: "travel" } } },
+    { task: { kind: "channel", dur: 4.6, effect: { op: "travel" } } },
+  ],
+  runeDormant: [{ task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "THE RUNE IS DARK AND SILENT", cue: "dud" } } }],
+  // ---- surface
+  harvest: [{ task: { kind: "punch", dur: 0.75, effect: { op: "harvest" } } }],
+  examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],
 };

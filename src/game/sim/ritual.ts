@@ -1,9 +1,11 @@
 // Translocation-circle puzzle rules (tutorial).
 import { ITEMS, glyphItem, type ItemId } from "../content/items";
 import { socketPositions } from "../content/ritual";
-import { emit, type Actor, type World } from "../world/world";
+import { RUNE_NODES } from "../content/runes";
+import { clearFlag, emit, setFlag, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
-import { beginTask, faceTo, removeItem } from "./tasks";
+import { beginTask, faceTo } from "./tasks";
+import { removeItems } from "./inventory";
 
 export function checkRune(w: World, area: Area) {
   const r = area.ritual;
@@ -13,6 +15,8 @@ export function checkRune(w: World, area: Area) {
   if (ok) {
     r.active = true; r.actT = 0;
     r.wrong = r.wrong.map(() => false);
+    // The circle is this area's node in the rune network: lighting it activates the node.
+    setFlag(w, RUNE_NODES.dungeon.flag);
     emit(w, { t: "runeActivated" });
   } else {
     r.wrong = r.sockets.map((s, i) => s !== r.solution[i]);
@@ -26,6 +30,7 @@ export function deactivate(w: World, area: Area) {
   if (!r) return;
   r.active = false;
   r.actT = 0;
+  clearFlag(w, RUNE_NODES.dungeon.flag);
   area.touch();
   emit(w, { t: "runeDeactivated" });
 }
@@ -36,7 +41,7 @@ export function placeGlyph(w: World, actor: Actor, area: Area, socket: number, g
   if (!r) return;
   const id: ItemId = glyphItem(glyph);
   if (ITEMS[id].glyph === undefined) return;
-  removeItem(actor, id);
+  if (!removeItems(actor, id, 1)) return;
   r.sockets[socket] = glyph;
   r.wrong[socket] = false;
   area.touch();

@@ -1,31 +1,46 @@
 // Save / load. A save is plain JSON:
 //   - world scalars (seed, rng state, clock, flags, schedule),
-//   - actors verbatim (tasks are data, so in-progress work survives),
+//   - actors verbatim (tasks are data, so in-progress work survives; inventory
+//     is an array of slots and travels with its actor),
 //   - per area, a *diff* against the area's deterministic builder (changed
-//     tiles, prop state, taken loose items, decals appended during play, and
-//     feature state such as the ritual).
+//     tiles, prop state incl. harvest damage, props built during play, loose
+//     items taken / dropped, decals appended during play, ritual state).
 // Diffs keep saves small and let authored areas evolve between versions as
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
 import { SeededRng } from "../core/rng";
-import type { DecalDef } from "../map";
+import type { DecalDef, LooseItem, PropDef } from "../map";
 import type { ItemId } from "../content/items";
 import { Area, type RitualState } from "./area";
 import { AREAS } from "./areas";
 import type { Actor, Scheduled, World } from "./world";
 
-export const SAVE_VERSION = 1;
+/**
+ * v1: inventory was ItemId[] on the actor; scheduled effects had no area.
+ * v2: inventory is Slot[] ({item, n} | null); areas gain looseAdded/looseSeq.
+ * v3: scheduled effects carry their area; areas gain propsAdded/propSeq and per-prop harvest damage.
+ */
+export const SAVE_VERSION = 3;
 
-export interface AreaSaveV1 {
+type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
+
+export interface AreaSave {
   tiles: [number, number][];
-  props: Record<string, { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null }>;
+  props: Record<string, PropState>;
+  /** Builder-placed loose items that have been picked up. */
   looseTaken: string[];
+  /** Loose stacks created during play (dropped, overflow) that are still on the ground. */
+  looseAdded: LooseItem[];
+  looseSeq: number;
+  /** Props created during play (built torches), with their state. */
+  propsAdded: (Omit<PropDef, "item"> & PropState)[];
+  propSeq: number;
   decalsAdded: DecalDef[];
   ritual: RitualState | null;
 }
 
-export interface SaveV1 {
-  version: 1;
+export interface SaveData {
+  version: 3;
   seed: number;
   rng: number;
   time: number;
@@ -34,24 +49,52 @@ export interface SaveV1 {
   playerId: string;
   actors: Actor[];
   scheduled: Scheduled[];
-  areas: Record<string, AreaSaveV1>;
+  areas: Record<string, AreaSave>;
 }
 
-export type SaveData = SaveV1;
 type Migration = (s: any) => any;
 
 /** MIGRATIONS[n] upgrades a version-n save to version n+1. */
-export const MIGRATIONS: Record<number, Migration> = {};
+export const MIGRATIONS: Record<number, Migration> = {
+  1: (s) => ({
+    ...s,
+    version: 2,
+    actors: s.actors.map((a: any) => {
+      // Stack where the new item table allows it, keep order, pad to the tier
+      // the flags imply. Extra slots beyond capacity are handled at runtime
+      // (reconcileCapacity drops them next to the actor; nothing is lost).
+      const slots: ({ item: string; n: number } | null)[] = [];
+      for (const id of a.inventory as string[]) {
+        const s0 = slots.find((x) => x && x.item === id && (id === "wood" || id === "stone"));
+        if (s0) s0.n++;
+        else slots.push({ item: id, n: 1 });
+      }
+      const cap = (s.flags as string[]).includes("golem.arm") ? 16 : 8;
+      while (slots.length < cap) slots.push(null);
+      return { ...a, inventory: slots };
+    }),
+    areas: Object.fromEntries(Object.entries(s.areas).map(([id, d]: [string, any]) => [id, { ...d, looseAdded: [], looseSeq: 0 }])),
+  }),
+  2: (s) => {
+    const actorArea = new Map<string, string>(s.actors.map((a: any) => [a.id, a.area]));
+    return {
+      ...s,
+      version: 3,
+      scheduled: s.scheduled.map((e: any) => ({ ...e, area: e.area ?? actorArea.get(e.actor) ?? "dungeon" })),
+      areas: Object.fromEntries(Object.entries(s.areas).map(([id, d]: [string, any]) => [id, { ...d, propsAdded: [], propSeq: 0 }])),
+    };
+  },
+};
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export function serialize(w: World): SaveData {
-  const areas: Record<string, AreaSaveV1> = {};
+  const areas: Record<string, AreaSave> = {};
   for (const [id, a] of w.areas) areas[id] = diffArea(a);
   return clone({
     version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime,
     flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, areas,
-  });
+  } as SaveData);
 }
 
 export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAVE_VERSION): World {
@@ -79,36 +122,58 @@ export function migrate(raw: unknown, migrations = MIGRATIONS, target = SAVE_VER
   return s;
 }
 
-function diffArea(a: Area): AreaSaveV1 {
+const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number }, b?: { lit?: boolean; item?: ItemId }) => {
+  const d: PropState = {};
+  if (p.open) d.open = true;
+  if (p.taken) d.taken = true;
+  if (!!p.lit !== !!b?.lit) d.lit = !!p.lit;
+  if (p.item !== b?.item) d.item = p.item ?? null;
+  if (p.dmg) d.dmg = p.dmg;
+  return d;
+};
+
+function diffArea(a: Area): AreaSave {
   const base = a.base;
   const tiles: [number, number][] = [];
   for (let i = 0; i < a.grid.length; i++) if (a.grid[i] !== base.grid[i]) tiles.push([i, a.grid[i]]);
-  const props: AreaSaveV1["props"] = {};
+  const props: AreaSave["props"] = {};
+  const propsAdded: AreaSave["propsAdded"] = [];
   const baseProps = new Map(base.props.map((p) => [p.id, p]));
   for (const p of a.props) {
-    const b = baseProps.get(p.id)!;
-    const d: AreaSaveV1["props"][string] = {};
-    if (p.open) d.open = true;
-    if (p.taken) d.taken = true;
-    if (!!p.lit !== !!b.lit) d.lit = !!p.lit;
-    if (p.item !== b.item) d.item = p.item ?? null;
+    if (p.dyn) {
+      const { box: _b, dyn: _d, open: _o, taken: _t, dmg: _m, ...def } = p;
+      propsAdded.push({ ...def, ...propState(p) } as AreaSave["propsAdded"][number]);
+      continue;
+    }
+    const d = propState(p, baseProps.get(p.id));
     if (Object.keys(d).length) props[p.id] = d;
   }
   return {
     tiles, props,
-    looseTaken: a.loose.filter((l) => l.taken).map((l) => l.id),
+    looseTaken: a.loose.filter((l) => l.taken && !l.dyn).map((l) => l.id),
+    looseAdded: a.loose.filter((l) => l.dyn && !l.taken).map(({ taken: _t, dyn: _d, ...l }) => l),
+    looseSeq: a.looseSeq,
+    propsAdded, propSeq: a.propSeq,
     decalsAdded: a.decals.slice(base.decals.length),
     ritual: a.ritual,
   };
 }
 
-function restoreArea(id: string, d: AreaSaveV1): Area {
+function restoreArea(id: string, d: AreaSave): Area {
   const build = AREAS[id];
   if (!build) throw new Error(`save references unknown area "${id}"`);
   const a = new Area(build());
   for (const [i, t] of d.tiles) a.grid[i] = t;
   for (const [pid, st] of Object.entries(d.props)) a.setPropState(pid, st);
+  for (const p of d.propsAdded) {
+    const { id: pid, kind, x, y, open, taken, dmg, lit, item, ...rest } = p;
+    a.addProp(kind, x, y, { ...rest, lit, item: item ?? undefined }, pid);
+    a.setPropState(pid, { open, taken, dmg });
+  }
+  a.propSeq = d.propSeq;
   for (const lid of d.looseTaken) a.takeLoose(lid);
+  for (const l of d.looseAdded) a.addLoose(l.item, l.n ?? 1, l.x, l.y, l.id);
+  a.looseSeq = d.looseSeq;
   a.decals.push(...d.decalsAdded);
   a.ritual = d.ritual ? clone(d.ritual) : null;
   return a;

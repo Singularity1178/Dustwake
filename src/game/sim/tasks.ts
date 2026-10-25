@@ -2,20 +2,25 @@
 // task advances; at its fire point its Effect is applied to the world. This is
 // the single path by which interactions change the world, for any actor.
 import { TS, T, TILE_INTERACT } from "../content/tiles";
-import { ITEMS, glyphItem, type ItemId } from "../content/items";
+import { ITEMS, glyphItem, isDroppable } from "../content/items";
+import { propDef } from "../content/props";
+import { HARVEST } from "../content/harvest";
 import { TASK_KINDS, type Effect, type TaskSpec, type Target } from "../content/tasks";
-import { emit, setFlag, actorById, areaOf, type Actor, type World } from "../world/world";
+import { emit, setFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
+import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
+import { travel } from "./runes";
+import { applyBuild } from "./build";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
-  a.task = { ...spec, t: 0, fired: false, target };
+  a.task = { ...spec, t: 0, fired: false, target, area: a.area };
   a.vx = 0; a.vy = 0;
 }
 
 /** Add work to the actor's queue; it starts when the current task finishes. */
 export function enqueueTask(a: Actor, spec: TaskSpec, target?: Target) {
-  a.queue.push({ ...spec, t: 0, fired: false, target });
+  a.queue.push({ ...spec, t: 0, fired: false, target, area: a.area });
 }
 
 /** Advance the actor's work by dt. */
@@ -23,6 +28,8 @@ export function tickTask(w: World, a: Actor, dt: number) {
   if (!a.task && a.queue.length) { a.task = a.queue.shift()!; a.vx = 0; a.vy = 0; }
   const task = a.task;
   if (!task) return;
+  // Work is bound to the area it was started in; never let it fire elsewhere.
+  if (task.area && task.area !== a.area) { a.task = null; return; }
   task.t += dt;
   emit(w, { t: "taskTick", actor: a.id, task, dt });
   if (!task.fired && task.t >= TASK_KINDS[task.kind].fire(task.dur)) {
@@ -38,18 +45,13 @@ export function faceTo(a: Actor, x: number, y: number) {
   a.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
 }
 
-export function addItem(w: World, a: Actor, id: ItemId) {
-  a.inventory.push(id);
-  emit(w, { t: "itemGained", actor: a.id, item: id, stored: true });
-}
-export function removeItem(a: Actor, id: ItemId) {
-  const i = a.inventory.indexOf(id);
-  if (i >= 0) a.inventory.splice(i, 1);
-}
-
-/** Run an effect after `delay` seconds of simulation time. */
-export function schedule(w: World, delay: number, actor: Actor, effect: Effect) {
-  w.scheduled.push({ at: w.time + delay, actor: actor.id, effect });
+/**
+ * Run an effect after `delay` seconds of simulation time. It applies in the
+ * area it was scheduled from (default: the actor's area now), even if the
+ * actor has since travelled.
+ */
+export function schedule(w: World, delay: number, actor: Actor, effect: Effect, area = actor.area) {
+  w.scheduled.push({ at: w.time + delay, actor: actor.id, area, effect });
 }
 
 /** Fire scheduled effects that are due. */
@@ -60,34 +62,59 @@ export function runScheduled(w: World) {
   w.scheduled = w.scheduled.filter((s) => s.at > w.time);
   for (const s of due) {
     const a = actorById(w, s.actor);
-    if (a) applyEffect(w, a, s.effect);
+    if (a) applyEffect(w, a, s.effect, undefined, s.area);
   }
 }
 
-export function applyEffect(w: World, a: Actor, e: Effect, target?: Target) {
-  const area = areaOf(w, a);
+/** Apply one effect. `areaId` overrides the area it acts on (scheduled effects). */
+export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, areaId?: string) {
+  const area = areaId ? getArea(w, areaId) : areaOf(w, a);
   switch (e.op) {
     case "cue":
       emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y });
       break;
+    case "message":
+      emit(w, { t: "message", text: e.text });
+      if (e.cue) emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y });
+      break;
+    case "examine": {
+      const p = target?.propId ? area.prop(target.propId) : undefined;
+      const text = p && propDef(p.kind).examine;
+      if (text) emit(w, { t: "message", text });
+      break;
+    }
     case "takeLoose": {
       const l = target?.looseId ? area.looseItem(target.looseId) : undefined;
       if (!l || l.taken) break;
-      area.takeLoose(l.id);
-      addItem(w, a, l.item);
+      const def = ITEMS[l.item];
+      if (def.equip) {
+        area.takeLoose(l.id);
+        emit(w, { t: "itemGained", actor: a.id, item: l.item, stored: false });
+        beginTask(a, { kind: def.equip.task.kind, dur: def.equip.task.dur, effect: { op: "equip", item: l.item } });
+        break;
+      }
+      const n = l.n ?? 1;
+      const left = addItems(w, a, l.item, n);
+      if (left === n) { emit(w, { t: "packFull", actor: a.id, item: l.item }); break; }
+      area.setLooseCount(l.id, left);
+      emit(w, { t: "itemGained", actor: a.id, item: l.item, stored: true, n: n - left });
+      if (left > 0) emit(w, { t: "packFull", actor: a.id, item: l.item });
       break;
     }
     case "takePropItem": {
       const p = target?.propId ? area.prop(target.propId) : undefined;
       if (!p || p.taken || !p.item) break;
-      area.setPropState(p.id, { taken: true });
       const def = ITEMS[p.item];
       if (def.equip) {
+        area.setPropState(p.id, { taken: true });
         emit(w, { t: "itemGained", actor: a.id, item: p.item, stored: false });
         beginTask(a, { kind: def.equip.task.kind, dur: def.equip.task.dur, effect: { op: "equip", item: p.item } });
         break;
       }
-      addItem(w, a, p.item);
+      // Full pack: leave it where it is rather than dropping it on the floor.
+      if (addItems(w, a, p.item, 1) > 0) { emit(w, { t: "packFull", actor: a.id, item: p.item }); break; }
+      area.setPropState(p.id, { taken: true });
+      emit(w, { t: "itemGained", actor: a.id, item: p.item, stored: true, n: 1 });
       break;
     }
     case "openContainer": {
@@ -96,11 +123,11 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target) {
       const item = p.item;
       area.setPropState(p.id, { open: true, item: null });
       emit(w, { t: "containerOpened", x: p.x, y: p.y });
-      if (item) schedule(w, 0.25, a, { op: "grantItem", item });
+      if (item) schedule(w, 0.25, a, { op: "grantItem", item }, area.id);
       break;
     }
     case "grantItem":
-      addItem(w, a, e.item);
+      giveItem(w, a, e.item, 1);
       break;
     case "equip": {
       const def = ITEMS[e.item];
@@ -111,7 +138,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target) {
     case "unlockTile": {
       if (target?.tx === undefined || target.ty === undefined) break;
       const def = TILE_INTERACT[area.tile(target.tx, target.ty)];
-      if (e.consume) removeItem(a, e.consume);
+      if (e.consume) removeItems(a, e.consume, 1);
       area.setTile(target.tx, target.ty, T.FLOOR);
       if (def?.openDecal) area.addDecal({ kind: def.openDecal.kind, x: target.tx * TS + def.openDecal.dx, y: target.ty * TS + def.openDecal.dy, v: 0 });
       emit(w, { t: "doorUnlocked", x: target.x, y: target.y });
@@ -123,7 +150,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target) {
     case "placeCore": {
       const r = area.ritual;
       if (!r) break;
-      removeItem(a, e.consume);
+      removeItems(a, e.consume, 1);
       r.core = true;
       area.touch();
       emit(w, { t: "corePlaced" });
@@ -147,12 +174,52 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target) {
       r.sockets[i] = -1;
       r.wrong[i] = false;
       area.touch();
-      addItem(w, a, glyphItem(g));
+      giveItem(w, a, glyphItem(g), 1);
       if (r.active) deactivate(w, area);
       break;
     }
     case "checkRune":
       checkRune(w, area);
+      break;
+    case "drop": {
+      const s = a.inventory[e.slot];
+      if (!s) break;
+      if (!isDroppable(s.item)) { emit(w, { t: "message", text: "THAT IS TOO IMPORTANT TO DROP" }); break; }
+      const spot = dropSpot(area, a);
+      if (!spot) { emit(w, { t: "message", text: "NO ROOM TO DROP IT HERE" }); break; }
+      const n = Math.min(e.n, s.n), item = s.item;
+      s.n -= n;
+      if (s.n === 0) a.inventory[e.slot] = null;
+      spawnLoose(area, item, n, spot.x, spot.y);
+      emit(w, { t: "itemDropped", actor: a.id, item, n, x: spot.x, y: spot.y, reason: "drop" });
+      break;
+    }
+    case "travel":
+      if (target?.propId) travel(w, a, area, target.propId);
+      break;
+    case "harvest": {
+      const p = target?.propId ? area.prop(target.propId) : undefined;
+      const def = p && HARVEST[p.kind];
+      if (!p || !def || p.taken) break;
+      area.damageProp(p.id, 1);
+      giveItem(w, a, def.perHit.item, def.perHit.n);
+      const depleted = p.dmg >= def.hp;
+      if (depleted) {
+        area.setPropState(p.id, { taken: true });
+        if (def.final) giveItem(w, a, def.final.item, def.final.n);
+        if (def.regrow) schedule(w, def.regrow, a, { op: "regrow", prop: p.id }, area.id);
+      }
+      emit(w, { t: "harvestHit", actor: a.id, prop: p.id, kind: p.kind, x: p.x, y: p.y, depleted });
+      break;
+    }
+    case "regrow":
+      area.setPropState(e.prop, { taken: false, dmg: 0 });
+      break;
+    case "build":
+      applyBuild(w, a, area, e.recipe, e.tx, e.ty);
+      break;
+    case "learn":
+      if (!hasFlag(w, e.flag)) { setFlag(w, e.flag); emit(w, { t: "learned", flag: e.flag }); }
       break;
   }
 }

@@ -20,6 +20,12 @@ export interface PropKindDef {
   fire?: { big: boolean; embers: number; emberDy: number };
   /** Horizontal offset of an item icon resting on the prop. */
   itemDx?: number;
+  /** A teleportation rune site (see content/runes.ts). Drawn as a floor circle, not a sprite. */
+  rune?: boolean;
+  /** Interacting shows this text (ruins, landmarks). */
+  examine?: string;
+  /** Lies flat on the ground: always drawn beneath actors. */
+  flat?: boolean;
 }
 
 export const PROPS: Record<string, PropKindDef> = {
@@ -44,6 +50,19 @@ export const PROPS: Record<string, PropKindDef> = {
   },
   mushrooms: { light: { dx: 0, dy: -3, rad: 44, col: [0.35, 0.95, 0.8], int: 0.55, flick: 0.04, when: "always" } },
   banner: { wallMounted: true },
+  // ---- surface
+  tree: { box: [10, 6], alt: "taken" },
+  rock: { box: [16, 8], alt: "taken" },
+  torch_post: {
+    box: [6, 4], alt: "lit",
+    light: { dx: 0, dy: -14, rad: 96, col: [1, 0.62, 0.32], int: 0.9, flick: 0.22, when: "lit" },
+    fire: { big: false, embers: 1.5, emberDy: -2 },
+  },
+  cart: { box: [30, 10] },
+  buriedgate: { box: [56, 14], examine: "THE SURFACE GATE. BURIED UNDER EARTH AND RUBBLE." },
+  grate: { flat: true, examine: "AN IRON GRATE. COLD AIR RISES FROM THE HALLS BELOW." },
+  runesite: { rune: true },
+  runecircle: { rune: true },
   chains: { wallMounted: true },
 };
 

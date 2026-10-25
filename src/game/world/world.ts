@@ -7,6 +7,9 @@ import type { Effect, Task, Cue } from "../content/tasks";
 import { Area } from "./area";
 import { AREAS } from "./areas";
 
+/** One inventory slot: a stack of one item kind, or empty. */
+export type Slot = { item: ItemId; n: number } | null;
+
 /** Anything that exists in the world and can perform work: the golem today; NPCs and animals later. */
 export interface Actor {
   id: string;
@@ -19,14 +22,19 @@ export interface Actor {
   task: Task | null;
   /** Work waiting to be performed after the current task. */
   queue: Task[];
-  inventory: ItemId[];
+  /** Ordered slots. Length tracks derived capacity (sim/inventory.ts). Actor-owned so any actor can carry things. */
+  inventory: Slot[];
 }
 
-export interface Scheduled { at: number; actor: string; effect: Effect }
+/** A delayed effect. `area` is where it was scheduled: it always applies there, even if the actor has travelled. */
+export interface Scheduled { at: number; actor: string; area: string; effect: Effect }
 
 /** Things that happened in the sim this frame, for presentation (audio, particles, UI). */
 export type SimEvent =
-  | { t: "itemGained"; actor: string; item: ItemId; stored: boolean }
+  | { t: "itemGained"; actor: string; item: ItemId; stored: boolean; n?: number }
+  | { t: "itemDropped"; actor: string; item: ItemId; n: number; x: number; y: number; reason: "drop" | "full" | "overflow" }
+  | { t: "packFull"; actor: string; item: ItemId }
+  | { t: "message"; text: string }
   | { t: "step"; actor: string; heavy: boolean }
   | { t: "taskTick"; actor: string; task: Task; dt: number }
   | { t: "cue"; cue: Cue; x: number; y: number }
@@ -40,7 +48,12 @@ export type SimEvent =
   | { t: "runeActivated" }
   | { t: "runeFizzled" }
   | { t: "runeDeactivated" }
-  | { t: "teleport"; actor: string }
+  | { t: "teleport"; actor: string; first: boolean; x: number; y: number }
+  | { t: "runeAwakened"; rune: string }
+  | { t: "travelled"; actor: string; from: string; to: string; rune: string }
+  | { t: "harvestHit"; actor: string; prop: string; kind: string; x: number; y: number; depleted: boolean }
+  | { t: "built"; actor: string; prop: string; x: number; y: number }
+  | { t: "learned"; flag: string }
   | { t: "areaEntered"; actor: string; area: string };
 
 export interface World {
@@ -91,18 +104,24 @@ export const areaOf = (w: World, a: Actor) => getArea(w, a.area);
 /** The area the player is in — what gets rendered. */
 export const currentArea = (w: World) => areaOf(w, player(w));
 
-/** Move an actor to another area (travel). */
+/**
+ * Move an actor to another area (travel). The current task ends; queued work
+ * aimed at the area being left is dropped (it could only misfire elsewhere).
+ * Inventory travels with the actor untouched.
+ */
 export function enterArea(w: World, a: Actor, areaId: string, x: number, y: number) {
   getArea(w, areaId);
   a.area = areaId;
   a.x = x; a.y = y; a.vx = 0; a.vy = 0;
   a.task = null;
+  a.queue = a.queue.filter((t) => !t.area || t.area === areaId);
   emit(w, { t: "areaEntered", actor: a.id, area: areaId });
 }
 
 export const emit = (w: World, e: SimEvent) => { w.events.push(e); };
 export const hasFlag = (w: World, f: string) => w.flags.has(f);
 export const setFlag = (w: World, f: string) => { w.flags.add(f); };
+export const clearFlag = (w: World, f: string) => { w.flags.delete(f); };
 
 function shuffle(rng: SeededRng, perm: number[]) {
   for (let i = perm.length - 1; i > 0; i--) {

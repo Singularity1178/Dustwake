@@ -2,9 +2,9 @@
 // directly; presentation subscribes to its change notifications.
 //
 // Invariant: every mutation goes through a method here. Methods bump
-// `revision` (anything derived from area state — interactables, nav — can
-// cache on it) and tile/decal changes also publish a dirty tile rectangle so
-// views can re-bake background and re-trace light visibility locally.
+// `revision` (anything derived from area state — interactables, nav, lights —
+// can cache on it) and tile/decal changes also publish a dirty tile rectangle
+// so views can re-bake background and re-trace light visibility locally.
 import type { AreaData, DecalDef, LightDef, LooseItem, PropDef } from "../map";
 import { TS, T } from "../content/tiles";
 import { propDef } from "../content/props";
@@ -14,10 +14,14 @@ import { SOCKET_COUNT } from "../content/ritual";
 export interface PropInst extends PropDef {
   open: boolean;
   taken: boolean;
+  /** Damage taken (harvest progress). Lives on the target so any actor's hits accumulate and it saves. */
+  dmg: number;
+  /** Created during play (built), not by the area builder. */
+  dyn?: boolean;
   /** Collision box [x0, y0, x1, y1] in px, or null. Derived from the prop kind. */
   box: [number, number, number, number] | null;
 }
-export interface LooseInst extends LooseItem { taken: boolean }
+export interface LooseInst extends LooseItem { taken: boolean; dyn?: boolean }
 
 /** Tutorial puzzle state of the translocation circle. */
 export interface RitualState {
@@ -52,6 +56,9 @@ export class Area {
   readonly lights: LightDef[];
   ritual: RitualState | null = null;
   revision = 0;
+  /** Id counters for things created during play (saved, so ids are never reused). */
+  looseSeq = 0;
+  propSeq = 0;
   private listeners: Listener[] = [];
   private propIndex = new Map<string, PropInst>();
 
@@ -66,13 +73,16 @@ export class Area {
     this.tvar = base.tvar;
     this.decals = base.decals.slice();
     this.lights = base.lights;
-    this.props = base.props.map((p) => {
-      const bx = propDef(p.kind).box;
-      const inst: PropInst = { ...p, open: false, taken: false, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
-      this.propIndex.set(p.id, inst);
-      return inst;
-    });
+    this.props = base.props.map((p) => this.instProp(p));
     this.loose = base.loose.map((l) => ({ ...l, taken: false }));
+  }
+
+  private instProp(p: PropDef, dyn = false): PropInst {
+    const bx = propDef(p.kind).box;
+    const inst: PropInst = { ...p, open: false, taken: false, dmg: 0, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
+    if (dyn) inst.dyn = true;
+    this.propIndex.set(p.id, inst);
+    return inst;
   }
 
   // ---- static-ish accessors (pass-through so an Area is usable as MapData)
@@ -80,7 +90,8 @@ export class Area {
   get exits() { return this.base.exits; }
   get drips() { return this.base.drips; }
   get start() { return this.base.start; }
-  get ritualPos() { return this.base.ritual; }
+  /** Translocation circle centre (only areas with a ritual). */
+  get ritualPos() { return this.base.ritual!; }
 
   initRitual(solution: number[]) {
     this.ritual = {
@@ -108,18 +119,50 @@ export class Area {
     const tx = Math.floor(d.x / TS), ty = Math.floor(d.y / TS);
     this.markDirty(tx - DIRTY_PAD, ty - DIRTY_PAD, tx + DIRTY_PAD, ty + DIRTY_PAD);
   }
-  setPropState(id: string, s: Partial<Pick<PropInst, "open" | "taken" | "lit">> & { item?: ItemId | null }) {
+  setPropState(id: string, s: Partial<Pick<PropInst, "open" | "taken" | "lit" | "dmg">> & { item?: ItemId | null }) {
     const p = this.propIndex.get(id);
     if (!p) return;
     if (s.open !== undefined) p.open = s.open;
     if (s.taken !== undefined) p.taken = s.taken;
     if (s.lit !== undefined) p.lit = s.lit;
+    if (s.dmg !== undefined) p.dmg = s.dmg;
     if (s.item !== undefined) p.item = s.item ?? undefined;
     this.touch();
+  }
+  /** Harvest progress: add damage to a prop. */
+  damageProp(id: string, n: number) {
+    const p = this.propIndex.get(id);
+    if (!p) return;
+    p.dmg += n;
+    this.touch();
+  }
+  /** Create a prop during play (building). Ids are `kind#b<n>`, never reused. */
+  addProp(kind: string, x: number, y: number, o: Partial<PropDef> = {}, id?: string): PropInst {
+    const pid = id ?? `${kind}#b${this.propSeq++}`;
+    const inst = this.instProp({ v: 0, ...o, id: pid, kind, x, y }, true);
+    this.props.push(inst);
+    this.touch();
+    return inst;
   }
   takeLoose(id: string) {
     const l = this.looseItem(id);
     if (l) { l.taken = true; this.touch(); }
+  }
+  /** A loose stack created during play (dropped / overflow). Ids are `drop<n>`, never reused. */
+  addLoose(item: ItemId, n: number, x: number, y: number, id?: string): LooseInst {
+    const l: LooseInst = { id: id ?? `drop${this.looseSeq++}`, item, x, y, taken: false, dyn: true };
+    if (n !== 1) l.n = n;
+    this.loose.push(l);
+    this.touch();
+    return l;
+  }
+  setLooseCount(id: string, n: number) {
+    const l = this.looseItem(id);
+    if (!l) return;
+    if (n <= 0) l.taken = true;
+    else if (n === 1) delete l.n;
+    else l.n = n;
+    this.touch();
   }
   /** Non-spatial change (props, ritual, ...): bump revision only. */
   touch() { this.revision++; }

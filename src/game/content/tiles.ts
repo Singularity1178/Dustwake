@@ -2,15 +2,25 @@
 
 export const TS = 16;
 
-export const T = { WALL: 0, FLOOR: 1, RUBBLE: 2, CRACKED: 3, LOCKED: 4, PILLAR: 5, BARS: 6 } as const;
+export const T = {
+  WALL: 0, FLOOR: 1, RUBBLE: 2, CRACKED: 3, LOCKED: 4, PILLAR: 5, BARS: 6,
+  /** Surface: impassable undergrowth at the edge of the world. */
+  THICKET: 7,
+  /** Surface: a sinkhole down into the buried dungeon (solid, but light passes). */
+  PIT: 8,
+} as const;
 export type TileId = (typeof T)[keyof typeof T];
 
 /** Floor styles (background art). */
-export const FS = { FLAG: 0, MARBLE: 1, BRICK: 2, WOOD: 3, COBBLE: 4 } as const;
+export const FS = {
+  FLAG: 0, MARBLE: 1, BRICK: 2, WOOD: 3, COBBLE: 4,
+  /** Surface styles. RUIN on a WALL tile bakes as weathered, sunlit masonry. */
+  GRASS: 5, DIRT: 6, RUIN: 7,
+} as const;
 
 export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>
-  t === T.WALL || t === T.RUBBLE || t === T.CRACKED || t === T.LOCKED || t === T.PILLAR;
+  t === T.WALL || t === T.RUBBLE || t === T.CRACKED || t === T.LOCKED || t === T.PILLAR || t === T.THICKET;
 /** Tiles that read as wall mass when baking the background (rims, faces, AO). */
 export const isWallMassT = (t: number) => t === T.WALL || t === T.LOCKED;
 

@@ -1,6 +1,7 @@
 // The tutorial, played headlessly end to end through the sim API. This is the
 // regression net for the tutorial's mechanics: requirements, item flow, world
 // changes, the puzzle and the teleport.
+import { hasItem, addItems } from "../src/game/sim/inventory";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { player, currentArea, hasFlag, setFlag } from "../src/game/world/world";
@@ -61,7 +62,7 @@ test("full tutorial playthrough", () => {
   // Arm: taken from the rack and attached, not stored.
   useOn(w, propItem(w, "limbrack@65.5,3"));
   assert.ok(hasFlag(w, FLAGS.golemArm));
-  assert.ok(!pl.inventory.includes("arm"));
+  assert.ok(!hasItem(pl, "arm"));
   let ev = events(w);
   assert.ok(ev.some((e) => e.t === "itemGained" && e.item === "arm" && !e.stored));
   assert.ok(ev.some((e) => e.t === "equipped"));
@@ -79,10 +80,10 @@ test("full tutorial playthrough", () => {
   useOn(w, find(w, (i) => i.kind === "door"));
   assert.ok(events(w).some((e) => e.t === "cue" && e.cue === "clank"));
   useOn(w, propItem(w, "skeleton@66,32"));
-  assert.ok(pl.inventory.includes("key"));
+  assert.ok(hasItem(pl, "key"));
   useOn(w, find(w, (i) => i.kind === "door"));
   assert.equal(area.tile(51, 5), T.FLOOR);
-  assert.ok(!pl.inventory.includes("key"), "key consumed");
+  assert.ok(!hasItem(pl, "key"), "key consumed");
   assert.equal(area.decals[area.decals.length - 1].kind, "door_open");
 
   // Collect everything else.
@@ -97,7 +98,7 @@ test("full tutorial playthrough", () => {
   useOn(w, find(w, (i) => i.looseId === "coin"));
   useOn(w, propItem(w, "longtable@59.5,47"));
   for (const id of ["core", "chisel", "schematic", "glyph0", "glyph1", "glyph2", "glyph3", "crown", "coin", "goblet"] as const)
-    assert.ok(pl.inventory.includes(id), id);
+    assert.ok(hasItem(pl, id), id);
 
   // Carving needs the schematic to have been read (the UI sets this flag on opening it).
   useOn(w, find(w, (i) => i.kind === "gap"));
@@ -107,7 +108,7 @@ test("full tutorial playthrough", () => {
   assert.equal(r.carved, true);
   useOn(w, find(w, (i) => i.kind === "center"));
   assert.equal(r.core, true);
-  assert.ok(!pl.inventory.includes("core"));
+  assert.ok(!hasItem(pl, "core"));
 
   // Seat glyphs in a wrong order -> fizzle and mark wrong sockets.
   const wrong = [r.solution[1], r.solution[0], r.solution[2], r.solution[3]];
@@ -136,7 +137,7 @@ test("full tutorial playthrough", () => {
 test("an empty socket with glyphs in the pack asks the UI for a choice", () => {
   const w = newWorld();
   const pl = player(w);
-  pl.inventory.push("glyph2");
+  addItems(w, pl, "glyph2", 1);
   const sock = find(w, (i) => i.kind === "socket" && i.socket === 3);
   standAt(w, sock);
   assert.equal(findTarget(currentArea(w), pl)?.socket, 3);

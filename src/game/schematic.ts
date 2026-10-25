@@ -104,7 +104,7 @@ export function buildSchematic(m: MapData, solution: number[]): HTMLCanvasElemen
     }
   // thresholds on the original plan (doorways marked by short ticks)
   // rune circle on plan
-  const rcx = PLAN_X + (m.ritual.x / TS) * PLAN_S, rcy = PLAN_Y + (m.ritual.y / TS) * PLAN_S;
+  const rcx = PLAN_X + (m.ritual!.x / TS) * PLAN_S, rcy = PLAN_Y + (m.ritual!.y / TS) * PLAN_S;
   circlePx(ctx, rcx, rcy, 7, INK, 0.26, 1.31);
   circlePx(ctx, rcx, rcy, 4, INK2);
   ctx.fillStyle = INK; ctx.fillRect(Math.round(rcx), Math.round(rcy), 1, 1);

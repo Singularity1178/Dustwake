@@ -1,14 +1,15 @@
 // Per-frame simulation entry points. Deterministic given (world, dt, input)
 // except where noted; no DOM. The host decides which of these run in which
 // screen (e.g. overlays pause the world by simply not calling them).
-import { isSolidT } from "../content/tiles";
 import { RITUAL_SPOTS } from "../content/ritual";
 import { FLAGS } from "../content/flags";
 import { emit, hasFlag, player, areaOf, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
-import { tickTask, runScheduled } from "./tasks";
+import { tickTask, runScheduled, beginTask } from "./tasks";
+import { reconcileCapacity } from "./inventory";
+import { boxFree } from "./collision";
+import { RULES } from "../content/interactions";
 import { findTarget, interact, type Interactable, type InteractUi } from "./interact";
-import { TS } from "../content/tiles";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -26,13 +27,17 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const target = pl.task ? null : findTarget(area, pl);
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
-  // standing on an active circle teleports
-  const r = area.ritual, c = area.ritualPos;
-  if (r && r.active && r.actT > RITUAL_SPOTS.teleport.delay && !pl.task) {
+  // Tutorial beat (one-shot): standing on the freshly charged circle starts the
+  // first jump through the rune network. Afterwards runes are used with E.
+  const r = area.ritual;
+  if (r && r.active && r.actT > RITUAL_SPOTS.teleport.delay && !pl.task && !hasFlag(w, FLAGS.tutorialDone)) {
+    const c = area.ritualPos;
     const dx = c.x - pl.x, dy = c.y + RITUAL_SPOTS.teleport.dy - pl.y;
     if (dx * dx + dy * dy < RITUAL_SPOTS.teleport.r2) {
       pl.facing = "down";
-      emit(w, { t: "teleport", actor: pl.id });
+      const first = RULES.rune[RULES.rune.length - 1].task;
+      beginTask(pl, first, { kind: "rune", x: c.x, y: c.y, propId: "rune.dungeon" });
+      emit(w, { t: "teleport", actor: pl.id, first: true, x: c.x, y: c.y });
     }
   }
   return { target, ui };
@@ -42,10 +47,17 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
 export function addPlayTime(w: World, dt: number) { w.playTime += dt; }
 
 /** Advance everything that runs on world time: clock, scheduled effects, non-player actors, area features. */
+//
+// Off-screen policy: every loaded area is simulated every step (see
+// ARCHITECTURE.md). Non-player actors tick wherever they are; scheduled effects
+// carry the area they were scheduled in.
 export function stepWorld(w: World, dt: number) {
   w.time += dt;
   runScheduled(w);
-  for (const a of w.actors) if (a.id !== w.playerId) tickTask(w, a, dt);
+  for (const a of w.actors) {
+    reconcileCapacity(w, a);
+    if (a.id !== w.playerId) tickTask(w, a, dt);
+  }
   for (const area of w.areas.values()) {
     const r = area.ritual;
     if (r?.active) r.actT += dt;
@@ -53,21 +65,6 @@ export function stepWorld(w: World, dt: number) {
 }
 
 // ---------------------------------------------------------------- locomotion
-function boxFree(area: Area, x: number, y: number) {
-  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
-  for (let ty = Math.floor(y0 / TS); ty <= Math.floor((y1 - 0.01) / TS); ty++)
-    for (let tx = Math.floor(x0 / TS); tx <= Math.floor((x1 - 0.01) / TS); tx++) {
-      if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return false;
-      if (isSolidT(area.grid[ty * area.w + tx])) return false;
-    }
-  for (const p of area.props) {
-    const b = p.box;
-    if (!b) continue;
-    if (x1 > b[0] && x0 < b[2] && y1 > b[1] && y0 < b[3]) return false;
-  }
-  return true;
-}
-
 /** Limping golem locomotion with wall sliding and corner nudging. */
 export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy: number, base: number) {
   const mag = Math.hypot(ix, iy);

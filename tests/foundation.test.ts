@@ -4,7 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { player, currentArea, makeActor, enterArea, getArea, type World } from "../src/game/world/world";
 import { AREAS } from "../src/game/world/areas";
-import { serialize, deserialize, migrate, SAVE_VERSION } from "../src/game/world/save";
+import { serialize, deserialize, migrate, SAVE_VERSION, MIGRATIONS } from "../src/game/world/save";
+import { hasItem } from "../src/game/sim/inventory";
 import { enqueueTask, schedule } from "../src/game/sim/tasks";
 import { stepWorld } from "../src/game/sim/step";
 import { interactables } from "../src/game/sim/interact";
@@ -62,7 +63,7 @@ test("save/load round-trips world changes, pending schedule and in-progress work
   // ...and both continue identically (determinism)
   frames(w, 120); frames(w2, 120);
   assert.deepEqual(serialize(w2), serialize(w));
-  assert.ok(player(w2).inventory.includes("glyph0"), "scheduled grant fired after load");
+  assert.ok(hasItem(player(w2), "glyph0"), "scheduled grant fired after load");
 });
 
 test("same seed + same inputs => identical worlds", () => {
@@ -75,8 +76,8 @@ test("migrations upgrade old saves and newer saves are rejected", () => {
   assert.throws(() => migrate({ ...s, version: SAVE_VERSION + 1 }), /newer/);
   assert.throws(() => migrate({ nope: 1 }), /not a Dustwake save/);
   // fixture: pretend v1 -> v2 renamed playTime
-  const v2 = migrate(s, { 1: (o: any) => ({ ...o, version: 2, stats: { playTime: o.playTime } }) }, 2) as any;
-  assert.equal(v2.version, 2);
+  const v2 = migrate(s, { ...MIGRATIONS, [SAVE_VERSION]: (o: any) => ({ ...o, version: SAVE_VERSION + 1, stats: { playTime: o.playTime } }) }, SAVE_VERSION + 1) as any;
+  assert.equal(v2.version, SAVE_VERSION + 1);
   assert.equal(v2.stats.playTime, s.playTime);
 });
 
@@ -101,9 +102,9 @@ test("scheduled effects run on simulation time only", () => {
   const w = newWorld();
   schedule(w, 1, player(w), { op: "grantItem", item: "coin" });
   for (let i = 0; i < 59; i++) stepWorld(w, 1 / 60);
-  assert.ok(!player(w).inventory.includes("coin"));
+  assert.ok(!hasItem(player(w), "coin"));
   stepWorld(w, 2 / 60);
-  assert.ok(player(w).inventory.includes("coin"));
+  assert.ok(hasItem(player(w), "coin"));
 });
 
 test("travel to a second area of a different size; both areas persist", () => {

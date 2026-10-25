@@ -33,7 +33,7 @@ export interface LightDef {
   owner?: string;
 }
 export interface Room { num: number; name: string; x: number; y: number; w: number; h: number }
-export interface LooseItem { id: string; item: ItemId; x: number; y: number }
+export interface LooseItem { id: string; item: ItemId; x: number; y: number; /** Stack size (default 1). */ n?: number }
 export interface Exit { x: number; y: number; label: string; dir: "n" | "s" | "e" | "w" }
 
 /** Static definition of an area. Builders must be deterministic. */
@@ -51,7 +51,10 @@ export interface AreaData {
   lights: LightDef[];
   loose: LooseItem[];
   /** Translocation circle centre, if the area has one. */
-  ritual: { x: number; y: number };
+  ritual?: { x: number; y: number };
+  /** Open sky: no cave rumble/drips; `ambient` light instead of the dungeon's darkness. */
+  outdoor?: boolean;
+  ambient?: [number, number, number];
   start: { x: number; y: number };
   exits: Exit[];
   drips: { x: number; y: number }[];
@@ -246,9 +249,10 @@ export function buildMap(seed: number): MapData {
   for (const x of [5, 6, 7, 8, 11, 12, 13, 14]) P("shelfrow", x, 23, { v: x % 3 });
   for (const x of [5, 6, 11, 12, 14]) P("shelfrow", x, 26, { v: (x + 1) % 3 });
   P("shelf_fallen", 8, 27);
-  P("table", 11, 29, { v: 1 });
+  P("table", 11, 29, { v: 1, item: "book_build", itemZ: 11 });
   P("chair_fallen", 12.5, 29.2);
   P("lectern", 5, 29, { item: "glyph1", itemZ: 12 });
+  loose.push({ id: "book_repair", item: "book_repair", x: 9 * TS + 4, y: 28 * TS + 12 });
   P("mushrooms", 3, 30);
   D("puddle", 4 * TS, 27 * TS + 6, 0, 40, 18);
   D("puddle", 6 * TS + 6, 29 * TS + 4, 1, 30, 12);
@@ -364,6 +368,8 @@ export function buildMap(seed: number): MapData {
     ids.add(id);
     props.push({ id, kind: "pedestal", x: s.x, y: s.y + 4, v: 0 });
   });
+  // The circle as a node of the rune network (content/runes.ts). No sprite, no collision.
+  props.push({ id: "rune.dungeon", kind: "runesite", x: ritual.x, y: ritual.y, v: 0 });
 
   return {
     id: "dungeon", w: MW, h: MH,

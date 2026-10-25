@@ -3,6 +3,11 @@
 // entry points; it reacts to the World's events for sound and particles.
 import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, RELICS, isGlyph, glyphItem, type ItemId } from "./content/items";
+import { RECIPES } from "./content/build";
+import { capacity, countItem, hasItem, addItems } from "./sim/inventory";
+import { dropFromSlot, orderBuild, readItem } from "./sim/commands";
+import { placement, frontTile, buildAnchor, BLOCK_TEXT } from "./sim/build";
+import { BUILD_REACH } from "./content/build";
 import { propDef } from "./content/props";
 import { GLYPHS } from "./content/glyphs";
 import { FLAGS } from "./content/flags";
@@ -13,8 +18,8 @@ import { Light, makeLight, computeVis, Lighting } from "./light";
 import { Sfx } from "./audio";
 import { buildCircle, CircleArt, CR } from "./circle";
 import { buildSchematic, PLAN_X, PLAN_Y, PLAN_S } from "./schematic";
-import { drawText, drawTextS } from "./font";
-import { createWorld, player, currentArea, hasFlag, setFlag, type World, type SimEvent } from "./world/world";
+import { drawText, drawTextS, textWidth } from "./font";
+import { createWorld, player, currentArea, hasFlag, setFlag, getArea, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
 import { stepPlayer, stepWorld, addPlayTime } from "./sim/step";
 import { interactables, type Interactable } from "./sim/interact";
@@ -75,7 +80,20 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "inv" | "schem", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build", Screen>;
+  /** Feedback line (blocked actions, pack full, rune dark...). */
+  note: { text: string; t: number } | null = null;
+  /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
+  tele = { x: 0, y: 0, dur: 4.6, first: true, travelled: false };
+  /** White fade after a short rune hop (1 -> 0). */
+  arriveFade = 0;
+  hideGolem = false;
+  /** Surface rune repair progress override during the arrival cutscene (null: follow the flag). */
+  runeRepair: number | null = null;
+  brokenRune: HTMLCanvasElement | null = null;
+  buildCur = { tx: 0, ty: 0 };
+  buildRecipe = "torch";
+  book: { id: ItemId; page: number } | null = null;
 
   constructor(public canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -94,7 +112,9 @@ export class Game {
     this.view?.dispose();
     const area = currentArea(world);
     this.view = new AreaView(area);
-    this.schemCanvas = area.ritual ? buildSchematic(area.base, area.ritual.solution) : null;
+    // The schematic is of the dungeon, wherever the golem is.
+    const dg = getArea(world, "dungeon");
+    this.schemCanvas = dg.ritual ? buildSchematic(dg.base, dg.ritual.solution) : null;
     const pl = player(world);
     this.glight = makeLight(pl.x, pl.y - 6, 108, [1, 0.78, 0.5], 0, 0.05, "golem");
     this.dripT = area.drips.map(() => Math.random() * 4);
@@ -106,6 +126,7 @@ export class Game {
     this.fizzT = 0;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
+    this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeRepair = null;
   }
 
   /** Present a saved world, resuming straight into play. */
@@ -123,6 +144,9 @@ export class Game {
     this.view = new AreaView(area);
     this.dripT = area.drips.map(() => Math.random() * 4);
     this.glight.vx = -999;
+    // new area: snap the camera instead of panning across the map
+    const pl = this.pl;
+    this.cam.x = clamp(pl.x - W / 2, 0, area.w * TS - W); this.cam.y = clamp(pl.y - 12 - H / 2, 0, area.h * TS - H);
   }
 
   buildShaft(): Sprite {
@@ -164,23 +188,28 @@ export class Game {
       // Give every rune glyph, the aether core, the rune chisel and the schematic
       // (skipping any already held or already placed).
       const r = this.area.ritual;
-      const held = (id: ItemId) => pl.inventory.includes(id);
+      const held = (id: ItemId) => hasItem(pl, id);
       let given = 0;
       for (let g = 0; g < GLYPHS.length; g++) {
         const id = glyphItem(g);
         if (held(id) || r?.sockets.includes(g)) continue;
-        pl.inventory.push(id); given++;
+        addItems(w, pl, id, 1); given++;
       }
-      if (!held("core") && !r?.core) { pl.inventory.push("core"); given++; }
+      if (!held("core") && !r?.core) { addItems(w, pl, "core", 1); given++; }
       for (const id of ["chisel", "schematic"] as ItemId[]) {
         if (held(id)) continue;
-        pl.inventory.push(id); given++;
+        addItems(w, pl, id, 1); given++;
       }
       this.sfx.tone(520, 0.1, "triangle", 0.05);
       say(given ? "DEBUG: RUNES + CORE + TOOLS GRANTED" : "DEBUG: ALREADY HAVE ALL RUNES + CORE + TOOLS");
     } else if (n === 3) {
       this.debugSpeed = !this.debugSpeed;
       say(this.debugSpeed ? "DEBUG: SUPER SPEED ON" : "DEBUG: SUPER SPEED OFF");
+    } else if (n === 4) {
+      // Surface testing: building knowledge, basket, and a pile of materials.
+      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.golemBasket);
+      addItems(w, pl, "wood", 20); addItems(w, pl, "stone", 20);
+      say("DEBUG: BUILD + BASKET + MATERIALS");
     }
   }
   has(...k: string[]) { return k.some((x) => this.keys.has(x)); }
@@ -223,13 +252,23 @@ export class Game {
         if (t < 1.5) { g.ctx.fillStyle = `rgba(0,0,0,${1 - t / 1.5})`; g.ctx.fillRect(0, 0, W, H); }
       }),
       play: scr("play", true, (dt) => g.updatePlay(dt), () => g.renderWorldScene()),
-      tele: scr("tele", true, (dt) => { g.updateTele(dt); g.worldFrame(dt); }, () => {
+      tele: scr("tele", true, (dt) => {
+        if (g.updateTele(dt)) return;
+        stepPlayer(g.world, dt, { ix: 0, iy: 0, use: false });
+        g.drainEvents();
+        g.worldFrame(dt);
+      }, () => {
         g.renderWorldScene();
-        const t = g.S.tele.t;
-        if (t > 3) { g.ctx.fillStyle = `rgba(235,240,255,${clamp((t - 3) / 1.4, 0, 1)})`; g.ctx.fillRect(0, 0, W, H); }
+        const t = g.S.tele.t, w0 = g.tele.dur - 1.6;
+        if (t > w0) { g.ctx.fillStyle = `rgba(235,240,255,${clamp((t - w0) / 1.4, 0, 1)})`; g.ctx.fillRect(0, 0, W, H); }
       }),
+      arrive: scr("arrive", true, (dt) => { g.updateArrive(dt); g.worldFrame(dt); }, () => g.renderArrive()),
+      book: scr("book", false, () => g.updateBook(), () => g.renderBook()),
+      build: scr("build", false, () => g.updateBuild(), () => g.renderBuild()),
       end: scr("end", true, (dt) => {
-        if (g.S.end.t > 5 && g.hit("r")) { g.reset(); g.screens.set(g.S.intro); }
+        const et = g.S.end.t;
+        if (et > 5 && g.hit("r")) { g.reset(); g.screens.set(g.S.intro); }
+        else if ((et > 5 && g.pressed.size) || et > 14) { g.particles = []; g.screens.set(g.S.arrive); }
         if (Math.random() < 0.2) g.spawn({ x: Math.random() * W, y: H * 0.4 + Math.random() * 60, vy: -3, vx: 4, life: 5, kind: "mote", col: "#ffd8a0", emit: true });
         g.updateParticles(dt);
       }, () => g.renderEnd()),
@@ -280,12 +319,42 @@ export class Game {
     const pl = this.pl;
     switch (e.t) {
       case "itemGained": {
-        this.toast = { icon: itemIcon(e.item), name: ITEM_NAMES[e.item], t: 0 };
+        const n = e.n ?? 1;
+        this.toast = { icon: itemIcon(e.item), name: ITEM_NAMES[e.item] + (n > 1 ? ` x${n}` : ""), t: 0 };
         this.sfx.pickup();
         if (e.stored) for (let i = 0; i < 10; i++) this.spawn({ x: pl.x, y: pl.y - 4, z: 14, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 20, vz: 20 + Math.random() * 20, life: 0.6, kind: "glint", col: "#fff0c0", emit: true, g: 40 });
-        if (ITEMS[e.item].opensOnPickup) this.later(0.5, () => { if (this.screens.is("play")) this.openSchem(); });
+        const def = ITEMS[e.item], id = e.item;
+        if (def.opensOnPickup) this.later(0.5, () => { if (this.screens.is("play")) def.opens === "book" ? this.openBook(id) : this.openSchem(); });
         break;
       }
+      case "itemDropped":
+        this.sfx.thud();
+        for (let i = 0; i < 6; i++) this.spawn({ x: e.x + (Math.random() - 0.5) * 8, y: e.y, z: 2, vx: (Math.random() - 0.5) * 14, vz: 8, life: 0.6, kind: "dust", col: "#8a8478", g: 20 });
+        if (e.reason !== "drop") this.say(e.reason === "full" ? "PACK FULL - LEFT ON THE GROUND" : "NO ROOM - DROPPED ON THE GROUND");
+        break;
+      case "packFull": this.say("YOUR PACK IS FULL"); this.sfx.tone(180, 0.1, "square", 0.04); break;
+      case "message": this.say(e.text); break;
+      case "learned":
+        this.sfx.insight(); this.eyeBoost = 1.5;
+        this.say("YOU LEARNED " + ({ [FLAGS.knowBuild]: "THE ART OF BUILDING", [FLAGS.knowRepair]: "THE ART OF MENDING" }[e.flag] ?? e.flag));
+        break;
+      case "harvestHit": {
+        const tree = e.kind === "tree";
+        if (tree) this.sfx.thud(); else this.sfx.clink();
+        this.shake(e.depleted ? 0.35 : 0.12, e.depleted ? 2 : 1);
+        if (e.depleted && !tree) this.sfx.smash();
+        const cols = tree ? ["#5b3d24", "#7a5634", "#3e6a30", "#5a8a40"] : ["#8a8392", "#6a6372", "#4b4552"];
+        for (let i = 0; i < (e.depleted ? 26 : 10); i++)
+          this.spawn({ x: e.x + (Math.random() - 0.5) * 12, y: e.y, z: tree && i % 2 ? 20 + Math.random() * 14 : 6 + Math.random() * 6, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 20, vz: 10 + Math.random() * 30, life: 1 + Math.random(), kind: "debris", col: cols[(Math.random() * cols.length) | 0], g: tree && i % 2 ? 30 : 120 });
+        break;
+      }
+      case "built":
+        this.sfx.place(); this.sfx.tone(520, 0.2, "triangle", 0.05);
+        for (let i = 0; i < 10; i++) this.spawn({ x: e.x, y: e.y - 14, z: 2, vx: (Math.random() - 0.5) * 30, vz: 10 + Math.random() * 20, life: 0.6, kind: "spark", col: "#ffb040", emit: true, g: 80 });
+        break;
+      case "runeAwakened": case "travelled":
+        this.tele.travelled = true;
+        break;
       case "step":
         this.sfx.step(e.heavy);
         for (let i = 0; i < (e.heavy ? 4 : 2); i++)
@@ -310,6 +379,7 @@ export class Game {
       case "cue":
         if (e.cue === "clank") { this.sfx.clank(); this.shake(0.1, 1); }
         else if (e.cue === "scrape") this.sfx.scrape();
+        else if (e.cue === "dud") { this.sfx.fizzle(); this.fizzT = 0.5; }
         else if (e.cue === "scrapeDust") {
           this.sfx.scrape();
           for (let i = 0; i < 4; i++) this.spawn({ x: e.x, y: e.y, z: 2, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.8, kind: "dust", col: "#9a96a0", g: 20 });
@@ -356,7 +426,10 @@ export class Game {
         break;
       }
       case "runeDeactivated": this.sfx.setHum(0); break;
-      case "teleport": this.screens.set(this.S.tele); this.sfx.teleport(); break;
+      case "teleport":
+        this.tele = { x: e.x, y: e.y, dur: pl.task?.dur ?? 4.6, first: e.first, travelled: false };
+        this.screens.set(this.S.tele); this.sfx.teleport();
+        break;
       case "areaEntered": break;
     }
   }
@@ -379,7 +452,8 @@ export class Game {
     // overlays
     if (!pl.task) {
       if (this.hit("i", "tab")) { this.openInv("view"); return this.worldFrame(dt); }
-      if (this.hit("m") && pl.inventory.includes("schematic")) { this.openSchem(); return this.worldFrame(dt); }
+      if (this.hit("m") && hasItem(pl, "schematic")) { this.openSchem(); return this.worldFrame(dt); }
+      if (this.hit("b")) { this.openBuild(); return this.worldFrame(dt); }
     }
     let ix = 0, iy = 0;
     if (this.has("arrowleft", "a")) ix -= 1;
@@ -403,7 +477,7 @@ export class Game {
     this.target = res.target;
     if (res.ui) this.openInv("select", res.ui.socket);
     // rumble events
-    this.rumbleT -= dt;
+    if (!this.area.base.outdoor) this.rumbleT -= dt;
     if (this.rumbleT <= 0) {
       this.rumbleT = 50 + Math.random() * 50;
       this.sfx.rumble();
@@ -413,18 +487,56 @@ export class Game {
     this.worldFrame(dt);
   }
 
-  updateTele(_dt: number) {
-    const t = this.S.tele.t, lk = this.look;
-    lk.z = Math.min(t, 3) * 4 + Math.sin(t * 3) * 1;
+  /** The rune-jump effect (first jump: long, then the duskfall card; later hops: short). Returns true if it ended. */
+  updateTele(_dt: number): boolean {
+    const t = this.S.tele.t, lk = this.look, tl = this.tele, pl = this.pl;
+    if (!pl.task && t > 0.2) {
+      this.sfx.setHum(0);
+      if (tl.first && tl.travelled) { this.screens.set(this.S.end); this.particles = []; }
+      else { this.screens.set(this.S.play); this.arriveFade = tl.travelled ? 1 : 0; lk.z = tl.travelled ? 16 : 0; }
+      return true;
+    }
+    const lift = tl.dur - 1.6;
+    lk.z = Math.min(t, lift) * (tl.first ? 4 : 6) + Math.sin(t * 3) * 1;
     lk.eye = 1; lk.core = 1;
     this.shake(0.1, Math.min(4, t * 1.2));
-    const c = this.area.ritualPos;
+    const c = tl;
     for (let i = 0; i < 6; i++) {
       const a = Math.random() * Math.PI * 2, r = 20 + Math.random() * 50;
       this.spawn({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, z: 2, vx: -Math.cos(a) * r * 0.8, vy: -Math.sin(a) * r * 0.8, vz: 10 + Math.random() * 20, life: 1.2, kind: "rune", col: Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: -5 });
     }
     this.glight.int = 0.9 + t * 0.4;
-    if (t > 4.6) { this.screens.set(this.S.end); this.particles = []; this.sfx.setHum(0); }
+    return false;
+  }
+
+  /** First arrival on the surface: the dormant rune mends itself, then the golem materialises on it. */
+  updateArrive(dt: number) {
+    const t = this.S.arrive.t, lk = this.look, pl = this.pl;
+    const rp = this.area.prop("rune.surface");
+    const c = rp ?? pl;
+    this.hideGolem = t < 3.6;
+    this.runeRepair = clamp((t - 1.2) / 2.4, 0, 1);
+    if (t > 1.2 && t - dt <= 1.2) { this.sfx.activate(); }
+    if (t > 1.2 && t < 3.6) {
+      this.shake(0.1, 0.6 + this.runeRepair * 1.4);
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 40;
+        this.spawn({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, z: 2, vx: -Math.cos(a) * r * 0.6, vy: -Math.sin(a) * r * 0.6, vz: 6 + Math.random() * 10, life: 1, kind: "rune", col: Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: -3 });
+      }
+    }
+    if (t > 3.6 && t - dt <= 3.6) { this.sfx.teleport(); this.shake(0.6, 3); }
+    lk.z = t < 3.6 ? 30 : Math.max(0, 30 * (1 - (t - 3.6) / 1.6) ** 2);
+    lk.eye = 1; lk.core = 1; lk.dormant = 0;
+    this.cam.x = clamp(c.x - W / 2, 0, this.area.w * TS - W); this.cam.y = clamp(c.y - 12 - H / 2, 0, this.area.h * TS - H);
+    if (t > 6) { this.runeRepair = null; this.hideGolem = false; lk.z = 0; this.screens.set(this.S.play); this.say("THE SURFACE. THE DUNGEON LIES BURIED BELOW."); }
+  }
+
+  renderArrive() {
+    this.renderWorldScene();
+    const t = this.S.arrive.t, ctx = this.ctx;
+    if (t < 1.2) { ctx.fillStyle = `rgba(0,0,0,${1 - t / 1.2})`; ctx.fillRect(0, 0, W, H); }
+    if (t > 3.6 && t < 4.6) { ctx.fillStyle = `rgba(235,240,255,${1 - (t - 3.6)})`; ctx.fillRect(0, 0, W, H); }
+    if (t > 1.6 && t < 3.6) { ctx.globalAlpha = clamp((t - 1.6) * 2, 0, 1) * clamp((3.6 - t) * 2, 0, 1); drawTextS(ctx, "THE BROKEN RUNE STIRS...", W / 2, 20, "#c8b0ff", 1, "center", "#000"); ctx.globalAlpha = 1; }
   }
 
   /** Presentation that follows the world each simulated frame. */
@@ -468,6 +580,22 @@ export class Game {
       cl.cur = cl.int * (0.8 + 0.2 * Math.sin(this.t * 1.3)) + (this.fizzT > 0 ? Math.random() * 0.6 : 0);
     }
     this.fizzT = Math.max(0, this.fizzT - dt);
+    // surface rune glow (follows its flag, or the arrival cutscene)
+    const rg = this.view.byId("runeglow");
+    if (rg) {
+      const a = this.runeRepair ?? (hasFlag(this.world, "rune.surface.active") ? 1 : 0);
+      rg.cur = rg.int * (0.8 + 0.2 * Math.sin(this.t * 1.3)) + a * (0.55 + 0.15 * Math.sin(this.t * 3)) + (this.fizzT > 0 ? Math.random() * 0.4 : 0);
+      if (a > 0 && Math.random() < dt * 10 * a) {
+        const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
+        this.spawn({ x: rg.x + p.x, y: rg.y + p.y, z: 0, vz: 6 + Math.random() * 10, life: 1.4, kind: "rune", col: Math.random() < 0.6 ? "#a070ff" : "#70d0ff", emit: true, g: -2 });
+      }
+    }
+    // short-hop arrival
+    if (this.arriveFade > 0) { this.arriveFade = Math.max(0, this.arriveFade - dt * 1.4); this.look.z = Math.max(0, this.look.z - dt * 24); }
+    if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
+    // fireflies under the open sky
+    if (area.base.outdoor && Math.random() < dt * 3)
+      this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
     // drips
     area.drips.forEach((d, i) => {
       this.dripT[i] -= dt;
@@ -532,15 +660,25 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- inventory
+  get cap() { return capacity(this.world, this.pl); }
+  /** Pack grid layout per capacity tier: stays readable at 8, 16 and 48 slots without scrolling. */
+  invLayout(cap: number) {
+    const L = cap <= 8 ? { cols: 4, pitch: 30, cell: 26 } : cap <= 16 ? { cols: 4, pitch: 26, cell: 24 } : { cols: 8, pitch: 19, cell: 18 };
+    const rows = Math.ceil(cap / L.cols);
+    const gw = L.cols * L.pitch - (L.pitch - L.cell), gh = rows * L.pitch - (L.pitch - L.cell);
+    const pw = 100 + gw + 10, ph = Math.max(132, gh + 46);
+    return { ...L, rows, gw, gh, pw, ph, px: Math.floor((W - pw) / 2), py: Math.floor((H - ph) / 2) };
+  }
+  say(text: string) { this.note = { text, t: 0 }; }
   openInv(mode: "view" | "select", sock = -1) {
     this.screens.push(this.S.inv);
     this.invMode = mode;
     this.selSocket = sock;
     if (mode === "select") {
-      const i = this.pl.inventory.findIndex(isGlyph);
+      const i = this.pl.inventory.findIndex((s) => s && isGlyph(s.item));
       this.invCursor = Math.max(0, i);
     }
-    this.invCursor = clamp(this.invCursor, 0, 11);
+    this.invCursor = clamp(this.invCursor, 0, this.cap - 1);
     this.sfx.tone(300, 0.08, "triangle", 0.05);
   }
   openSchem() {
@@ -551,15 +689,26 @@ export class Game {
   }
   updateInv() {
     if (this.hit("escape", "i", "tab")) { this.screens.popToBase(); return; }
-    const c = this.invCursor;
-    if (this.hit("arrowleft", "a")) this.invCursor = (c + 11) % 12;
-    if (this.hit("arrowright", "d")) this.invCursor = (c + 1) % 12;
-    if (this.hit("arrowup", "w")) this.invCursor = (c + 8) % 12;
-    if (this.hit("arrowdown", "s")) this.invCursor = (c + 4) % 12;
-    if (this.invCursor !== c) this.sfx.tone(500, 0.04, "square", 0.02);
+    const cap = this.cap, cols = this.invLayout(cap).cols;
+    const c = clamp(this.invCursor, 0, cap - 1);
+    let n = c;
+    if (this.hit("arrowleft", "a")) n = (c + cap - 1) % cap;
+    if (this.hit("arrowright", "d")) n = (c + 1) % cap;
+    if (this.hit("arrowup", "w")) n = (c - cols + cap) % cap;
+    if (this.hit("arrowdown", "s")) n = (c + cols) % cap;
+    this.invCursor = n;
+    if (n !== c) this.sfx.tone(500, 0.04, "square", 0.02);
+    const slot = this.pl.inventory[this.invCursor];
+    if (this.hit("q") && this.invMode === "view") {
+      if (!slot) return;
+      const r = dropFromSlot(this.world, this.pl, this.invCursor, 1);
+      if (r !== "ok") this.sfx.thud();
+      this.drainEvents();
+      return;
+    }
     if (this.hit("e", "enter", " ")) {
-      const id = this.pl.inventory[this.invCursor];
-      if (!id) return;
+      if (!slot) return;
+      const id = slot.item;
       if (this.invMode === "select") {
         if (isGlyph(id)) {
           this.screens.popToBase();
@@ -567,8 +716,97 @@ export class Game {
           this.drainEvents();
         } else this.sfx.thud();
       } else if (ITEMS[id].opens === "schematic") this.openSchem();
+      else if (ITEMS[id].opens === "book") this.openBook(id);
       else this.sfx.tone(180, 0.1, "square", 0.04);
     }
+  }
+
+  // ---------------------------------------------------------------- books
+  openBook(id: ItemId) {
+    this.screens.popToBase();
+    this.book = { id, page: 0 };
+    this.screens.push(this.S.book);
+    readItem(this.world, this.pl, id);
+    this.sfx.noise(0.3, 0.1, "bandpass", 2000, 1, 0, 600);
+  }
+  updateBook() {
+    const b = this.book, pages = b ? ITEMS[b.id].book?.pages ?? [] : [];
+    if (!b || this.hit("escape", "i", "tab")) { this.screens.popToBase(); this.drainEvents(); return; }
+    if (this.S.book.t < 0.3) return;
+    if (this.hit("arrowleft", "a") && b.page > 0) { b.page--; this.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
+    if (this.hit("arrowright", "d", "e", "enter", " ")) {
+      if (b.page < pages.length - 1) { b.page++; this.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
+      else if (this.hit("e", "enter", " ")) { this.screens.popToBase(); this.drainEvents(); }
+    }
+  }
+  renderBook() {
+    const ctx = this.ctx, b = this.book;
+    if (!b) return;
+    const def = ITEMS[b.id].book!;
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(0, 0, W, H);
+    const x = 50, y = 22, w = 220, h = 136;
+    ctx.fillStyle = "#2a1a0c"; ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = "#d8ccb0"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#b8ac90"; ctx.fillRect(x + w / 2, y, 1, h);
+    for (let i = 0; i < 60; i++) { ctx.fillStyle = "#c8bc9e"; ctx.fillRect(x + ((hash2(i, 1, 9) * w) | 0), y + ((hash2(i, 2, 9) * h) | 0), 2, 1); }
+    drawText(ctx, def.title, x + w / 2, y + 10, "#4a2a10", 1, "center");
+    const lines = def.pages[b.page] ?? [];
+    lines.forEach((l, i) => drawText(ctx, l, x + w / 2, y + 34 + i * 14, "#3a2a1a", 1, "center"));
+    drawText(ctx, `${b.page + 1}/${def.pages.length}`, x + w / 2, y + h - 22, "#7a6a50", 1, "center");
+    drawText(ctx, b.page < def.pages.length - 1 ? "E NEXT PAGE   ESC CLOSE" : "E CLOSE", x + w / 2, y + h - 12, "#7a6a50", 1, "center");
+    this.renderNote();
+  }
+
+  // ---------------------------------------------------------------- building
+  openBuild() {
+    if (!hasFlag(this.world, FLAGS.knowBuild)) { this.say("YOU DON'T KNOW HOW TO BUILD. PERHAPS A BOOK..."); this.sfx.thud(); return; }
+    this.buildCur = frontTile(this.pl);
+    this.screens.push(this.S.build);
+    this.sfx.tone(360, 0.08, "triangle", 0.05);
+  }
+  updateBuild() {
+    if (this.hit("escape", "b", "i", "tab")) { this.screens.popToBase(); return; }
+    const pl = this.pl, c = this.buildCur;
+    const atx = Math.floor(pl.x / TS), aty = Math.floor((pl.y - 3) / TS);
+    const mv = (dx: number, dy: number) => {
+      c.tx = clamp(c.tx + dx, atx - BUILD_REACH, atx + BUILD_REACH); c.ty = clamp(c.ty + dy, aty - BUILD_REACH, aty + BUILD_REACH);
+      this.sfx.tone(500, 0.03, "square", 0.02);
+    };
+    if (this.hit("arrowleft", "a")) mv(-1, 0);
+    if (this.hit("arrowright", "d")) mv(1, 0);
+    if (this.hit("arrowup", "w")) mv(0, -1);
+    if (this.hit("arrowdown", "s")) mv(0, 1);
+    if (this.hit("e", "enter", " ")) {
+      if (orderBuild(this.world, pl, this.buildRecipe, c.tx, c.ty)) this.screens.popToBase();
+      else this.sfx.thud();
+      this.drainEvents();
+    }
+  }
+  renderBuild() {
+    const ctx = this.ctx, c = this.buildCur, r = RECIPES[this.buildRecipe];
+    const ok = placement(this.world, this.pl, this.area, this.buildRecipe, c.tx, c.ty);
+    const camX = Math.round(this.cam.x), camY = Math.round(this.cam.y);
+    const x = c.tx * TS - camX, y = c.ty * TS - camY;
+    const pulse = 0.25 + 0.12 * Math.sin(this.t * 6);
+    ctx.fillStyle = ok.ok ? `rgba(90,220,120,${pulse})` : `rgba(230,70,70,${pulse})`;
+    ctx.fillRect(x, y, TS, TS);
+    ctx.fillStyle = ok.ok ? "#7ae08a" : "#e05a5a";
+    ctx.fillRect(x, y, TS, 1); ctx.fillRect(x, y + TS - 1, TS, 1); ctx.fillRect(x, y, 1, TS); ctx.fillRect(x + TS - 1, y, 1, TS);
+    const s = propSprite(r.prop, 0, true);
+    if (s) { const a = buildAnchor(c.tx, c.ty); ctx.globalAlpha = 0.6; ctx.drawImage(s.a, Math.round(a.x - s.ax - camX), Math.round(a.y - s.ay - camY)); ctx.globalAlpha = 1; }
+    ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(0, 0, W, 22);
+    const cost = r.cost.map((k) => `${k.n} ${ITEM_NAMES[k.item]} (${countItem(this.pl, k.item)})`).join("  ");
+    drawText(ctx, `BUILD ${r.name}: ${cost}`, W / 2, 3, "#e8d8b0", 1, "center");
+    drawText(ctx, ok.ok ? "E PLACE   ARROWS MOVE   ESC CANCEL" : BLOCK_TEXT[ok.reason], W / 2, 12, ok.ok ? "#8a8392" : "#e08a7a", 1, "center");
+    this.renderNote();
+  }
+
+  renderNote() {
+    if (!this.note) return;
+    const ctx = this.ctx;
+    ctx.globalAlpha = clamp(3 - this.note.t, 0, 1);
+    drawTextS(ctx, this.note.text, W / 2, H - 40, "#e8d8b0", 1, "center", "#000");
+    ctx.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------- render
@@ -587,6 +825,8 @@ export class Game {
     const camX = Math.round(this.cam.x + sx), camY = Math.round(this.cam.y + sy);
     sc.fillStyle = "#000"; sc.fillRect(0, 0, W, H);
     ec.fillStyle = "#000"; ec.fillRect(0, 0, W, H);
+    this.view.prepare(camX, camY, W, H);
+    this.view.idle();
     sc.drawImage(this.view.bg.c, camX, camY, W, H, 0, 0, W, H);
     const spr = (s: Sprite, x: number, y: number) => {
       const dx = Math.round(x - s.ax - camX), dy = Math.round(y - s.ay - camY);
@@ -619,6 +859,8 @@ export class Game {
         ec.globalAlpha = 1;
       }
     }
+    // ---- rune circles that are props (surface)
+    for (const p of area.props) if (p.kind === "runecircle") this.drawSurfaceRune(p, camX, camY);
     // ---- sortables
     type D = { y: number; f: () => void };
     const list: D[] = [];
@@ -635,7 +877,7 @@ export class Game {
       const s = propSprite(p.kind, p.v, alt);
       if (!s) continue;
       list.push({
-        y: def.wallMounted ? p.y - 0.5 : p.y,
+        y: def.wallMounted ? p.y - 0.5 : def.flat ? p.y - 16 : p.y,
         f: () => {
           spr(s, p.x, p.y);
           if (p.lit && def.fire) this.drawFlame(p, def.fire.big, camX, camY);
@@ -669,7 +911,7 @@ export class Game {
       }
     // player
     const pl = this.pl;
-    list.push({ y: pl.y, f: () => this.drawPlayer(camX, camY) });
+    if (!this.hideGolem) list.push({ y: pl.y, f: () => this.drawPlayer(camX, camY) });
     // world particles
     for (const p of this.particles) {
       if (p.kind === "debris" || p.kind === "dust" || p.kind === "smoke" || p.kind === "splash") {
@@ -708,11 +950,40 @@ export class Game {
     // ---- lighting
     const sImg = sc.getImageData(0, 0, W, H);
     const eImg = ec.getImageData(0, 0, W, H);
-    const active: Light[] = [this.glight];
+    const active: Light[] = this.hideGolem ? [] : [this.glight];
     for (const L of this.view.lights.values()) if (L.on) active.push(L);
     this.lighting.accumulate(active, camX, camY);
-    this.lighting.compose(sImg.data, eImg.data, this.outImg.data, [0.05, 0.045, 0.065]);
+    this.lighting.compose(sImg.data, eImg.data, this.outImg.data, area.base.ambient ?? [0.05, 0.045, 0.065]);
     this.ctx.putImageData(this.outImg, 0, 0);
+  }
+
+  /** A rune circle on the surface: the same carved circle, buried under dirt and cracks until it is repaired. */
+  drawSurfaceRune(p: PropInst, camX: number, camY: number) {
+    const ccx = Math.round(p.x - CR - camX), ccy = Math.round(p.y - CR - camY);
+    if (ccx < -140 || ccx > W + 10 || ccy < -140 || ccy > H + 10) return;
+    const sc = this.scene.ctx, ec = this.emit.ctx;
+    const a = this.runeRepair ?? (hasFlag(this.world, "rune.surface.active") ? 1 : 0);
+    sc.drawImage(this.circle.base, ccx, ccy);
+    sc.drawImage(this.circle.gapCarved, ccx, ccy);
+    if (a < 1) { sc.globalAlpha = 1 - a; sc.drawImage(this.brokenRuneArt(), ccx, ccy); sc.globalAlpha = 1; }
+    ec.globalAlpha = clamp(0.06 + a * (0.6 + 0.3 * Math.sin(this.t * 3)), 0, 1);
+    ec.drawImage(this.circle.glow, ccx, ccy); ec.drawImage(this.circle.glowGap, ccx, ccy);
+    if (a < 1) { ec.globalAlpha = 1 - a; ec.drawImage(this.brokenRuneArt(), ccx, ccy); }
+    ec.globalAlpha = 1;
+  }
+  /** Dirt, turf and cracks covering a dormant circle (presentation only; deterministic pattern). */
+  brokenRuneArt(): HTMLCanvasElement {
+    if (this.brokenRune) return this.brokenRune;
+    const c = makeCanvas(CR * 2, CR * 2), p = new Pen(c.ctx, false);
+    for (let i = 0; i < 70; i++) {
+      const ang = hash2(i, 1, 77) * Math.PI * 2, r = 20 + hash2(i, 2, 77) * 44;
+      const x = Math.round(CR + Math.cos(ang) * r), y = Math.round(CR + Math.sin(ang) * r), s = 3 + ((hash2(i, 3, 77) * 6) | 0);
+      for (let j = -s; j <= s; j++) for (let k = -s; k <= s; k++) if (j * j + k * k <= s * s && hash2(x + k, y + j, 78) < 0.85)
+        p.p(x + k, y + j, hash2(x + k, y + j, 79) < 0.5 ? "#5a4630" : i % 3 === 0 ? "#3e6a30" : "#6a5440");
+    }
+    for (let i = 0; i < 9; i++) { let x = CR + ((hash2(i, 4, 77) - 0.5) * 80) | 0, y = CR + ((hash2(i, 5, 77) - 0.5) * 80) | 0; for (let k = 0; k < 18; k++) { p.p(x, y, "#141016"); x += ((hash2(i, k, 80) * 3) | 0) - 1; y += ((hash2(k, i, 81) * 3) | 0) - 1; } }
+    this.brokenRune = c.c;
+    return c.c;
   }
 
   drawFlame(p: PropInst, big: boolean, camX: number, camY: number) {
@@ -783,6 +1054,8 @@ export class Game {
       if (a.kind === "smash") raise = a.t < 0.5 ? a.t / 0.5 : a.t < 0.62 ? lerp(1, -1, (a.t - 0.5) / 0.12) : lerp(-1, 0, clamp((a.t - 0.62) / 0.5, 0, 1));
       if (a.kind === "carve") reach = 0.4 + 0.6 * Math.abs(Math.sin(a.t * 14));
       if (a.kind === "attach") reach = 0.3;
+      if (a.kind === "punch") { const k2 = a.t / a.dur; raise = k2 < 0.35 ? k2 / 0.35 : k2 < 0.5 ? lerp(1, -1, (k2 - 0.35) / 0.15) : lerp(-1, 0, clamp((k2 - 0.5) / 0.4, 0, 1)); }
+      if (a.kind === "channel") reach = 0.2;
     }
     const pose: GolemPose = {
       facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
@@ -804,6 +1077,8 @@ export class Game {
       ctx.fillStyle = "#d8cfa8";
       ctx.fillRect(x - 2, y - 1, 5, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1);
     }
+    if (this.arriveFade > 0) { ctx.fillStyle = `rgba(235,240,255,${this.arriveFade})`; ctx.fillRect(0, 0, W, H); }
+    if (this.screens.is("play")) this.renderNote();
     // debug message
     if (this.debugMsg) {
       ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
@@ -827,9 +1102,9 @@ export class Game {
   }
 
   renderInv() {
-    const ctx = this.ctx, inv = this.pl.inventory, hasArm = this.hasArm;
+    const ctx = this.ctx, inv = this.pl.inventory, hasArm = this.hasArm, cap = this.cap;
+    const L = this.invLayout(cap), { px, py, pw, ph } = L;
     ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
-    const px = 40, py = 24, pw = 240, ph = 132;
     const frame = (x: number, y: number, w: number, h: number, fill: string, edge = "#3a3540", hi = "#4e4856") => {
       ctx.fillStyle = "#08070a"; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
       ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
@@ -839,44 +1114,57 @@ export class Game {
     frame(px, py, pw, ph, "#141117");
     for (const [cx, cy] of [[px + 3, py + 3], [px + pw - 5, py + 3], [px + 3, py + ph - 5], [px + pw - 5, py + ph - 5]]) { ctx.fillStyle = "#6a6372"; ctx.fillRect(cx, cy, 2, 2); }
     // golem figure
-    frame(px + 8, py + 8, 80, 116, "#0e0c10");
+    const fy = py + Math.floor((ph - 116) / 2);
+    frame(px + 8, fy, 80, 116, "#0e0c10");
     const fig = makeCanvas(40, 40);
     const pose: GolemPose = { facing: "down", phase: 0, moving: false, hasArm, dormant: 0, eye: 1, core: 0.8 + 0.2 * Math.sin(this.t * 3), raise: 0, reach: 0, t: this.t };
     drawGolem(new Pen(fig.ctx, false), 20, 34, pose);
-    ctx.drawImage(fig.c, px + 8, py + 22, 80, 80);
+    ctx.drawImage(fig.c, px + 8, fy + 14, 80, 80);
     if (!hasArm && Math.sin(this.t * 4) > -0.2) {
       ctx.fillStyle = "#8a4040";
-      const ax = px + 8 + (20 + 6) * 2, ay = py + 22 + (34 - 13) * 2;
+      const ax = px + 8 + (20 + 6) * 2, ay = fy + 14 + (34 - 13) * 2;
       for (let i = 0; i < 20; i += 2) { ctx.fillRect(ax + i % 8, ay, 1, 1); ctx.fillRect(ax, ay + i, 1, 1); ctx.fillRect(ax + 8, ay + i, 1, 1); ctx.fillRect(ax + (i % 8), ay + 20, 1, 1); }
     }
+    if (hasFlag(this.world, FLAGS.golemBasket)) ctx.drawImage(itemIcon("basket").a, px + 66, fy + 4);
     // relics
-    const rel = RELICS.filter((r) => inv.includes(r)).length;
+    const rel = RELICS.filter((r) => hasItem(this.pl, r)).length;
     for (let i = 0; i < 3; i++) {
       ctx.fillStyle = i < rel ? "#c9a040" : "#2a2630";
-      ctx.fillRect(px + 34 + i * 6, py + 114, 4, 4);
+      ctx.fillRect(px + 34 + i * 6, fy + 106, 4, 4);
     }
-    // grid
-    const gx = px + 100, gy = py + 12;
+    // header
+    const gx = px + 100, gy = py + 16;
+    const used = inv.slice(0, cap).filter(Boolean).length;
+    drawText(ctx, `PACK ${used}/${cap}`, gx, py + 6, "#8a8392");
     if (this.invMode === "select") {
       const s = propSprite("pedestal", 0, false)!;
-      ctx.drawImage(s.a, px + pw - 22, py + 6);
-      drawText(ctx, "?", px + pw - 24, py + 8, "#a070ff");
+      ctx.drawImage(s.a, px + pw - 22, py + 2);
+      drawText(ctx, "?", px + pw - 24, py + 4, "#a070ff");
     }
-    for (let i = 0; i < 12; i++) {
-      const cx = gx + (i % 4) * 30, cy = gy + Math.floor(i / 4) * 30;
+    // grid
+    for (let i = 0; i < cap; i++) {
+      const cx = gx + (i % L.cols) * L.pitch, cy = gy + Math.floor(i / L.cols) * L.pitch;
       const sel = i === this.invCursor;
-      frame(cx, cy, 26, 26, sel ? "#221d26" : "#100e12", sel ? (Math.sin(this.t * 6) > 0 ? "#c8b88a" : "#9a8c66") : "#2a2630", sel ? "#e8d8a8" : "#3a3540");
-      const id = inv[i];
-      if (id) {
-        const ic = itemIcon(id);
-        const dim = this.invMode === "select" && !isGlyph(id);
-        ctx.globalAlpha = dim ? 0.25 : 1;
-        ctx.drawImage(ic.a, cx + 5, cy + 5);
-        ctx.globalAlpha = 1;
-      }
+      frame(cx, cy, L.cell, L.cell, sel ? "#221d26" : "#100e12", sel ? (Math.sin(this.t * 6) > 0 ? "#c8b88a" : "#9a8c66") : "#2a2630", sel ? "#e8d8a8" : "#3a3540");
+      const slot = inv[i];
+      if (!slot) continue;
+      const ic = itemIcon(slot.item);
+      const dim = this.invMode === "select" && !isGlyph(slot.item);
+      ctx.globalAlpha = dim ? 0.25 : 1;
+      const o = Math.floor((L.cell - 16) / 2);
+      ctx.drawImage(ic.a, cx + o, cy + o);
+      ctx.globalAlpha = 1;
+      if (slot.n > 1) { const t = String(slot.n); drawTextS(ctx, t, cx + L.cell - 1 - textWidth(t), cy + L.cell - 7, "#f0e8d0", 1, "left", "#000"); }
     }
-    const id: ItemId | undefined = inv[this.invCursor];
-    if (id) drawTextS(ctx, ITEM_NAMES[id], gx + 58, py + ph - 16, "#d8d0b8", 1, "center");
+    const slot = inv[this.invCursor];
+    const ty = gy + L.gh + 6;
+    if (slot) {
+      drawTextS(ctx, ITEM_NAMES[slot.item] + (slot.n > 1 ? ` x${slot.n}` : ""), gx + L.gw / 2, ty, "#d8d0b8", 1, "center");
+      const def = ITEMS[slot.item];
+      const hint = this.invMode === "select" ? "E PLACE" : `${def.opens ? "E READ  " : ""}${def.droppable === false ? "CAN'T DROP" : "Q DROP"}`;
+      drawText(ctx, hint, gx + L.gw / 2, ty + 10, "#6a6372", 1, "center");
+    }
+    this.renderNote();
   }
 
   renderSchem() {
@@ -889,7 +1177,7 @@ export class Game {
     const x = Math.round((W - w) / 2);
     ctx.drawImage(this.schemCanvas, x, 0, w, H, x, 0, w, H);
     if (w < W) { ctx.fillStyle = "#d0d8e8"; ctx.fillRect(x - 3, 0, 3, H); ctx.fillRect(x + w, 0, 3, H); }
-    if (k >= 1 && Math.sin(this.t * 6) > 0) {
+    if (k >= 1 && this.area.id === "dungeon" && Math.sin(this.t * 6) > 0) {
       const pl = this.pl;
       const mx = Math.round(PLAN_X + (pl.x / TS) * PLAN_S), my = Math.round(PLAN_Y + (pl.y / TS) * PLAN_S);
       ctx.fillStyle = "#ffcc55"; ctx.fillRect(mx - 1, my - 1, 3, 3);
@@ -1000,12 +1288,12 @@ export class Game {
       ctx.globalAlpha = clamp((t - 4.5) / 1, 0, 1);
       const s = Math.floor(this.world.playTime);
       const mm = String(Math.floor(s / 60)).padStart(2, "0"), ss = String(s % 60).padStart(2, "0");
-      const rel = RELICS.filter((r) => this.pl.inventory.includes(r)).length;
+      const rel = RELICS.filter((r) => hasItem(this.pl, r)).length;
       drawTextS(ctx, `TIME ${mm}:${ss}`, W / 2, 44, "#d8c8b0", 1, "center", "#2a1a2a");
       drawTextS(ctx, `RELICS ${rel}/3`, W / 2, 52, "#d8c8b0", 1, "center", "#2a1a2a");
       ctx.globalAlpha = 1;
     }
-    if (t > 6 && Math.sin(this.t * 3) > -0.3) drawTextS(ctx, "R - WAKE AGAIN", W / 2, 168, "#c8b8a0", 1, "center", "#000");
+    if (t > 6 && Math.sin(this.t * 3) > -0.3) drawTextS(ctx, "ANY KEY - THE SURFACE    R - WAKE AGAIN", W / 2, 168, "#c8b8a0", 1, "center", "#000");
     if (t < 1.6) { ctx.fillStyle = `rgba(235,240,255,${1 - t / 1.6})`; ctx.fillRect(0, 0, W, H); }
   }
 }

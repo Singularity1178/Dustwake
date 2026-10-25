@@ -2,12 +2,16 @@
 // ritual) and cached on the area's revision, so no call site has to remember
 // to rebuild them after changing the world.
 import { TS, TILE_INTERACT } from "../content/tiles";
-import { propReach } from "../content/props";
+import { propDef, propReach } from "../content/props";
+import { HARVEST } from "../content/harvest";
+import { runeAt } from "../content/runes";
 import { isGlyph } from "../content/items";
-import { RULES, type Requirement, type Rule } from "../content/interactions";
+import { RULES, type Rule } from "../content/interactions";
 import { RITUAL_SPOTS, socketPositions } from "../content/ritual";
 import type { Target } from "../content/tasks";
-import { hasFlag, type Actor, type World } from "../world/world";
+import { emit, hasFlag, type Actor, type World } from "../world/world";
+import { FLAGS } from "../content/flags";
+import { meets } from "./requirements";
 import type { Area } from "../world/area";
 import { beginTask, faceTo } from "./tasks";
 
@@ -33,6 +37,14 @@ function deriveInteractables(area: Area): Interactable[] {
   const I: Interactable[] = [];
   for (const p of area.props) {
     if (p.kind === "pedestal") continue;
+    const def = propDef(p.kind);
+    if (def.rune) {
+      // The dungeon circle only becomes a usable rune once its core is seated (before that its centre is the "center" spot).
+      if (!(area.ritual && !area.ritual.core)) I.push({ kind: "rune", x: p.x, y: p.y, r: 18, propId: p.id });
+      continue;
+    }
+    if (HARVEST[p.kind] && !p.taken) { I.push({ kind: "harvest", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
+    if (def.examine) { I.push({ kind: "examine", x: p.x, y: p.y + 2, r: propReach(p.kind) + 4, propId: p.id }); continue; }
     const r = propReach(p.kind);
     if (p.container && !p.open) I.push({ kind: "container", x: p.x, y: p.y + 2, r, propId: p.id, itemZ: p.itemZ, hasItem: !!p.item });
     else if (p.item && !p.container && !p.taken) I.push({ kind: "propItem", x: p.x, y: p.y + 2, r, propId: p.id, itemZ: p.itemZ, hasItem: true });
@@ -69,12 +81,7 @@ export function findTarget(area: Area, a: Actor): Interactable | null {
   return best;
 }
 
-export function meets(w: World, a: Actor, req?: Requirement) {
-  if (!req) return true;
-  if (req.items && !req.items.every((i) => a.inventory.includes(i))) return false;
-  if (req.flags && !req.flags.every((f) => hasFlag(w, f))) return false;
-  return true;
-}
+export { meets };
 
 const pick = (w: World, a: Actor, rules: Rule[]) => rules.find((r) => meets(w, a, r.when));
 
@@ -87,12 +94,19 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
   let rules = RULES[it.kind];
   if (it.kind === "socket") {
     const filled = (area.ritual?.sockets[it.socket!] ?? -1) >= 0;
-    if (!filled && a.inventory.some(isGlyph)) return { ui: "selectGlyph", socket: it.socket! };
+    if (!filled && a.inventory.some((s) => s && isGlyph(s.item))) return { ui: "selectGlyph", socket: it.socket! };
     rules = filled ? RULES.socketFilled : RULES.socketEmpty;
+  }
+  let first = false;
+  if (it.kind === "rune") {
+    const node = runeAt(area.id, it.propId!);
+    if (!node || !hasFlag(w, node.flag)) rules = RULES.runeDormant;
+    else first = !hasFlag(w, FLAGS.tutorialDone);
   }
   const rule = rules && pick(w, a, rules);
   if (!rule) return null;
   const { r: _r, itemZ: _z, hasItem: _h, ...target } = it;
   beginTask(a, rule.task, target);
+  if (rule.task.kind === "channel") emit(w, { t: "teleport", actor: a.id, first, x: it.x, y: it.y });
   return null;
 }

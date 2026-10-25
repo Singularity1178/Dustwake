@@ -9,11 +9,20 @@
 | `W` `A` `S` `D` / arrow keys | Move |
 | `E` / `Space` / `Enter` | Interact / use |
 | `I` / `Tab` | Open pack (inventory) |
+| Movement keys (pack open) | Move the slot cursor |
+| `E` (pack open) | Use / read the selected item |
+| `Q` (pack open) | Drop one of the selected item in front of the golem |
 | `M` | Read schematic (once found) |
+| `B` | Build (once you know how): placement mode |
+| Movement keys / `E` / `Esc` (placement) | Move the ghost / place / cancel |
+| `E` on a teleport rune | Travel to its linked rune |
+| `E` on a tree or rock | Harvest wood / stone with your fists |
 | `Esc` / `I` / `Tab` | Close menu |
 | `R` | Wake again (restart) |
 
 Click or press any key on the title screen to begin.
+
+Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build knowledge + basket + materials.
 
 ## Running locally
 
@@ -47,10 +56,13 @@ src/
   App.tsx            canvas mount, game loop, input wiring
   game/
     core/            seeded RNG, hashing (pure)
-    content/         items, props, tiles, glyphs, flags, tasks, interaction rules (data)
+    content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
+                     inventory tiers, rune network, harvest yields, build recipes (data)
     map.ts           tutorial dungeon area builder
+    surface.ts       surface area builder (ruins above the buried dungeon)
     world/           Area, World, area registry, save/load (simulated + saved state)
-    sim/             tasks/effects, interactions, ritual puzzle, stepping (no DOM)
+    sim/             tasks/effects, interactions, inventory, runes, building,
+                     collision, ritual puzzle, stepping, UI commands (no DOM)
     view/            area view: baked background + light registry
     ui/              screen stack
     game.ts          host + presentation: screens, camera, particles, audio, rendering
