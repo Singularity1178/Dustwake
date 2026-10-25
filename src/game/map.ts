@@ -5,6 +5,7 @@ import { TS, T, FS } from "./content/tiles";
 import type { ItemId } from "./content/items";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
+import { GATE_CORRIDOR } from "./content/geo";
 
 export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
 export type { ItemId } from "./content/items";
@@ -117,7 +118,8 @@ export function buildMap(seed: number): MapData {
   rect(51, 33, 2, 2, T.FLOOR, B);
   rect(51, 46, 2, 2, T.FLOOR, B);
   rect(35, 41, 2, 3, T.FLOOR, FS.MARBLE);
-  rect(34, 50, 4, 5, T.FLOOR, FS.MARBLE);
+  const GC = GATE_CORRIDOR;
+  rect(GC.x0, GC.y0, GC.x1 - GC.x0 + 1, GC.y1 - GC.y0 + 1, T.FLOOR, FS.MARBLE); // the SURFACE GATE corridor
   rect(29, 48, 2, 1, T.FLOOR, FS.FLAG);
   rect(34, 16, 4, 4, T.FLOOR, FS.MARBLE);
   rect(69, 46, 2, 2, T.FLOOR, FS.FLAG);
@@ -143,7 +145,7 @@ export function buildMap(seed: number): MapData {
   rect(49, 1, 2, 3, R);
   rect(34, 16, 4, 4, R);
   rect(44, 36, 3, 2, R);
-  rect(34, 50, 4, 5, R);
+  rect(GC.x0, GC.y0, GC.x1 - GC.x0 + 1, GC.y1 - GC.y0 + 1, R); // collapsed: see "SURFACE GATE" below
   rect(69, 46, 2, 2, R);
   for (const [x, y] of [
     [43, 2], [44, 2], [45, 2], [44, 3], [45, 3], [45, 4], [43, 3],
@@ -362,6 +364,34 @@ export function buildMap(seed: number): MapData {
       if (wallN && rng() < 0.12) D("moss", bx + rng() * 8, by + rng() * 8, (rng() * 3) | 0);
     }
 
+  // ---- SURFACE GATE: the collapsed, rock-choked entrance (appended after all
+  // shared-rng work with its own seed, so no other room's art shifts) ----
+  {
+    const gr = mulberry(seed ^ 0x9a7e);
+    const gx = (GC.x0 + GC.x1 + 1) / 2; // corridor centre, in tiles
+    // the heap spills one row into the Vestibule
+    for (let x = GC.x0; x <= GC.x1; x++) set(x, GC.y0 - 1, R);
+    // spilled earth fanning 2-3 tiles into the room, loose stones and debris on it
+    D("spill", gx * TS, (GC.y0 - 1.2) * TS, 0, 72, 34);
+    D("spill", (gx - 2.6) * TS, (GC.y0 - 1.6) * TS, 1, 30, 16);
+    D("spill", (gx + 2.4) * TS, (GC.y0 - 1.9) * TS, 2, 26, 14);
+    for (let i = 0; i < 16; i++) D("pebbles", (gx + (gr() - 0.5) * 7) * TS, (GC.y0 - 1 - gr() * 2.4) * TS, 0);
+    for (let i = 0; i < 10; i++) D("debris", (gx + (gr() - 0.5) * 8) * TS, (GC.y0 - 1.2 - gr() * 2.6) * TS, (gr() * 4) | 0);
+    for (let i = 0; i < 3; i++) D("roots", (gx - 2 + gr() * 4) * TS, (GC.y0 - 1.6 - gr()) * TS, 0);
+    // roots forcing through the broken walls and vault over the corridor mouth
+    for (const x of [GC.x0 - 2, GC.x0 - 1, GC.x1 + 1, GC.x1 + 2]) D("rootshang", x * TS + 2, GC.y0 * TS + 1, 0);
+    for (let x = GC.x0; x <= GC.x1; x++) D("rootshang", x * TS + 2, GC.y0 * TS - 2, 1);
+    // heaped boulders and fallen masonry, row upon row down the corridor (solid either way)
+    const piles: [number, number][] = [[gx - 0.5, GC.y0 - 1], [gx + 1, GC.y0 - 0.6], [gx - 1.6, GC.y0], [gx + 0.4, GC.y0 + 0.6], [gx - 0.8, GC.y0 + 1.8], [gx + 1.2, GC.y0 + 2.4], [gx - 1, GC.y0 + 3.4]];
+    piles.forEach(([x, y], i) => {
+      const id = `rockpile@gate${i}`;
+      ids.add(id);
+      props.push({ id, kind: "rockpile", x: x * TS, y: y * TS + 16, v: i % 3 });
+    });
+    // the faintest cool grey of daylight seeping between the stones
+    lights.push({ x: gx * TS, y: GC.y0 * TS + 4, rad: 22, col: [0.55, 0.68, 0.9], int: 0.2, flick: 0.03, id: "gateleak" });
+  }
+
   // ---- Ritual pedestals (one per socket; appended last so draw order is unchanged) ----
   socketPositions(ritual).forEach((s, i) => {
     const id = "ped" + i;
@@ -378,7 +408,7 @@ export function buildMap(seed: number): MapData {
     exits: [
       { x: 22, y: 1, label: "UPPER WARD", dir: "n" },
       { x: 50, y: 1, label: "TOWER", dir: "n" },
-      { x: 36, y: 55, label: "SURFACE GATE", dir: "s" },
+      { x: GC.exit.x, y: GC.exit.y, label: "SURFACE GATE", dir: "s" },
       { x: 71, y: 47, label: "CELLARS", dir: "e" },
     ],
   };

@@ -59,8 +59,32 @@ export const PROPS: Record<string, PropKindDef> = {
     fire: { big: false, embers: 1.5, emberDy: -2 },
   },
   cart: { box: [30, 10] },
-  buriedgate: { box: [56, 14], examine: "THE SURFACE GATE. BURIED UNDER EARTH AND RUBBLE." },
-  grate: { flat: true, examine: "AN IRON GRATE. COLD AIR RISES FROM THE HALLS BELOW." },
+  /**
+   * The old SURFACE GATE, buried: a walkable marker over the arch's crown (no
+   * collision, drawn flat as a barely-visible squared stone in the turf).
+   */
+  buriedgate: { flat: true, examine: "THE GROUND SOUNDS HOLLOW HERE. SQUARED STONE LIES UNDER THE TURF." },
+  // ---- surface: overgrowth (no collision unless noted)
+  bush: { box: [14, 6] },
+  fern: {},
+  tallgrass: {},
+  wildflowers: { flat: true },
+  sapling: { box: [4, 3] },
+  stump: { box: [10, 5] },
+  log: { box: [30, 7] },
+  boulder: { box: [22, 8] },
+  outcrop: { box: [38, 10] },
+  // ---- surface: the few rocky remains that poke through
+  wallstub: { box: [30, 8], examine: "OLD MASONRY, SUNK TO ITS SHOULDERS IN THE EARTH." },
+  masonry: { box: [18, 7] },
+  stoneslab: { flat: true },
+  cairn: { box: [12, 6] },
+  standingstone: { box: [10, 5] },
+  statue_toppled: { box: [32, 9], examine: "A FALLEN STATUE, WRAPPED IN IVY." },
+  /** A squared block or lintel corner barely peeking through the soil (flat). */
+  capstone: { flat: true },
+  // ---- dungeon: the collapsed SURFACE GATE corridor
+  rockpile: { box: [26, 10] },
   runesite: { rune: true },
   runecircle: { rune: true },
   chains: { wallMounted: true },

@@ -4,10 +4,9 @@ export const TS = 16;
 
 export const T = {
   WALL: 0, FLOOR: 1, RUBBLE: 2, CRACKED: 3, LOCKED: 4, PILLAR: 5, BARS: 6,
-  /** Surface: impassable undergrowth at the edge of the world. */
+  /** Surface: impassable undergrowth (the world's edge, dense woods). */
   THICKET: 7,
-  /** Surface: a sinkhole down into the buried dungeon (solid, but light passes). */
-  PIT: 8,
+  // 8 was PIT (open sinkholes into the dungeon); removed with the overgrown surface.
 } as const;
 export type TileId = (typeof T)[keyof typeof T];
 
@@ -16,7 +15,12 @@ export const FS = {
   FLAG: 0, MARBLE: 1, BRICK: 2, WOOD: 3, COBBLE: 4,
   /** Surface styles. RUIN on a WALL tile bakes as weathered, sunlit masonry. */
   GRASS: 5, DIRT: 6, RUIN: 7,
+  /** Overgrown surface ground: soft moss, leaf litter, wet mud, bare/heaped earth. */
+  MOSS: 8, LEAF: 9, MUD: 10, EARTH: 11,
 } as const;
+
+/** Surface ground styles: baked by groundPix, with noise-blended patch edges. */
+export const isGroundStyle = (s: number) => s === FS.GRASS || s === FS.DIRT || s >= FS.MOSS;
 
 export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>

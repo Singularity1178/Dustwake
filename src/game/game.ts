@@ -17,6 +17,25 @@ import { drawGolem, GolemPose } from "./golem";
 import { Light, makeLight, computeVis, Lighting } from "./light";
 import { Sfx } from "./audio";
 import { buildCircle, CircleArt, CR } from "./circle";
+import { SurfaceRuneArt } from "./surfaceRune";
+
+/**
+ * First arrival on the surface (seconds into the cutscene): fade in on the dead,
+ * overgrown circle; the surviving carvings start to glow; a sweep of light
+ * redraws the circle while the plants over each carving wither; the whole circle
+ * pulses to full activation; then the golem is summoned onto it.
+ */
+const ARRIVE = {
+  fadeIn: 1.2,
+  glowStart: 1.5,
+  sweepStart: 3.0,
+  sweepEnd: 6.6,
+  pulse: 6.6,
+  summonStart: 7.2,
+  summon: 8.2,
+  land: 9.4,
+  end: 9.8,
+} as const;
 import { buildSchematic, PLAN_X, PLAN_Y, PLAN_S } from "./schematic";
 import { drawText, drawTextS, textWidth } from "./font";
 import { createWorld, player, currentArea, hasFlag, setFlag, getArea, type World, type SimEvent } from "./world/world";
@@ -34,7 +53,7 @@ export const W = 320, H = 180;
 
 interface Particle {
   x: number; y: number; z: number; vx: number; vy: number; vz: number;
-  life: number; max: number; kind: "spark" | "ember" | "dust" | "debris" | "drip" | "splash" | "rune" | "mote" | "glint" | "smoke";
+  life: number; max: number; kind: "spark" | "ember" | "dust" | "debris" | "drip" | "splash" | "rune" | "mote" | "glint" | "smoke" | "leaf";
   col: string; emit: boolean; g: number; size: number;
 }
 
@@ -89,8 +108,10 @@ export class Game {
   arriveFade = 0;
   hideGolem = false;
   /** Surface rune repair progress override during the arrival cutscene (null: follow the flag). */
-  runeRepair: number | null = null;
-  brokenRune: HTMLCanvasElement | null = null;
+  /** Surface rune state override during the arrival cutscene (null: follow the flag). */
+  runeFx: { p: number; surv: number; rev: number; pulse: number } | null = null;
+  private _surfRune: SurfaceRuneArt | null = null;
+  get surfRune() { return (this._surfRune ??= new SurfaceRuneArt(this.circle)); }
   buildCur = { tx: 0, ty: 0 };
   buildRecipe = "torch";
   book: { id: ItemId; page: number } | null = null;
@@ -126,7 +147,7 @@ export class Game {
     this.fizzT = 0;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
-    this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeRepair = null;
+    this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeFx = null;
   }
 
   /** Present a saved world, resuming straight into play. */
@@ -509,34 +530,80 @@ export class Game {
     return false;
   }
 
-  /** First arrival on the surface: the dormant rune mends itself, then the golem materialises on it. */
+  /** First arrival on the surface: the overgrown rune wakes, redraws itself, and summons the golem. */
   updateArrive(dt: number) {
-    const t = this.S.arrive.t, lk = this.look, pl = this.pl;
+    const t = this.S.arrive.t, t0 = t - dt, lk = this.look, pl = this.pl, A = ARRIVE;
     const rp = this.area.prop("rune.surface");
     const c = rp ?? pl;
-    this.hideGolem = t < 3.6;
-    this.runeRepair = clamp((t - 1.2) / 2.4, 0, 1);
-    if (t > 1.2 && t - dt <= 1.2) { this.sfx.activate(); }
-    if (t > 1.2 && t < 3.6) {
-      this.shake(0.1, 0.6 + this.runeRepair * 1.4);
-      for (let i = 0; i < 4; i++) {
-        const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 40;
-        this.spawn({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, z: 2, vx: -Math.cos(a) * r * 0.6, vy: -Math.sin(a) * r * 0.6, vz: 6 + Math.random() * 10, life: 1, kind: "rune", col: Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: -3 });
+    const cross = (k: number) => t >= k && t0 < k;
+    const ease = (x: number) => x * x * (3 - 2 * x);
+    const prevP = this.runeFx?.p ?? 0;
+    const p = ease(clamp((t - A.sweepStart) / (A.sweepEnd - A.sweepStart), 0, 1));
+    const surv = clamp((t - A.glowStart) / (A.sweepStart - A.glowStart), 0, 1);
+    const pulse = t >= A.pulse ? Math.max(0, 1 - (t - A.pulse) / 1.2) : 0;
+    this.runeFx = { p, surv: 0.25 + surv * 0.55 + p * 0.2, rev: 0.75 + 0.25 * Math.sin(t * 6), pulse };
+    if (surv <= 0) this.runeFx.surv = 0;
+    this.hideGolem = t < A.summon;
+    // sound follows the phases: a low hum wakes with the glow and rises with the sweep
+    if (t >= A.glowStart && t < A.summon) this.sfx.setHum(0.25 + surv * 0.25 + p * 0.5);
+    if (cross(A.glowStart)) this.sfx.boot();
+    if (cross(A.pulse)) { this.sfx.activate(); this.shake(0.8, 2.5); }
+    if (cross(A.summon)) { this.sfx.teleport(); this.shake(0.7, 3.5); this.sfx.setHum(0); }
+    if (rp && p > prevP) {
+      // plants over each redrawn carving wither and blow away
+      for (const cl of this.surfRune.layout.plants) {
+        if (cl.keep || cl.key < prevP || cl.key >= p) continue;
+        for (let k = 0; k < 2; k++) this.spawn({ x: c.x + cl.x + (Math.random() - 0.5) * 3, y: c.y + cl.y, z: 1, vx: 6 + Math.random() * 10, vy: (Math.random() - 0.5) * 6, vz: 8 + Math.random() * 10, life: 0.9 + Math.random() * 0.8, kind: "leaf", col: Math.random() < 0.5 ? "#8a7a40" : "#6a5a30", g: 14 });
+        if (Math.random() < 0.3) this.spawn({ x: c.x + cl.x, y: c.y + cl.y, z: 0, vz: 10 + Math.random() * 10, life: 0.8, kind: "rune", col: "#c0a0ff", emit: true, g: -3 });
       }
+      this.shake(0.1, 0.4 + p);
     }
-    if (t > 3.6 && t - dt <= 3.6) { this.sfx.teleport(); this.shake(0.6, 3); }
-    lk.z = t < 3.6 ? 30 : Math.max(0, 30 * (1 - (t - 3.6) / 1.6) ** 2);
+    // the summoning: light converging from all around onto the circle's centre
+    if (t >= A.summonStart && t < A.summon) {
+      const k = (t - A.summonStart) / (A.summon - A.summonStart);
+      for (let i = 0; i < 3 + k * 6; i++) {
+        const a = Math.random() * Math.PI * 2, r = 50 + Math.random() * 30;
+        this.spawn({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, z: 4, vx: -Math.cos(a) * r * 1.4, vy: -Math.sin(a) * r * 1.4, vz: 6 + Math.random() * 12, life: 0.7, kind: "rune", col: Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: -3 });
+      }
+      this.shake(0.1, 0.5 + k * 2);
+    }
+    if (cross(A.summon)) for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2, v = 20 + Math.random() * 50;
+      this.spawn({ x: c.x, y: c.y, z: 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6, vz: 20 + Math.random() * 40, life: 1.1, kind: "rune", col: Math.random() < 0.5 ? "#e0d0ff" : "#80e0ff", emit: true, g: 10 });
+    }
+    lk.z = t < A.summon ? 30 : Math.max(0, 30 * (1 - (t - A.summon) / (A.land - A.summon)) ** 2);
     lk.eye = 1; lk.core = 1; lk.dormant = 0;
     this.cam.x = clamp(c.x - W / 2, 0, this.area.w * TS - W); this.cam.y = clamp(c.y - 12 - H / 2, 0, this.area.h * TS - H);
-    if (t > 6) { this.runeRepair = null; this.hideGolem = false; lk.z = 0; this.screens.set(this.S.play); this.say("THE SURFACE. THE DUNGEON LIES BURIED BELOW."); }
+    if (t > A.end) {
+      this.runeFx = null; this.hideGolem = false; lk.z = 0; this.screens.set(this.S.play);
+      this.say("OPEN SKY. SOMEWHERE BENEATH THESE ROOTS, THE HALLS YOU LEFT.");
+    }
   }
 
   renderArrive() {
     this.renderWorldScene();
-    const t = this.S.arrive.t, ctx = this.ctx;
-    if (t < 1.2) { ctx.fillStyle = `rgba(0,0,0,${1 - t / 1.2})`; ctx.fillRect(0, 0, W, H); }
-    if (t > 3.6 && t < 4.6) { ctx.fillStyle = `rgba(235,240,255,${1 - (t - 3.6)})`; ctx.fillRect(0, 0, W, H); }
-    if (t > 1.6 && t < 3.6) { ctx.globalAlpha = clamp((t - 1.6) * 2, 0, 1) * clamp((3.6 - t) * 2, 0, 1); drawTextS(ctx, "THE BROKEN RUNE STIRS...", W / 2, 20, "#c8b0ff", 1, "center", "#000"); ctx.globalAlpha = 1; }
+    const t = this.S.arrive.t, ctx = this.ctx, A = ARRIVE;
+    if (t < A.fadeIn) { ctx.fillStyle = `rgba(0,0,0,${1 - t / A.fadeIn})`; ctx.fillRect(0, 0, W, H); }
+    if (t >= A.summon && t < A.summon + 1) { ctx.fillStyle = `rgba(235,240,255,${1 - (t - A.summon)})`; ctx.fillRect(0, 0, W, H); }
+    // the light column of the summoning
+    if (t >= A.summonStart && t < A.summon + 0.6) {
+      const rp = this.area.prop("rune.surface");
+      if (rp) {
+        const k = t < A.summon ? (t - A.summonStart) / (A.summon - A.summonStart) : 1 - (t - A.summon) / 0.6;
+        const x = Math.round(rp.x - this.cam.x), y = Math.round(rp.y - this.cam.y), w = Math.max(1, Math.round(2 + k * 8));
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = `rgba(150,110,255,${0.5 * k})`; ctx.fillRect(x - w, 0, w * 2, y);
+        ctx.fillStyle = `rgba(230,220,255,${0.6 * k})`; ctx.fillRect(x - (w >> 1), 0, Math.max(1, w), y);
+        ctx.globalCompositeOperation = "source-over";
+      }
+    }
+    const say = (txt: string, a: number, b: number) => {
+      if (t < a || t > b) return;
+      ctx.globalAlpha = clamp((t - a) * 2, 0, 1) * clamp((b - t) * 2, 0, 1);
+      drawTextS(ctx, txt, W / 2, 20, "#c8b0ff", 1, "center", "#000"); ctx.globalAlpha = 1;
+    };
+    say("SOMETHING STIRS BENEATH THE MOSS...", A.glowStart, A.sweepStart + 1.2);
+    say("THE OLD CIRCLE REMEMBERS ITS SHAPE", A.sweepStart + 1.6, A.pulse + 0.4);
   }
 
   /** Presentation that follows the world each simulated frame. */
@@ -583,8 +650,11 @@ export class Game {
     // surface rune glow (follows its flag, or the arrival cutscene)
     const rg = this.view.byId("runeglow");
     if (rg) {
-      const a = this.runeRepair ?? (hasFlag(this.world, "rune.surface.active") ? 1 : 0);
-      rg.cur = rg.int * (0.8 + 0.2 * Math.sin(this.t * 1.3)) + a * (0.55 + 0.15 * Math.sin(this.t * 3)) + (this.fizzT > 0 ? Math.random() * 0.4 : 0);
+      // dark and dead while dormant (no baseline glow); the cutscene or the flag drives it
+      const fx = this.runeFx, on = hasFlag(this.world, "rune.surface.active");
+      const a = fx ? fx.p : on ? 1 : 0;
+      const lvl = fx ? fx.surv * 0.22 + fx.p * 0.55 + fx.pulse * 0.9 : on ? 0.6 + 0.12 * Math.sin(this.t * 3) : 0;
+      rg.cur = rg.int * lvl + (this.fizzT > 0 ? Math.random() * 0.3 : 0);
       if (a > 0 && Math.random() < dt * 10 * a) {
         const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
         this.spawn({ x: rg.x + p.x, y: rg.y + p.y, z: 0, vz: 6 + Math.random() * 10, life: 1.4, kind: "rune", col: Math.random() < 0.6 ? "#a070ff" : "#70d0ff", emit: true, g: -2 });
@@ -596,6 +666,9 @@ export class Game {
     // fireflies under the open sky
     if (area.base.outdoor && Math.random() < dt * 3)
       this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
+    // drifting pollen and the odd falling leaf
+    if (area.base.outdoor && Math.random() < dt * 2)
+      this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 10 + Math.random() * 30, vx: 6 + Math.random() * 6, vy: (Math.random() - 0.5) * 3, vz: -4, life: 4, kind: "leaf", col: Math.random() < 0.6 ? "#d8d090" : "#7a6a30", g: 2 });
     // drips
     area.drips.forEach((d, i) => {
       this.dripT[i] -= dt;
@@ -655,6 +728,7 @@ export class Game {
       }
       if (p.kind === "mote") { p.vx += (Math.random() - 0.5) * dt * 4; p.vz += (Math.random() - 0.5) * dt * 4; }
       if (p.kind === "smoke") { p.vx *= 0.97; p.vy *= 0.97; }
+      if (p.kind === "leaf") { p.vx += Math.sin(this.t * 3 + p.y) * dt * 20; if (p.z < 0) { p.z = 0; p.vz = 0; p.vx *= 0.8; p.vy *= 0.8; } }
       if (p.life <= 0) ps.splice(i, 1);
     }
   }
@@ -957,33 +1031,29 @@ export class Game {
     this.ctx.putImageData(this.outImg, 0, 0);
   }
 
-  /** A rune circle on the surface: the same carved circle, buried under dirt and cracks until it is repaired. */
+  /**
+   * A rune circle on the surface. Dormant: worn fragments under moss, grass and
+   * vines, no glow. Waking (runeFx): the sweep redraws carvings and clears the
+   * plants over them. Active: fully carved and glowing. Renders are cached in
+   * SurfaceRuneArt; only in-between progress re-renders.
+   */
   drawSurfaceRune(p: PropInst, camX: number, camY: number) {
     const ccx = Math.round(p.x - CR - camX), ccy = Math.round(p.y - CR - camY);
     if (ccx < -140 || ccx > W + 10 || ccy < -140 || ccy > H + 10) return;
-    const sc = this.scene.ctx, ec = this.emit.ctx;
-    const a = this.runeRepair ?? (hasFlag(this.world, "rune.surface.active") ? 1 : 0);
-    sc.drawImage(this.circle.base, ccx, ccy);
-    sc.drawImage(this.circle.gapCarved, ccx, ccy);
-    if (a < 1) { sc.globalAlpha = 1 - a; sc.drawImage(this.brokenRuneArt(), ccx, ccy); sc.globalAlpha = 1; }
-    ec.globalAlpha = clamp(0.06 + a * (0.6 + 0.3 * Math.sin(this.t * 3)), 0, 1);
-    ec.drawImage(this.circle.glow, ccx, ccy); ec.drawImage(this.circle.glowGap, ccx, ccy);
-    if (a < 1) { ec.globalAlpha = 1 - a; ec.drawImage(this.brokenRuneArt(), ccx, ccy); }
-    ec.globalAlpha = 1;
-  }
-  /** Dirt, turf and cracks covering a dormant circle (presentation only; deterministic pattern). */
-  brokenRuneArt(): HTMLCanvasElement {
-    if (this.brokenRune) return this.brokenRune;
-    const c = makeCanvas(CR * 2, CR * 2), p = new Pen(c.ctx, false);
-    for (let i = 0; i < 70; i++) {
-      const ang = hash2(i, 1, 77) * Math.PI * 2, r = 20 + hash2(i, 2, 77) * 44;
-      const x = Math.round(CR + Math.cos(ang) * r), y = Math.round(CR + Math.sin(ang) * r), s = 3 + ((hash2(i, 3, 77) * 6) | 0);
-      for (let j = -s; j <= s; j++) for (let k = -s; k <= s; k++) if (j * j + k * k <= s * s && hash2(x + k, y + j, 78) < 0.85)
-        p.p(x + k, y + j, hash2(x + k, y + j, 79) < 0.5 ? "#5a4630" : i % 3 === 0 ? "#3e6a30" : "#6a5440");
+    const sc = this.scene.ctx, ec = this.emit.ctx, art = this.surfRune;
+    const fx = this.runeFx, on = hasFlag(this.world, "rune.surface.active");
+    const prog = fx ? fx.p : on ? 1 : 0;
+    sc.drawImage(art.scene(prog), ccx, ccy);
+    const surv = fx ? fx.surv : on ? 0.6 + 0.3 * Math.sin(this.t * 3) : 0;
+    const rev = fx ? fx.rev : surv;
+    if (surv > 0) { ec.globalAlpha = clamp(surv, 0, 1); ec.drawImage(art.emitSurv(), ccx, ccy); }
+    if (prog > 0) { ec.globalAlpha = clamp(rev, 0, 1); ec.drawImage(art.emitRev(prog), ccx, ccy); }
+    if (fx && fx.pulse > 0) {
+      ec.globalCompositeOperation = "lighter"; ec.globalAlpha = clamp(fx.pulse, 0, 1);
+      ec.drawImage(art.emitSurv(), ccx, ccy); ec.drawImage(art.emitRev(1), ccx, ccy);
+      ec.globalCompositeOperation = "source-over";
     }
-    for (let i = 0; i < 9; i++) { let x = CR + ((hash2(i, 4, 77) - 0.5) * 80) | 0, y = CR + ((hash2(i, 5, 77) - 0.5) * 80) | 0; for (let k = 0; k < 18; k++) { p.p(x, y, "#141016"); x += ((hash2(i, k, 80) * 3) | 0) - 1; y += ((hash2(k, i, 81) * 3) | 0) - 1; } }
-    this.brokenRune = c.c;
-    return c.c;
+    ec.globalAlpha = 1;
   }
 
   drawFlame(p: PropInst, big: boolean, camX: number, camY: number) {

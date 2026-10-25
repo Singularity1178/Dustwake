@@ -173,7 +173,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 3);
+  assert.equal(SAVE_VERSION, 4);
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");
@@ -360,6 +360,9 @@ test("surface changes persist across travel and save/load", () => {
 // ------------------------------------------------------------------ Part D
 test("perf report: surface bake and light tracing, full vs view-window", () => {
   const s = getArea(newWorld(), "surface");
+  // The overgrown surface's only builder light is the rune (nothing else may
+  // glow), so a built torch far from the rune exercises view-window tracing.
+  s.addProp("torch_post", 10 * TS, 60 * TS, { lit: true });
   const c = makeCanvas(s.w * TS, s.h * TS);
   let t0 = performance.now();
   bakeRegion(c.ctx, s, 0, 0, s.w - 1, s.h - 1);
@@ -379,7 +382,8 @@ test("perf report: surface bake and light tracing, full vs view-window", () => {
   console.log(`# PERF surface ${s.w}x${s.h}: full bake ${fullBake.toFixed(1)}ms, all ${lights.length} lights traced ${fullVis.toFixed(1)}ms | ` +
     `chunked first frame ${firstFrame.toFixed(1)}ms (${v.stats.chunksBaked - n} chunks, ${v.stats.visTraced} lights), then ${n} chunks in background (${(idleTotal / Math.max(1, n)).toFixed(1)}ms/frame)`);
   assert.ok(v.fullyBaked);
-  assert.ok(v.stats.visTraced < lights.length);
+  assert.ok(v.lights.size >= 2);
+  assert.ok(v.stats.visTraced < v.lights.size, "only lights near the view are traced");
 });
 
 test("save-size report: mass tile edits on the surface", () => {

@@ -1,5 +1,5 @@
 import { MapData, TS, T, FS, ItemId, DecalDef } from "./map";
-import { isWallMassT } from "./content/tiles";
+import { isWallMassT, isGroundStyle } from "./content/tiles";
 import { GLYPHS } from "./content/glyphs";
 export { GLYPHS } from "./content/glyphs";
 export { ITEM_NAMES } from "./content/items";
@@ -23,7 +23,7 @@ const isWall = (m: BakeSource, x: number, y: number) =>
 function floorPix(style: number, tx: number, ty: number, lx: number, ly: number): C3 {
   const wx = tx * TS + lx, wy = ty * TS + ly;
   const n = (hash2(wx, wy, 7) - 0.5) * 12;
-  if (style === FS.GRASS || style === FS.DIRT) return groundPix(style, tx, ty, wx, wy, n);
+  if (isGroundStyle(style)) return groundPix(style, tx, ty, wx, wy, n);
   if (style === FS.MARBLE) {
     if (lx === 15 || ly === 15) return [34 + n * 0.3, 32, 40];
     const light = (tx + ty) & 1;
@@ -97,32 +97,92 @@ function groundPix(style: number, tx: number, ty: number, wx: number, wy: number
     const peb = hash2(wx, wy, 43) < 0.04 ? 14 : 0;
     return [74 + n + patch * 10 + peb, 60 + n + patch * 6 + peb, 44 + n * 0.8 + peb];
   }
+  if (style === FS.MOSS) {
+    // deep, cushiony moss: soft clumps with pale spore tips
+    const cl = hash2(wx >> 1, wy >> 1, 140), k = cl > 0.8 ? 12 : cl < 0.2 ? -8 : 0;
+    const sp = hash2(wx, wy, 141) < 0.025 ? 16 : 0;
+    return [28 + n * 0.5 + patch * 6 + k * 0.4 + sp, 54 + n * 0.8 + patch * 10 + k + sp, 34 + n * 0.5 + patch * 6 + k * 0.6 + sp * 0.3];
+  }
+  if (style === FS.LEAF) {
+    // leaf litter: overlapping russet / ochre / brown leaves, dark earth between
+    const lf = hash2(wx >> 1, (wy + (wx >> 2)) >> 1, 142);
+    if (lf < 0.2) return [40 + n * 0.6, 30 + n * 0.5, 22 + n * 0.4];
+    const c = LEAF_PAL[(hash2((wx + 1) >> 1, wy >> 1, 143) * LEAF_PAL.length) | 0];
+    const e = (hash2(wx, wy, 144) - 0.5) * 12 + (lf > 0.9 ? 10 : 0);
+    return [c[0] + e + patch * 6, c[1] + e + patch * 4, c[2] + e * 0.6];
+  }
+  if (style === FS.MUD) {
+    const wet = hash2(wx >> 2, wy >> 1, 145);
+    if (wet > 0.9 && hash2(wx, wy, 146) < 0.45) return [64 + n * 0.3, 70 + n * 0.3, 78 + n * 0.3];
+    return [46 + n * 0.7 + patch * 6, 37 + n * 0.6 + patch * 4, 30 + n * 0.5 + patch * 3 + (wet > 0.7 ? 5 : 0)];
+  }
+  if (style === FS.EARTH) {
+    // bare, heaped earth: clods, pebbles, the odd sprig of grass
+    const clod = hash2(wx >> 1, wy >> 1, 147), k = clod > 0.85 ? 14 : clod < 0.15 ? -12 : 0;
+    if (hash2(wx, wy >> 1, 149) < 0.045) return [48 + n * 0.5, 72 + n, 38 + n * 0.5];
+    const peb = hash2(wx, wy, 148) < 0.025 ? 20 : 0;
+    return [64 + n + patch * 8 + k + peb, 52 + n + patch * 6 + k + peb, 38 + n * 0.8 + k * 0.8 + peb];
+  }
   const blade = hash2(wx, wy >> 1, 44);
   const b = blade < 0.12 ? 12 : blade > 0.9 ? -10 : 0;
   return [40 + n * 0.6 + patch * 8 + b * 0.4, 64 + n + patch * 14 + b, 34 + n * 0.5 + patch * 4];
 }
+const LEAF_PAL: C3[] = [[84, 50, 26], [100, 72, 32], [70, 44, 28], [80, 68, 34], [58, 60, 30], [92, 40, 24]];
 
 function thicketPix(tx: number, ty: number, lx: number, ly: number): C3 {
   const wx = tx * TS + lx, wy = ty * TS + ly;
-  const leaf = hash2(wx >> 1, wy >> 1, 45), n = (hash2(wx, wy, 46) - 0.5) * 8;
+  const leaf = hash2(wx >> 1, wy >> 1, 45), big = hash2(wx >> 3, wy >> 3, 145), n = (hash2(wx, wy, 46) - 0.5) * 8;
   const hi = leaf > 0.82 ? 18 : leaf < 0.2 ? -8 : 0;
-  return [16 + n + hi * 0.5, 32 + n + hi, 20 + n + hi * 0.4];
+  const cl = big > 0.6 ? 6 : big < 0.25 ? -5 : 0;
+  return [16 + n + hi * 0.5 + cl * 0.4, 32 + n + hi + cl, 20 + n + hi * 0.4 + cl * 0.3];
 }
 
-/** A sinkhole: dark shaft with the buried dungeon's brickwork visible down its walls. */
-function pitPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
-  const isPit = (x: number, y: number) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.grid[y * m.w + x] === T.PIT;
-  const eU = !isPit(tx, ty - 1) ? ly : 99, eL = !isPit(tx - 1, ty) ? lx : 99, eR = !isPit(tx + 1, ty) ? 15 - lx : 99, eD = !isPit(tx, ty + 1) ? 15 - ly : 99;
-  const e = Math.min(eU, eL, eR, eD);
-  if (e <= 1) return [58, 50, 40];
-  if (eU < 9) {
-    // brick courses of the dungeon wall below, fading with depth
-    const f = 1 - eU / 9, row = Math.floor(eU / 3), off = row & 1 ? 3 : 0;
-    const mortar = eU % 3 === 2 || (tx * TS + lx + off) % 6 === 5;
-    return mortar ? [10 * f + 6, 9 * f + 5, 12 * f + 8] : [50 * f + 8, 46 * f + 7, 58 * f + 12];
+/**
+ * Surface ground with organic patch edges: near a style boundary the style is
+ * sampled from a noise-displaced position, so moss, litter, mud and grass bleed
+ * into each other instead of meeting on tile edges. Foliage from adjacent
+ * thicket overhangs the first few pixels of open ground.
+ */
+const jit = { k: NaN, x: 0, y: 0 };
+function wildGroundPix(m: BakeSource, st: number, mixed: boolean, edgeT: number, tx: number, ty: number, lx: number, ly: number): C3 {
+  const wx = tx * TS + lx, wy = ty * TS + ly;
+  if (edgeT) {
+    // distance to an adjacent thicket edge (bits: 1 up, 2 left, 4 right, 8 down)
+    let d = 99;
+    if (edgeT & 1) d = Math.min(d, ly);
+    if (edgeT & 2) d = Math.min(d, lx);
+    if (edgeT & 4) d = Math.min(d, 15 - lx);
+    if (edgeT & 8) d = Math.min(d, 15 - ly);
+    const reach = 1 + hash2(wx >> 1, wy >> 1, 154) * 3 + hash2(wx >> 2, wy >> 2, 155) * 3;
+    if (d < reach) { const c = thicketPix(tx, ty, lx, ly); return d > reach - 1.5 ? [c[0] * 0.75, c[1] * 0.75, c[2] * 0.75] : c; }
   }
-  const g = hash2(tx * TS + lx, ty * TS + ly, 47) < 0.03 ? 10 : 0;
-  return [7 + g, 6 + g, 12 + g * 1.6];
+  if (mixed) {
+    // the displacement is constant over 4x4 blocks: memoise the last block
+    const bk = (wx >> 2) * 100003 + (wy >> 2);
+    if (bk !== jit.k) {
+      jit.k = bk;
+      jit.x = (hash2(wx >> 2, wy >> 2, 150) - 0.5) * 10 + (hash2(wx >> 3, wy >> 3, 151) - 0.5) * 9;
+      jit.y = (hash2(wx >> 2, wy >> 2, 152) - 0.5) * 10 + (hash2(wx >> 3, wy >> 3, 153) - 0.5) * 9;
+    }
+    const jx = jit.x, jy = jit.y;
+    const sx = Math.floor((wx + jx) / TS), sy = Math.floor((wy + jy) / TS);
+    if (sx >= 0 && sy >= 0 && sx < m.w && sy < m.h && m.grid[sy * m.w + sx] === T.FLOOR) {
+      const s2 = m.style[sy * m.w + sx];
+      if (isGroundStyle(s2)) st = s2;
+    }
+  }
+  const n = (hash2(wx, wy, 7) - 0.5) * 12;
+  const c = groundPix(st, tx, ty, wx, wy, n);
+  if (edgeT) {
+    // soft shade under overhanging foliage
+    let d = 99;
+    if (edgeT & 1) d = Math.min(d, ly);
+    if (edgeT & 2) d = Math.min(d, lx);
+    if (edgeT & 4) d = Math.min(d, 15 - lx);
+    if (edgeT & 8) d = Math.min(d, 15 - ly);
+    if (d < 9) { const f = 0.62 + d * 0.042; return [c[0] * f, c[1] * f, c[2] * f]; }
+  }
+  return c;
 }
 
 /** Weathered, sunlit masonry of the ruined keep (WALL tiles styled RUIN). */
@@ -177,15 +237,27 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
       const aoL = !wall && isWall(m, tx - 1, ty);
       const aoR = !wall && isWall(m, tx + 1, ty);
       const dirty = t === T.RUBBLE || t === T.CRACKED;
+      // surface ground: does a different ground style touch this tile (blend edges)? adjacent thicket?
+      let wild = false, mixed = false, edgeT = 0;
+      if (t === T.FLOOR && isGroundStyle(st)) {
+        wild = true;
+        for (let j = -1; j <= 1 && !mixed; j++) for (let i = -1; i <= 1; i++) {
+          const x = tx + i, y = ty + j;
+          if (x < 0 || y < 0 || x >= MW || y >= m.h) continue;
+          const s2 = m.style[y * MW + x];
+          if (s2 !== st && isGroundStyle(s2) && m.grid[y * MW + x] === T.FLOOR) { mixed = true; break; }
+        }
+        const th = (x: number, y: number) => x >= 0 && y >= 0 && x < MW && y < m.h && m.grid[y * MW + x] === T.THICKET;
+        edgeT = (th(tx, ty - 1) ? 1 : 0) | (th(tx - 1, ty) ? 2 : 0) | (th(tx + 1, ty) ? 4 : 0) | (th(tx, ty + 1) ? 8 : 0);
+      }
       for (let ly = 0; ly < TS; ly++)
         for (let lx = 0; lx < TS; lx++) {
           let c: C3;
           if (t === T.THICKET) c = thicketPix(tx, ty, lx, ly);
-          else if (t === T.PIT) c = pitPix(m, tx, ty, lx, ly);
           else if (wall && st === FS.RUIN) c = ruinPix(m, face, tx, ty, lx, ly);
           else if (wall) c = face ? wallFacePix(tx, ty, lx, ly) : wallTopPix(m, tx, ty, lx, ly);
           else {
-            c = floorPix(st, tx, ty, lx, ly);
+            c = wild ? wildGroundPix(m, st, mixed, edgeT, tx, ty, lx, ly) : floorPix(st, tx, ty, lx, ly);
             let f = 1;
             if (aoU && ly < 4) f *= [0.45, 0.6, 0.75, 0.88][ly];
             if (aoL && lx < 2) f *= lx === 0 ? 0.7 : 0.85;
@@ -384,6 +456,157 @@ function drawDecal(p: Pen, dc: DecalDef) {
       p.r(x, y - 2, 4, 15, WD.o); p.r(x + 1, y - 1, 2, 13, WD.m); p.r(x, y + 2, 4, 1, IR.m); p.r(x, y + 8, 4, 1, IR.m);
       break;
     }
+    default: wildDecal(p, dc, x, y, r);
+  }
+}
+
+// ---- overgrown surface (and the collapsed gate below) palettes
+const MO = { d: "#26381f", m: "#3a5428", l: "#557434", h: "#76964a" };
+const IV = { d: "#24401f", m: "#3c6230", l: "#5e8a3e" };
+const EA = { d: "#3a2c1e", m: "#5a4630", l: "#6a5440", h: "#7e684a" };
+
+/**
+ * Surface decals. Extents stay within the bake's decal window (at most 40 px
+ * left/above the anchor, 120 px right, 200 px below), so chunked bakes match.
+ */
+function wildDecal(p: Pen, dc: DecalDef, x: number, y: number, r: Rng) {
+  switch (dc.kind) {
+    case "hump": {
+      // an earth-covered hump under turf: lit grassy crown, darker flank, shaded foot,
+      // bare earth only where the turf has slipped (centred; w <= 72, h <= 32)
+      const rx = Math.min(36, (dc.w ?? 40) >> 1), ry = Math.min(16, (dc.h ?? 16) >> 1);
+      ellipseFill(p, x, y, rx, ry, (ex, ey, edge) => {
+        const wx = x + ex, wy = y + ey, h = hash2(wx, wy, 160);
+        if (edge && h < 0.55) return null;
+        const t = ey / ry; // -1 top .. 1 bottom
+        if (t > 0.5) return h < 0.6 ? "#2c3a22" : null; // shaded foot
+        if (hash2(wx >> 2, wy >> 1, 161) < 0.1 + dc.v * 0.08 && t > -0.4) return h < 0.5 ? EA.m : "#4e3e2a"; // slipped turf
+        if (t < -0.45) return h < 0.35 ? MO.h : h < 0.7 ? "#5a8a40" : null; // lit crown
+        if (t < 0) return h < 0.4 ? "#4e7a3a" : null;
+        return h < 0.5 ? "#34482a" : null;
+      });
+      break;
+    }
+    case "ridge": {
+      // a long low ridge of earth over a buried wall course (v 0: east-west, 1: north-south)
+      const len = Math.min(120, dc.w ?? 48), th = dc.h ?? 6, vert = dc.v & 1;
+      for (let i = 0; i < len; i++) {
+        const wob = Math.round(Math.sin((i + x * 0.37 + y * 0.21) * 0.19) * 1.5 + (hash2(i >> 3, x + y, 162) - 0.5) * 2);
+        const tk = th - 1 + Math.round(hash2(i >> 2, y, 163) * 2);
+        if (hash2(i >> 2, x * 7 + y, 164) < 0.08) continue; // slumped gaps
+        for (let j = 0; j < tk; j++) {
+          const h = hash2(i, j + x, 165), t = j / tk;
+          const c = t < 0.25 ? (h < 0.6 ? MO.l : "#4e7a3a") : t > 0.7 ? (h < 0.5 ? "#2e3c24" : "#33402a") : h < 0.07 ? S.m : h < 0.4 && t < 0.5 ? "#6a5a3e" : EA.m;
+          if (vert) p.p(x + wob + Math.round((j - tk / 2) * 1), y + i, t > 0.7 ? "#2e3c24" : c);
+          else p.p(x + i, y + wob + j, c);
+        }
+      }
+      break;
+    }
+    case "furrow": {
+      // a faint sunken rectangle (the buried corridor's slumped roof): shaded north lip, lit south lip
+      const w = Math.min(120, dc.w ?? 48), h = Math.min(160, dc.h ?? 48);
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const wx = x + i, wy = y + j;
+        const e = Math.min(i, j, w - 1 - i, h - 1 - j) + (hash2(wx >> 2, wy >> 2, 166) - 0.5) * 5;
+        if (e < 0) continue;
+        if (e < 2.2 && j < h / 2) { if (hash2(wx, wy, 167) < 0.6) p.p(wx, wy, "#26301e"); }
+        else if (e < 1.6 && j >= h / 2) { if (hash2(wx, wy, 167) < 0.45) p.p(wx, wy, "#4e6a38"); }
+        else if (hash2(wx, wy, 168) < 0.05) p.p(wx, wy, "#30402a");
+      }
+      break;
+    }
+    case "mosspatch": {
+      const rx = Math.min(30, (dc.w ?? 20) >> 1), ry = Math.min(16, (dc.h ?? 12) >> 1);
+      ellipseFill(p, x, y, rx, ry, (ex, ey, edge) => {
+        const h = hash2(x + ex, y + ey, 169), b = hash2((x + ex) >> 1, (y + ey) >> 1, 170);
+        if (b < (edge ? 0.6 : 0.22)) return null;
+        return h < 0.15 ? MO.h : h < 0.55 ? MO.l : MO.m;
+      });
+      break;
+    }
+    case "leaves": {
+      const cols = ["#7a4a24", "#8e6a2c", "#5e3c20", "#9a5a26", "#6a6a30"];
+      const k = 4 + ((r() * 6) | 0);
+      for (let i = 0; i < k; i++) {
+        const lx = x + ((r() * 14) | 0) - 7, ly = y + ((r() * 10) | 0) - 5, c = cols[(r() * cols.length) | 0];
+        p.p(lx, ly, c); p.p(lx + 1, ly, c); if (r() < 0.5) p.p(lx, ly + 1, "#2a1e14");
+      }
+      break;
+    }
+    case "weeds": {
+      // taller, darker weeds with seed heads (they grow rank along buried wall lines)
+      const k = 4 + ((r() * 4) | 0);
+      for (let i = 0; i < k; i++) {
+        const bx = x + ((r() * 9) | 0) - 4, h = 4 + ((r() * 5) | 0), lean = r() < 0.5 ? -1 : 1;
+        for (let j = 0; j < h; j++) p.p(bx + (j > h * 0.6 ? lean : 0), y - j, j < 2 ? "#2e4824" : r() < 0.5 ? "#4a6a2e" : "#3e5c2a");
+        if (r() < 0.6) p.p(bx + lean, y - h, dc.v === 1 ? "#b0a070" : "#8a8a50");
+      }
+      break;
+    }
+    case "sparse": {
+      // thin, starved grass: earth showing through
+      const w = dc.w ?? 16, h = dc.h ?? 10;
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const wx = x + i, wy = y + j;
+        const e = Math.min(i, j, w - 1 - i, h - 1 - j);
+        if (hash2(wx, wy, 171) < (e < 2 ? 0.18 : 0.42)) p.p(wx, wy, hash2(wx, wy, 172) < 0.5 ? "#4a3e2a" : "#56482e");
+      }
+      break;
+    }
+    case "vines": {
+      // creeping vine over the ground, leaves every few pixels
+      let vx = x, vy = y;
+      const len = 10 + ((r() * 18) | 0), dir = r() * Math.PI * 2;
+      for (let i = 0; i < len; i++) {
+        p.p(Math.round(vx), Math.round(vy), IV.d);
+        if (i % 3 === 1) { p.p(Math.round(vx) + 1, Math.round(vy) - 1, IV.l); p.p(Math.round(vx), Math.round(vy) - 1, IV.m); }
+        vx += Math.cos(dir + Math.sin(i * 0.5) * 0.9); vy += Math.sin(dir + Math.sin(i * 0.5) * 0.9) * 0.7;
+      }
+      break;
+    }
+    case "canopy": {
+      // dappled shade under the woods (darkens the albedo; the lighting model has no sun)
+      const rad = Math.min(36, dc.w ?? 28);
+      p.ctx.globalAlpha = 0.2;
+      for (let j = -rad; j <= rad; j++) for (let i = -rad; i <= rad; i++) {
+        const wx = x + i, wy = y + j, v = (i * i + j * j) / (rad * rad);
+        if (v > 1) continue;
+        if (hash2(wx >> 2, wy >> 2, 173) * 0.7 + hash2(wx >> 1, wy >> 1, 174) * 0.3 > 0.32 + v * 0.5) p.p(wx, wy, "#000");
+      }
+      p.ctx.globalAlpha = 1;
+      break;
+    }
+    case "pebbles": {
+      const k = 3 + ((r() * 5) | 0);
+      for (let i = 0; i < k; i++) {
+        const sx = x + ((r() * 14) | 0) - 7, sy = y + ((r() * 8) | 0) - 4, s = r() < 0.3 ? 2 : 1;
+        p.r(sx, sy + s, s, 1, "#1e1a18"); p.r(sx, sy, s, s, r() < 0.5 ? S.l : S.m); if (s === 2) p.p(sx, sy, S.h);
+      }
+      break;
+    }
+    case "spill": {
+      // spilled earth fanning out from a collapse, studded with stones (dungeon gate)
+      const rx = Math.min(36, (dc.w ?? 40) >> 1), ry = Math.min(18, (dc.h ?? 20) >> 1);
+      ellipseFill(p, x, y, rx, ry, (ex, ey, edge) => {
+        const wx = x + ex, wy = y + ey, h = hash2(wx, wy, 175), b = hash2(wx >> 1, wy >> 1, 176);
+        if (b < (edge ? 0.55 : 0.12 + (ey / ry) * 0.15)) return null;
+        if (h < 0.05) return S.l;
+        if (h < 0.08) return S.d;
+        return h < 0.35 ? EA.d : h < 0.75 ? "#4a3a28" : EA.m;
+      });
+      break;
+    }
+    case "rootshang": {
+      // roots forcing down through the broken vault, hanging in pale tangles
+      const k = 2 + ((r() * 3) | 0);
+      for (let i = 0; i < k; i++) {
+        let rx = x + ((r() * 12) | 0), ry = y;
+        const len = 5 + ((r() * 9) | 0);
+        for (let j = 0; j < len; j++) { p.p(rx, ry, j < 2 ? "#2a1e14" : "#5a4430"); if (r() < 0.25) p.p(rx + 1, ry, "#7a6248"); ry++; if (r() < 0.3) rx += r() < 0.5 ? -1 : 1; }
+      }
+      break;
+    }
   }
 }
 
@@ -511,6 +734,220 @@ export function propSprite(kind: string, v: number, alt: boolean): Sprite | null
 export type PropArt = (v: number, alt: boolean, M: SpriteMaker) => Sprite;
 type SpriteMaker = (w: number, h: number, fn: (p: Pen, r: Rng) => void, ay?: number) => Sprite;
 
+// ---- overgrown surface helpers
+/** Moss creeping over a top edge from x..x+w at row y, hanging 0-3 px. */
+function mossCap(p: Pen, x: number, y: number, w: number, r: Rng, hang = 3) {
+  for (let i = 0; i < w; i++) {
+    if (r() < 0.12) continue;
+    const h = (r() * (hang + 1)) | 0;
+    p.p(x + i, y, r() < 0.4 ? MO.h : MO.l);
+    for (let j = 1; j <= h; j++) p.p(x + i, y + j, j === h ? MO.d : MO.m);
+  }
+}
+/** Ivy trailing downward from (x, y), leaves alternating sides. */
+function ivy(p: Pen, x: number, y: number, len: number, r: Rng) {
+  let vx = x;
+  for (let j = 0; j < len; j++) {
+    p.p(vx, y + j, IV.d);
+    if (j % 2 === 0) { const s = (j >> 1) & 1 ? 1 : -1; p.p(vx + s, y + j, r() < 0.5 ? IV.l : IV.m); if (r() < 0.4) p.p(vx + s * 2, y + j, IV.m); }
+    if (r() < 0.25) vx += r() < 0.5 ? -1 : 1;
+  }
+}
+/** Soft leafy mass (bushes, crowns): shaded ellipse with a highlight side. */
+function leafBlob(p: Pen, cx: number, cy: number, rx: number, ry: number, pal: string[], r: Rng) {
+  for (let y = -ry; y <= ry; y++) for (let x = -rx; x <= rx; x++) {
+    const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+    if (d > 1 || (d > 0.8 && r() < 0.35)) continue;
+    let c = d > 0.78 ? pal[0] : x * 0.6 + y < -ry * 0.45 ? pal[3] : x * 0.6 + y < 0.1 ? pal[2] : pal[1];
+    if (r() < 0.07) c = pal[0];
+    p.p(cx + x, cy + y, c);
+  }
+}
+/** Squared masonry blocks in courses (half-buried walls, fallen blocks). */
+function courses(p: Pen, x: number, y: number, w: number, rows: number, r: Rng) {
+  for (let row = 0; row < rows; row++) {
+    const off = row & 1 ? 4 : 0;
+    for (let bx = -off; bx < w; bx += 8) {
+      const x0 = Math.max(0, bx), x1 = Math.min(w, bx + 8);
+      if (x1 - x0 < 2) continue;
+      const t = r(), base = t < 0.3 ? S.m : t < 0.8 ? S.l : "#77707e";
+      p.o(x + x0, y + row * 5, x1 - x0, 5, base, S.o);
+      p.r(x + x0 + 1, y + row * 5 + 1, x1 - x0 - 2, 1, S.h);
+      if (r() < 0.3) p.p(x + x0 + 2 + ((r() * (x1 - x0 - 3)) | 0), y + row * 5 + 3, S.d);
+    }
+  }
+}
+const LEAVES = [["#1e3a1c", "#2e5226", "#3e6a30", "#5a8a40"], ["#24361a", "#365022", "#4a6a2c", "#6a8a3e"], ["#1a3226", "#284a34", "#386442", "#4e8456"], ["#2a361a", "#3e4e22", "#566a2a", "#7a8a3a"]];
+
+const WILD_ART: Record<string, PropArt> = {
+  /** The buried SURFACE GATE: only the arch's squared crown stone, barely clear of the turf. */
+  buriedgate: (_v, _alt, M) => M(22, 10, (p, r) => {
+    p.r(3, 6, 16, 3, "#3a3020"); // slumped earth around it
+    p.o(7, 3, 8, 5, "#6e6872", S.o); p.r(8, 4, 6, 1, S.h); p.r(8, 6, 6, 1, S.m); // squared crown stone
+    p.r(4, 6, 3, 2, S.m); p.r(15, 6, 3, 2, S.d); // the arch's shoulders, just showing
+    mossCap(p, 7, 3, 8, r, 1);
+    for (let i = 0; i < 7; i++) p.p(2 + ((r() * 18) | 0), 6 + ((r() * 3) | 0), r() < 0.5 ? "#4e7a3a" : EA.m);
+  }),
+  capstone: (v, _alt, M) => M(14, 8, (p, r) => {
+    // a squared block corner peeking through the soil
+    if (v === 1) { p.o(2, 3, 10, 4, "#6a6470", S.o); p.r(3, 4, 8, 1, S.h); p.r(1, 6, 12, 2, EA.d); }
+    else if (v === 2) { p.o(4, 2, 6, 5, "#635d68", S.o); p.r(5, 3, 3, 1, S.h); p.r(3, 6, 8, 2, EA.d); p.p(9, 6, MO.l); }
+    else { p.o(2, 3, 7, 4, "#6a6470", S.o); p.r(3, 4, 5, 1, S.h); p.r(8, 3, 4, 4, S.d); p.r(1, 6, 12, 2, EA.d); }
+    mossCap(p, 2, 3, 9, r, 1);
+    for (let i = 0; i < 4; i++) p.r(1 + ((r() * 11) | 0), 6 + ((r() * 2) | 0), 1, 1, "#4e7a3a");
+  }),
+  bush: (v, _alt, M) => M(22, 16, (p, r) => {
+    const pal = LEAVES[v % 4];
+    p.r(3, 13, 16, 3, "rgba(0,0,0,0.35)");
+    leafBlob(p, 7, 10, 6, 5, pal, r); leafBlob(p, 15, 10, 6, 5, pal, r); leafBlob(p, 11, 7, 7, 6, pal, r);
+    if (v === 3) for (let i = 0; i < 6; i++) p.p(5 + ((r() * 12) | 0), 4 + ((r() * 9) | 0), r() < 0.5 ? "#a83a3a" : "#c85050"); // berries
+    if (v === 2) for (let i = 0; i < 5; i++) p.p(5 + ((r() * 12) | 0), 3 + ((r() * 8) | 0), "#d8d0e8"); // blossom
+  }),
+  fern: (v, _alt, M) => M(18, 13, (p, r) => {
+    const cols = [MO.d, "#3e6a30", "#5a8a40"];
+    const n = 5 + (v % 3);
+    for (let k = 0; k < n; k++) {
+      const a = Math.PI * (1.05 + (k / (n - 1)) * 0.9) + (r() - 0.5) * 0.2, len = 6 + ((r() * 3) | 0);
+      for (let i = 1; i <= len; i++) {
+        const fx = 9 + Math.cos(a) * i, fy = 12 + Math.sin(a) * i * 0.9 + (i * i) / 22;
+        p.p(Math.round(fx), Math.round(fy), cols[0]);
+        if (i > 1 && i < len) { p.p(Math.round(fx), Math.round(fy) - 1, cols[1 + (i & 1)]); if (i % 2 === 0) p.p(Math.round(fx + Math.cos(a + 1.5)), Math.round(fy) - 1, cols[1]); }
+      }
+    }
+  }),
+  tallgrass: (v, _alt, M) => M(14, 15, (p, r) => {
+    const n = 8 + (v % 3) * 2;
+    for (let i = 0; i < n; i++) {
+      const bx = 2 + ((r() * 10) | 0), h = 6 + ((r() * 8) | 0), lean = r() < 0.5 ? -1 : 1;
+      for (let j = 0; j < h; j++) p.p(bx + (j > h * 0.55 ? lean : 0) + (j > h * 0.85 ? lean : 0), 14 - j, j < 2 ? "#2e4824" : r() < 0.5 ? "#557a36" : "#4a6a2e");
+      if (v === 2 && r() < 0.5) p.p(bx + lean * 2, 14 - h, "#b0a070");
+    }
+  }),
+  wildflowers: (v, _alt, M) => M(16, 9, (p, r) => {
+    const cols = [["#d8d0e8", "#e8e0f0"], ["#e8c860", "#f0d878"], ["#c86a8a", "#e08aa0"], ["#8ab0e8", "#a8c8f0"]][v % 4];
+    for (let i = 0; i < 9; i++) {
+      const fx = 1 + ((r() * 14) | 0), fy = 2 + ((r() * 6) | 0);
+      p.p(fx, fy + 1, "#3a5e2c"); p.p(fx, fy, cols[(r() * 2) | 0]); if (r() < 0.3) p.p(fx + 1, fy, cols[0]);
+    }
+  }),
+  sapling: (v, _alt, M) => M(14, 24, (p, r) => {
+    const pal = LEAVES[(v + 1) % 4];
+    p.r(4, 22, 7, 2, "rgba(0,0,0,0.3)");
+    p.r(7, 9, 1, 14, WD.m); p.r(6, 22, 3, 1, WD.d); p.p(8, 14, WD.m); p.p(9, 13, WD.m);
+    leafBlob(p, 7, 8, 5, 5, pal, r); leafBlob(p, 10, 12, 3, 3, pal, r);
+  }),
+  stump: (_v, _alt, M) => M(16, 13, (p, r) => {
+    p.r(1, 11, 14, 2, "rgba(0,0,0,0.35)");
+    p.o(3, 4, 10, 8, WD.m, WD.o); p.r(4, 5, 1, 6, WD.l); p.r(11, 5, 1, 6, WD.d);
+    p.o(3, 2, 10, 4, "#8a6a44", WD.o); p.r(5, 3, 6, 1, "#a0804e"); p.p(7, 3, WD.d); p.p(8, 4, WD.d);
+    p.r(1, 11, 3, 1, WD.d); p.r(12, 11, 3, 1, WD.d);
+    mossCap(p, 3, 6, 4, r, 4); p.p(12, 7, "#c8b080"); p.p(13, 7, "#a89060"); // bracket fungus
+  }),
+  log: (v, _alt, M) => M(38, 15, (p, r) => {
+    p.r(3, 12, 32, 3, "rgba(0,0,0,0.35)");
+    p.o(2, 4, 30, 9, WD.m, WD.o); p.r(3, 5, 28, 1, WD.l); p.r(3, 11, 28, 1, WD.d);
+    for (let x = 5; x < 30; x += 4 + ((r() * 3) | 0)) p.r(x, 7 + ((r() * 3) | 0), 2, 1, WD.d);
+    p.o(30, 4, 6, 9, "#8a6a44", WD.o); p.r(32, 6, 2, 5, "#a0804e"); p.p(33, 8, WD.d); // sawn-off end, rings
+    mossCap(p, 3, 4, 26, r, 3);
+    if (v !== 1) { p.p(12, 12, "#c8b080"); p.p(13, 12, "#c8b080"); p.p(14, 12, "#a89060"); }
+    ivy(p, 18, 5, 7, r);
+    for (let i = 0; i < 5; i++) p.r(2 + ((r() * 32) | 0), 12, 1, 2, "#4e7a3a");
+  }),
+  boulder: (v, _alt, M) => M(26, 20, (p, r) => {
+    p.r(2, 17, 22, 3, "rgba(0,0,0,0.35)");
+    stoneBlob(p, 1, 4 + (v & 1), 23, 15, r);
+    if (v === 2) stoneBlob(p, 15, 2, 9, 8, r);
+    mossCap(p, 4, 4 + (v & 1), 15, r, 4);
+    for (let i = 0; i < 6; i++) p.p(4 + ((r() * 16) | 0), 9 + ((r() * 6) | 0), r() < 0.5 ? "#7a8a6a" : "#8a9a72"); // lichen
+    for (let i = 0; i < 6; i++) p.r(1 + ((r() * 23) | 0), 16 + ((r() * 2) | 0), 1, 3, "#4e7a3a");
+  }),
+  outcrop: (v, _alt, M) => M(44, 28, (p, r) => {
+    p.r(3, 25, 38, 3, "rgba(0,0,0,0.35)");
+    stoneBlob(p, 2, 10, 18, 16, r); stoneBlob(p, 14, 3, 20, 23, r); stoneBlob(p, 29, 12, 13, 14, r);
+    if (v) stoneBlob(p, 8, 18, 9, 8, r);
+    mossCap(p, 16, 4, 14, r, 5); mossCap(p, 4, 11, 9, r, 3); mossCap(p, 31, 13, 8, r, 2);
+    ivy(p, 21, 6, 12, r);
+    for (let i = 0; i < 10; i++) p.r(1 + ((r() * 41) | 0), 23 + ((r() * 3) | 0), 1, 3, r() < 0.5 ? "#4e7a3a" : "#3a5e2c");
+    for (let i = 0; i < 5; i++) p.p(20 + ((r() * 12) | 0), 12 + ((r() * 10) | 0), "#8a9a72");
+  }),
+  wallstub: (v, _alt, M) => M(34, 20, (p, r) => {
+    // the top two courses of a buried wall, earth banked up its flanks
+    const w = v === 1 ? 24 : 30, x0 = (34 - w) >> 1;
+    p.r(1, 17, 32, 3, "rgba(0,0,0,0.3)");
+    courses(p, x0, 6, w, 2, r);
+    if (v === 2) { p.ctx.clearRect(p.flip ? 0 : 34 - 12, 0, 12, 8); courses(p, x0 + w - 10, 9, 10, 1, r); } // a broken top
+    ellipseFill(p, x0 + 2, 16, 6, 3, (_x, ey) => (ey < 0 ? EA.l : EA.m)); ellipseFill(p, x0 + w - 3, 16, 7, 3, (_x, ey) => (ey < 0 ? EA.l : EA.m));
+    p.r(0, 15, 34, 2, EA.d);
+    mossCap(p, x0, 6, w, r, 3);
+    ivy(p, x0 + 5, 6, 9, r); ivy(p, x0 + w - 8, 6, 7, r);
+    for (let i = 0; i < 9; i++) p.r(1 + ((r() * 32) | 0), 14 + ((r() * 3) | 0), 1, 3, r() < 0.5 ? "#4e7a3a" : "#5a8a40");
+  }),
+  masonry: (v, _alt, M) => M(22, 18, (p, r) => {
+    p.r(2, 15, 18, 3, "rgba(0,0,0,0.35)");
+    if (v === 1) {
+      // a block leaning on its neighbour
+      for (let i = 0; i < 10; i++) p.r(4 + (i >> 1), 2 + i, 9, 1, i === 0 ? S.h : i < 3 ? S.l : S.m);
+      p.line(4, 2, 13, 12, S.o); p.o(10, 9, 10, 7, S.l, S.o); p.r(11, 10, 8, 1, S.h);
+    } else {
+      p.o(2, 6, 18, 10, S.l, S.o); p.r(3, 7, 16, 2, S.h); p.r(3, 13, 16, 2, S.d); p.r(12, 7, 1, 8, S.o);
+    }
+    mossCap(p, 3, v === 1 ? 2 : 6, 14, r, 3);
+    ivy(p, 15, 7, 8, r);
+    p.r(1, 14, 20, 2, EA.d);
+  }),
+  stoneslab: (v, _alt, M) => M(24, 12, (p, r) => {
+    p.o(1, 2, 22, 9, "#5e5868", S.o); p.r(2, 3, 20, 1, S.l);
+    p.line(9, 3, 13, 9, S.o); if (v) p.line(16, 3, 18, 9, S.o);
+    for (let i = 0; i < 26; i++) p.p(2 + ((r() * 20) | 0), 3 + ((r() * 7) | 0), r() < 0.5 ? MO.l : MO.m);
+    for (let i = 0; i < 6; i++) p.r(1 + ((r() * 21) | 0), 9, 1, 2, "#4e7a3a");
+  }),
+  cairn: (_v, _alt, M) => M(14, 17, (p, r) => {
+    p.r(1, 15, 12, 2, "rgba(0,0,0,0.35)");
+    stoneBlob(p, 0, 10, 14, 6, r); stoneBlob(p, 2, 6, 10, 5, r); stoneBlob(p, 4, 3, 7, 4, r); stoneBlob(p, 5, 0, 4, 3, r);
+    mossCap(p, 1, 10, 4, r, 2); mossCap(p, 3, 6, 3, r, 1);
+  }),
+  standingstone: (v, _alt, M) => M(14, 28, (p, r) => {
+    p.r(1, 25, 12, 3, "rgba(0,0,0,0.35)");
+    const tilt = v ? 1 : 0;
+    for (let y = 2; y < 26; y++) {
+      const w = y < 5 ? 6 + (y - 2) : 9, x0 = 2 + Math.round((26 - y) * 0.06 * tilt) + (y < 5 ? 2 - ((y - 2) >> 1) : 0);
+      p.r(x0, y, w, 1, S.m); p.p(x0, y, S.o); p.p(x0 + w - 1, y, S.o); p.p(x0 + 1, y, S.l); p.p(x0 + w - 2, y, S.d);
+    }
+    p.r(4, 2, 5, 1, S.o);
+    for (let i = 0; i < 10; i++) p.p(4 + ((r() * 6) | 0), 6 + ((r() * 16) | 0), r() < 0.5 ? "#7a8a6a" : "#8a9a72");
+    mossCap(p, 4, 3, 5, r, 3); ivy(p, 6, 12, 13, r);
+    p.r(1, 24, 12, 2, EA.d); for (let i = 0; i < 5; i++) p.r(1 + ((r() * 11) | 0), 23, 1, 3, "#4e7a3a");
+  }),
+  statue_toppled: (v, _alt, M) => M(38, 18, (p, r) => {
+    // a fallen knight, half sunk and smothered in ivy
+    p.r(2, 15, 34, 3, "rgba(0,0,0,0.3)");
+    p.o(3, 5, 22, 10, S.l, S.o); p.r(4, 6, 20, 2, S.h); p.r(4, 12, 20, 2, S.d);
+    p.o(1, 4, 6, 6, S.m, S.o); p.o(18, 2, 6, 5, S.l, S.o);
+    p.r(9, 9, 12, 1, IR.d); p.r(9, 9, 12, 1, "#5a5a50"); // the rusted greatsword along it
+    if (v === 0) { p.o(27, 7, 9, 8, S.l, S.o); p.r(29, 10, 1, 4, "#1a1620"); p.r(28, 8, 7, 1, S.h); }
+    p.r(0, 13, 38, 3, EA.d); ellipseFill(p, 13, 14, 9, 2, (_x, ey) => (ey < 0 ? EA.l : EA.m));
+    mossCap(p, 4, 5, 20, r, 4); ivy(p, 10, 5, 9, r); ivy(p, 20, 3, 10, r);
+    for (let i = 0; i < 10; i++) p.r(((r() * 37) | 0), 12 + ((r() * 3) | 0), 1, 3, r() < 0.5 ? "#4e7a3a" : "#5a8a40");
+  }),
+  /** Dungeon: a heap of boulders and fallen masonry choking the collapsed gate. */
+  rockpile: (v, _alt, M) => M(32, 30, (p, r) => {
+    p.r(2, 27, 28, 3, "rgba(0,0,0,0.45)");
+    ellipseFill(p, 16, 26, 15, 4, (ex, ey) => (hash2(ex, ey, 180) < 0.3 ? EA.m : ey < 0 ? "#4a3a28" : EA.d));
+    const rocks: [number, number, number, number][] = [];
+    for (let i = 0; i < 9; i++) {
+      const w = 6 + ((r() * 9) | 0), h = 5 + ((r() * 6) | 0), t = i / 9;
+      rocks.push([((r() * (32 - w)) | 0), Math.round(3 + t * 18 + r() * 3), w, h]);
+    }
+    rocks.sort((a, b) => a[1] + a[3] - (b[1] + b[3]));
+    rocks.forEach(([x, y, w, h], i) => {
+      if (i === 4 + (v % 3)) { p.o(x, Math.min(y, 27 - h), w + 3, h, S.l, S.o); p.r(x + 1, Math.min(y, 27 - h) + 1, w + 1, 1, S.h); } // a squared block
+      else stoneBlob(p, x, Math.min(y, 27 - h), w, h, r);
+    });
+    for (let i = 0; i < 14; i++) p.r((r() * 31) | 0, 14 + ((r() * 14) | 0), 1 + ((r() * 2) | 0), 1, r() < 0.5 ? EA.m : EA.d);
+    if (v !== 1) { let x = 6 + ((r() * 20) | 0); for (let y = 2; y < 16; y++) { p.p(x, y, "#5a4430"); if (r() < 0.3) x += r() < 0.5 ? -1 : 1; } } // a root through the heap
+  }),
+};
+
 /** Prop sprite registry: kind -> draw function. Adding a prop kind = adding an entry. */
 export const PROP_ART: Record<string, PropArt> = {
   // ---------- surface
@@ -557,27 +994,7 @@ export const PROP_ART: Record<string, PropArt> = {
     p.o(6, 12, 10, 10, WD.d, WD.o); p.r(10, 16, 2, 2, IR.m);
     p.r(26, 9, 8, 2, WD.m); p.r(20, 16, 9, 4, WD.o); p.r(21, 17, 7, 2, WD.d); // toppled second wheel
   }),
-  buriedgate: (_v, _alt, M) => M(64, 48, (p, r) => {
-    // a great arch, two-thirds sunk into the hillside, its opening choked with earth
-    for (let y = 0; y < 48; y++) for (let x = 0; x < 64; x++) {
-      const dx = (x - 32) / 30, dy = (y - 44) / 40;
-      const d = dx * dx + dy * dy;
-      if (d > 1) continue;
-      const inner = ((x - 32) / 21) ** 2 + ((y - 44) / 31) ** 2;
-      if (inner < 1) { p.p(x, y, y > 30 - Math.abs(x - 32) * 0.2 + r() * 3 ? (r() < 0.1 ? "#8a8392" : "#5a4630") : "#0e0c12"); continue; }
-      const blk = (Math.floor(Math.atan2(y - 44, x - 32) * 7) & 1) ? S.l : S.m;
-      p.p(x, y, d > 0.93 ? S.o : r() < 0.05 ? "#4e6a34" : blk);
-    }
-    p.o(28, 2, 8, 8, S.h, S.o); p.r(30, 4, 4, 1, S.l); // keystone
-    for (let i = 0; i < 40; i++) { const x = (r() * 64) | 0, y = 34 + ((r() * 14) | 0); p.r(x, y, 2, 2, r() < 0.5 ? "#6a5440" : "#7a6448"); }
-    for (let i = 0; i < 12; i++) { const x = 2 + ((r() * 60) | 0); p.r(x, 26 + ((r() * 18) | 0), 1, 3, "#4e7a3a"); }
-  }),
-  grate: (_v, _alt, M) => M(16, 12, (p) => {
-    p.o(0, 2, 16, 10, "#0c0a10", IR.d);
-    for (let x = 2; x < 15; x += 3) p.r(x, 3, 1, 8, IR.m);
-    p.r(1, 6, 14, 1, IR.l);
-    p.g(3, 8, 1, 1, "#3a2a6a"); p.g(9, 4, 1, 1, "#3a2a6a");
-  }),
+  ...WILD_ART,
   torch: (_v, alt, M) => {
     return M(8, 16, (p) => {
       p.r(2, 12, 4, 2, IR.d); p.r(3, 9, 2, 4, IR.m);

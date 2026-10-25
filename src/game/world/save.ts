@@ -19,8 +19,13 @@ import type { Actor, Scheduled, World } from "./world";
  * v1: inventory was ItemId[] on the actor; scheduled effects had no area.
  * v2: inventory is Slot[] ({item, n} | null); areas gain looseAdded/looseSeq.
  * v3: scheduled effects carry their area; areas gain propsAdded/propSeq and per-prop harvest damage.
+ * v4: the surface was rebuilt as overgrown wilds (new layout, new prop ids). Stale
+ *     surface diffs are discarded; see MIGRATIONS[3].
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
+
+/** Surface rune centre in px (kept literal: migrations must not change when builders do). */
+const V4_SURFACE_RUNE = { x: 48 * 16 + 8, y: 26 * 16 + 8 };
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -40,7 +45,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 3;
+  version: 4;
   seed: number;
   rng: number;
   time: number;
@@ -83,6 +88,27 @@ export const MIGRATIONS: Record<number, Migration> = {
       scheduled: s.scheduled.map((e: any) => ({ ...e, area: e.area ?? actorArea.get(e.actor) ?? "dungeon" })),
       areas: Object.fromEntries(Object.entries(s.areas).map(([id, d]: [string, any]) => [id, { ...d, propsAdded: [], propSeq: 0 }])),
     };
+  },
+  3: (s) => {
+    // The v3 surface diff indexes tiles and prop ids of the old ruined-keep layout,
+    // which mean nothing on the overgrown one. Discard it, keeping only what has
+    // a stable identity: the basket pickup, id counters, built torches (kept as
+    // placed), and dropped stacks (moved next to the rune so nothing is lost).
+    // Anyone standing on the surface is moved to the rune.
+    const sf = s.areas?.surface;
+    const areas = { ...s.areas };
+    if (sf) {
+      areas.surface = {
+        tiles: [], props: {},
+        looseTaken: (sf.looseTaken ?? []).filter((id: string) => id === "basket"),
+        looseAdded: (sf.looseAdded ?? []).map((l: any, i: number) => ({ ...l, x: V4_SURFACE_RUNE.x - 24 + (i % 4) * 16, y: V4_SURFACE_RUNE.y + 76 + Math.floor(i / 4) * 12 })),
+        looseSeq: sf.looseSeq ?? 0,
+        propsAdded: sf.propsAdded ?? [], propSeq: sf.propSeq ?? 0,
+        decalsAdded: [], ritual: null,
+      };
+    }
+    const actors = s.actors.map((a: any) => (a.area === "surface" ? { ...a, x: V4_SURFACE_RUNE.x, y: V4_SURFACE_RUNE.y + 4, task: null, queue: [] } : a));
+    return { ...s, version: 4, areas, actors };
   },
 };
 
