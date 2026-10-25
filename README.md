@@ -2,10 +2,6 @@
 
 > A golem wakes in the ruins.
 
-**Dustwake** is a small pixel-art dungeon prototype. You play a stone golem roused from long sleep in a collapsed ruin, exploring dusty halls, reading the remnants of a lost civilization, and carving a rune to remember who you are.
-
-Built with React 19, TypeScript, Vite and Tailwind CSS, and rendered entirely to a low-resolution canvas at runtime — all art, fonts and sound are generated in code, with no external assets.
-
 ## Controls
 
 | Key | Action |
