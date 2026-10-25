@@ -10,7 +10,11 @@ import { tickTask, runScheduled } from "./tasks";
 import { findTarget, interact, type Interactable, type InteractUi } from "./interact";
 import { TS } from "../content/tiles";
 
-export interface PlayerInput { ix: number; iy: number; use: boolean }
+export interface PlayerInput {
+  ix: number; iy: number; use: boolean;
+  /** Movement speed multiplier (debug/testing). Defaults to 1. */
+  speed?: number;
+}
 export interface PlayerStepResult { target: Interactable | null; ui: InteractUi | null }
 
 /** Advance the player-controlled actor: work, locomotion, interaction, teleport. */
@@ -18,7 +22,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const pl = player(w);
   const area = areaOf(w, pl);
   tickTask(w, pl, dt);
-  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, hasFlag(w, FLAGS.golemArm) ? 30 : 24);
+  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, (hasFlag(w, FLAGS.golemArm) ? 30 : 24) * (input.speed ?? 1));
   const target = pl.task ? null : findTarget(area, pl);
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);

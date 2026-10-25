@@ -22,6 +22,9 @@ import { placeGlyph } from "./sim/ritual";
 import { AreaView } from "./view/areaView";
 import { ScreenStack, type Screen } from "./ui/screens";
 
+/** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
+const DEBUG_SPEED_MULT = 3;
+
 export const W = 320, H = 180;
 
 interface Particle {
@@ -55,6 +58,9 @@ export class Game {
   invMode: "view" | "select" = "view";
   selSocket = -1;
   toast: { icon: Sprite; name: string; t: number } | null = null;
+  /** Debug/testing state (not saved, not part of the sim). */
+  debugSpeed = false;
+  debugMsg: { text: string; t: number } | null = null;
   cam = { x: 0, y: 0 };
   shakeT = 0; shakeMag = 0;
   rumbleT = 50;
@@ -145,6 +151,33 @@ export class Game {
   }
   keyUp(k: string) { this.keys.delete(k.toLowerCase()); }
   pointer() { this.pressed.add("click"); }
+
+  /** Debug keybinds (Ctrl+1/2/3), wired up in App.tsx. */
+  debugKey(n: number) {
+    const w = this.world, pl = this.pl;
+    const say = (text: string) => { this.debugMsg = { text, t: 0 }; };
+    if (n === 1) {
+      // Toggle the iron arm.
+      if (this.hasArm) { w.flags.delete(FLAGS.golemArm); say("DEBUG: IRON ARM OFF"); }
+      else { setFlag(w, FLAGS.golemArm); say("DEBUG: IRON ARM ON"); }
+    } else if (n === 2) {
+      // Give every rune glyph and the aether core (skipping any already held or already placed).
+      const r = this.area.ritual;
+      const held = (id: ItemId) => pl.inventory.includes(id);
+      let given = 0;
+      for (let g = 0; g < GLYPHS.length; g++) {
+        const id = glyphItem(g);
+        if (held(id) || r?.sockets.includes(g)) continue;
+        pl.inventory.push(id); given++;
+      }
+      if (!held("core") && !r?.core) { pl.inventory.push("core"); given++; }
+      this.sfx.tone(520, 0.1, "triangle", 0.05);
+      say(given ? "DEBUG: RUNES + CORE GRANTED" : "DEBUG: ALREADY HAVE ALL RUNES + CORE");
+    } else if (n === 3) {
+      this.debugSpeed = !this.debugSpeed;
+      say(this.debugSpeed ? "DEBUG: SUPER SPEED ON" : "DEBUG: SUPER SPEED OFF");
+    }
+  }
   has(...k: string[]) { return k.some((x) => this.keys.has(x)); }
   hit(...k: string[]) { return k.some((x) => this.pressed.has(x)); }
 
@@ -348,7 +381,7 @@ export class Game {
     if (this.has("arrowright", "d")) ix += 1;
     if (this.has("arrowup", "w")) iy -= 1;
     if (this.has("arrowdown", "s")) iy += 1;
-    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", " ", "enter") });
+    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", " ", "enter"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
     this.drainEvents();
     // golem damage sparks
     lk.sparkT -= dt;
@@ -465,6 +498,7 @@ export class Game {
         this.spawn({ x: x + (Math.random() - 0.5) * 8, y: y + 2, z: 2 + Math.random() * 4, life: 0.45, kind: "glint", col: "#fff4d0", emit: true });
       }
     }
+    if (this.debugMsg) { this.debugMsg.t += dt; if (this.debugMsg.t > 2) this.debugMsg = null; }
     // toast
     if (this.toast) { this.toast.t += dt; if (this.toast.t > 3) this.toast = null; }
     this.updateParticles(dt);
@@ -764,6 +798,12 @@ export class Game {
       ctx.fillRect(x - 3, y, 7, 1); ctx.fillRect(x - 2, y + 1, 5, 1); ctx.fillRect(x - 1, y + 2, 3, 1);
       ctx.fillStyle = "#d8cfa8";
       ctx.fillRect(x - 2, y - 1, 5, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1);
+    }
+    // debug message
+    if (this.debugMsg) {
+      ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
+      drawTextS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", 1, "center");
+      ctx.globalAlpha = 1;
     }
     // toast
     if (this.toast && !this.screens.is("schem")) {

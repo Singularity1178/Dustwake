@@ -34,6 +34,15 @@ export default function App() {
 
     const block = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "tab"]);
     const kd = (e: KeyboardEvent) => {
+      // Debug keybinds: Ctrl+1 arm, Ctrl+2 runes + core, Ctrl+3 super speed.
+      if (e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const n = ({ Digit1: 1, Digit2: 2, Digit3: 3, Numpad1: 1, Numpad2: 2, Numpad3: 3 } as Record<string, number>)[e.code];
+        if (n) {
+          e.preventDefault();
+          if (!e.repeat) game.debugKey(n);
+          return;
+        }
+      }
       if (block.has(e.key.toLowerCase())) e.preventDefault();
       game.keyDown(e.key);
     };
