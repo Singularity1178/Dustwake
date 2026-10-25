@@ -91,6 +91,30 @@ export class Sfx {
     this.tone(880, 0.4, "sine", 0.05, 1320, 1.4);
   }
 
+  /** Dialogue typewriter: one soft, low blip per character (a weary voice: low and a little uneven). */
+  blip() { this.tone(300 + Math.random() * 50, 0.045, "triangle", 0.03, 260); }
+  /** The golem's eye is mended: an electrical crackle that resolves into a clear rising chime. */
+  eyeRepair() {
+    for (let i = 0; i < 12; i++) this.noise(0.02 + Math.random() * 0.04, 0.08, "highpass", 2500 + Math.random() * 5000, 1, i * 0.045 + Math.random() * 0.03);
+    this.tone(70, 0.55, "sawtooth", 0.045, 160);
+    this.noise(0.55, 0.05, "bandpass", 1200, 5, 0, 5000);
+    [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 1.1, "sine", 0.06, undefined, 0.55 + i * 0.09));
+    this.tone(1046, 1.6, "triangle", 0.03, 1568, 0.9);
+  }
+  /** A dormant golem sputters awake: a low rising buzz, sparks, a faint ready tone. */
+  wakeSputter() {
+    this.tone(40, 1.2, "sawtooth", 0.05, 120);
+    for (let i = 0; i < 6; i++) this.noise(0.03, 0.06, "highpass", 3500 + Math.random() * 3000, 1, 0.1 + i * 0.13 + Math.random() * 0.05);
+    this.tone(520, 0.35, "sine", 0.04, 780, 1.0);
+  }
+  /** Powering down: a falling tone and a settling thud. */
+  powerDown() {
+    this.tone(260, 1.4, "sine", 0.05, 60);
+    this.tone(130, 1.2, "sawtooth", 0.025, 40);
+    this.tone(70, 0.3, "sine", 0.3, 40, 1.1);
+    this.noise(0.2, 0.08, "lowpass", 500, 1, 1.1);
+  }
+
   setHum(level: number) {
     const c = this.ctx; if (!c || !this.master) return;
     if (!this.hum) {

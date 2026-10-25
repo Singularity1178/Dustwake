@@ -79,7 +79,7 @@ export class Area {
 
   private instProp(p: PropDef, dyn = false): PropInst {
     const bx = propDef(p.kind).box;
-    const inst: PropInst = { ...p, open: false, taken: false, dmg: 0, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
+    const inst: PropInst = { ...p, open: !!p.open, taken: false, dmg: 0, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
     if (dyn) inst.dyn = true;
     this.propIndex.set(p.id, inst);
     return inst;

@@ -30,6 +30,7 @@ export class AreaView {
   readonly stats = { chunksBaked: 0, visTraced: 0 };
   private pending: TileRect | null = null;
   private syncedRev = -1;
+  private dynamic = new Set<string>();
   private unsub: () => void;
   private cw: number; private chh: number;
   private baked: Uint8Array;
@@ -96,10 +97,23 @@ export class AreaView {
   }
 
   /** Reconcile lights with what the world state says should exist. */
+  /**
+   * A light owned by presentation rather than area state (e.g. an NPC's eye:
+   * actors live on the World, not the Area). Created on first request, kept in
+   * the same registry (so it is traced, culled and accumulated like any other
+   * light); the caller drives its `int` each frame.
+   */
+  dynamicLight(key: string, make: () => Light): Light {
+    this.dynamic.add(key);
+    let L = this.lights.get(key);
+    if (!L) { L = make(); this.lights.set(key, L); }
+    return L;
+  }
+
   private syncLights() {
     this.syncedRev = this.area.revision;
     const want = this.wantedLights();
-    const keys = new Set(want.map((w) => w.key));
+    const keys = new Set([...want.map((w) => w.key), ...this.dynamic]);
     for (const k of [...this.lights.keys()]) if (!keys.has(k)) this.lights.delete(k);
     for (const w of want) if (!this.lights.has(w.key)) this.lights.set(w.key, w.make());
   }

@@ -7,6 +7,7 @@ import { emit, areaOf, type Actor, type World } from "../world/world";
 import { applyEffect, beginTask } from "./tasks";
 import { placement, BLOCK_TEXT, buildAnchor } from "./build";
 import { dropSpot } from "./inventory";
+import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
 
 export type DropResult = "ok" | "empty" | "undroppable" | "noRoom";
@@ -20,7 +21,7 @@ export function dropFromSlot(w: World, a: Actor, slot: number, n = 1): DropResul
   const s = a.inventory[slot];
   if (!s) return "empty";
   if (!isDroppable(s.item)) { emit(w, { t: "message", text: "THAT IS TOO IMPORTANT TO DROP" }); return "undroppable"; }
-  if (!dropSpot(areaOf(w, a), a)) { emit(w, { t: "message", text: "NO ROOM TO DROP IT HERE" }); return "noRoom"; }
+  if (!dropSpot(areaOf(w, a), a, actorBoxes(w, a.area, a.id))) { emit(w, { t: "message", text: "NO ROOM TO DROP IT HERE" }); return "noRoom"; }
   applyEffect(w, a, { op: "drop", slot, n });
   return "ok";
 }

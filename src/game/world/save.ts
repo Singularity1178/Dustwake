@@ -16,7 +16,8 @@ import type { DecalDef, LooseItem, PropDef } from "../map";
 import type { ItemId } from "../content/items";
 import { Area, type RitualState } from "./area";
 import { AREAS } from "./areas";
-import type { Actor, Scheduled, World } from "./world";
+import { makeNpc, type Actor, type Scheduled, type World } from "./world";
+import { GUARDIAN_FLAGS } from "../content/dialogue";
 
 /**
  * v1: inventory was ItemId[] on the actor; scheduled effects had no area.
@@ -24,8 +25,14 @@ import type { Actor, Scheduled, World } from "./world";
  * v3: scheduled effects carry their area; areas gain propsAdded/propSeq and per-prop harvest damage.
  * v4: the surface builder was rewritten (wild, overgrown land over the buried
  *     dungeon), so v3 surface diffs no longer describe anything; they are discarded.
+ * v5: NPCs are actors. The Treasury Guardian (actor `npc.guardian`, kind "npc",
+ *     with an `npc` field) holds the aether core; chest@57,4 is built open and
+ *     empty. Old saves gain the guardian; if the v4 chest had already been
+ *     opened (the core taken, placed, or still arriving) the guardian's
+ *     `npc.guardian.coreGiven` flag is set so no second core can appear.
+ *     Prop `open` is now diffed against the builder (props can start open).
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -45,7 +52,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 4;
+  version: 5;
   seed: number;
   rng: number;
   time: number;
@@ -121,6 +128,23 @@ export const MIGRATIONS: Record<number, Migration> = {
       actors: s.actors.map((a: any) => a.area !== "surface" ? a : { ...a, x: rx, y: ry + 4, vx: 0, vy: 0, task: null, queue: [] }),
     };
   },
+  4: (s) => {
+    // Add the dungeon's NPCs (the Treasury Guardian) as actors. In v4 the core
+    // came from chest@57,4: if that chest was opened, the core is already in
+    // play (in a pack, on the circle, on the floor, or a pending grant), so the
+    // guardian must not hand over another. The chest itself is open and empty
+    // in the v5 builder, so its old diff entry is simply redundant.
+    const dungeon = s.areas?.dungeon;
+    const flags: string[] = [...s.flags];
+    const actors: any[] = [...s.actors];
+    const coreOut = !!dungeon?.props?.["chest@57,4"]?.open
+      || actors.some((a) => (a.inventory ?? []).some((x: any) => x?.item === "core"))
+      || !!dungeon?.ritual?.core
+      || Object.values(s.areas ?? {}).some((d: any) => (d.looseAdded ?? []).some((l: any) => l.item === "core"));
+    if (coreOut && !flags.includes(GUARDIAN_FLAGS.coreGiven)) flags.push(GUARDIAN_FLAGS.coreGiven);
+    if (dungeon) for (const sp of AREAS.dungeon().npcs ?? []) if (!actors.some((a) => a.id === sp.id)) actors.push(makeNpc(sp, "dungeon"));
+    return { ...s, version: 5, flags, actors };
+  },
 };
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -159,9 +183,9 @@ export function migrate(raw: unknown, migrations = MIGRATIONS, target = SAVE_VER
   return s;
 }
 
-const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number }, b?: { lit?: boolean; item?: ItemId }) => {
+const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number }, b?: { lit?: boolean; item?: ItemId; open?: boolean }) => {
   const d: PropState = {};
-  if (p.open) d.open = true;
+  if (p.open !== !!b?.open) d.open = p.open;
   if (p.taken) d.taken = true;
   if (!!p.lit !== !!b?.lit) d.lit = !!p.lit;
   if (p.item !== b?.item) d.item = p.item ?? null;

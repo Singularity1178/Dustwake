@@ -4,7 +4,7 @@
 // performed by any actor — today only the golem, later NPCs and animals.
 import type { ItemId } from "./items";
 
-export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel";
+export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk";
 
 /** When a task's effect fires, as a function of its duration. */
 export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
@@ -17,6 +17,8 @@ export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   punch: { fire: (d) => d * 0.5 },
   /** Rune travel: the jump happens at the very end of the channel. */
   channel: { fire: (d) => d },
+  /** Addressing an NPC: the dialogue opens once the golem has turned to it. */
+  talk: { fire: (d) => d },
 };
 
 /** Presentation-only cues an effect can request (sound/particles). */
@@ -48,7 +50,18 @@ export type Effect =
   /** Build a recipe at a tile, consuming its cost from the actor's pack. */
   | { op: "build"; recipe: string; tx: number; ty: number }
   /** Gain a knowledge flag (reading a book). */
-  | { op: "learn"; flag: string };
+  | { op: "learn"; flag: string }
+  // ---- NPCs and dialogue (sim/dialogue.ts). The NPC is named by its actor id.
+  /** Talk to the NPC actor at target.actorId: opens its first available dialogue segment, else its idle line. */
+  | { op: "talk" }
+  /** Set an NPC's reversible awake/dormant state (flag npc.<id>.awake). */
+  | { op: "npcAwake"; npc: string; awake: boolean }
+  /** Mend the golem's eye (golem.eye). Idempotent. */
+  | { op: "repairEye" }
+  /** An NPC gives the actor an item, at most once (guarded by the `once` flag). Overflow lands on the ground. */
+  | { op: "npcGive"; npc: string; item: ItemId; once: string }
+  /** A dialogue segment has been played through: set its completion flag. */
+  | { op: "segmentDone"; npc: string; segment: string; flag: string };
 
 /** What a task is aimed at. Plain data so it serialises. */
 export interface Target {
@@ -60,6 +73,10 @@ export interface Target {
   tx?: number;
   ty?: number;
   socket?: number;
+  /** Target actor (NPCs). */
+  actorId?: string;
+  /** NpcDef id of the target actor (content/npcs.ts). */
+  npc?: string;
 }
 
 export interface TaskSpec { kind: TaskKind; dur: number; effect?: Effect }

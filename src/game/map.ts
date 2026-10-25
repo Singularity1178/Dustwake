@@ -26,6 +26,8 @@ export interface PropDef {
   item?: ItemId;
   itemZ?: number;
   container?: boolean;
+  /** Starts open (e.g. a chest looted long ago). Uses the prop's alternate "open" sprite. */
+  open?: boolean;
 }
 export interface DecalDef { kind: string; x: number; y: number; v: number; w?: number; h?: number }
 export interface LightDef {
@@ -35,6 +37,8 @@ export interface LightDef {
 }
 export interface Room { num: number; name: string; x: number; y: number; w: number; h: number }
 export interface LooseItem { id: string; item: ItemId; x: number; y: number; /** Stack size (default 1). */ n?: number }
+/** An NPC placed by an area builder. Becomes an Actor (kind "npc") the first time the area is instantiated. */
+export interface NpcSpawn { id: string; npc: string; x: number; y: number; facing?: "down" | "up" | "left" | "right" }
 export interface Exit { x: number; y: number; label: string; dir: "n" | "s" | "e" | "w" }
 
 /** Static definition of an area. Builders must be deterministic. */
@@ -56,6 +60,8 @@ export interface AreaData {
   /** Open sky: no cave rumble/drips; `ambient` light instead of the dungeon's darkness. */
   outdoor?: boolean;
   ambient?: [number, number, number];
+  /** NPCs that live here (spawned as actors on first visit; saved as actors afterwards). */
+  npcs?: NpcSpawn[];
   start: { x: number; y: number };
   exits: Exit[];
   drips: { x: number; y: number }[];
@@ -274,8 +280,9 @@ export function buildMap(seed: number): MapData {
   lights.push({ x: ritual.x, y: ritual.y, rad: 70, col: [0.6, 0.38, 1], int: 0.28, flick: 0.06, id: "circle" });
   for (let i = 0; i < 10; i++) D("chalk", 5 * TS + rng() * 12 * TS, 4 * TS + rng() * 10 * TS, (rng() * 3) | 0);
 
-  // Treasury
-  P("chest", 57, 4, { container: true, item: "core" });
+  // Treasury: looted long ago. The aether core, the last thing it held, is
+  // with its guardian (an NPC actor, spawned from `npcs` below).
+  P("chest", 57, 4, { open: true });
   P("chest", 54, 4, { v: 2 });
   P("pot", 59, 8);
   P("pot", 52, 8, { v: 1 });
@@ -399,9 +406,15 @@ export function buildMap(seed: number): MapData {
     lights.push({ x: cx, y: top + 22, rad: 24, col: [0.55, 0.68, 0.95], int: 0.16, flick: 0.04, id: "gateleak" });
   }
 
+  // ---- NPCs (no rng, no props: nothing above changes). The Treasury Guardian
+  // slumps against the treasury's north wall between the two looted chests,
+  // facing the door; its body box (content/npcs.ts) keeps rows 5-8 and the
+  // doorway at 51,5 clear.
+  const npcs: NpcSpawn[] = [{ id: "npc.guardian", npc: "guardian", x: 55.5 * TS + 8, y: 4 * TS + 10, facing: "down" }];
+
   return {
     id: "dungeon", w: MW, h: MH,
-    grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips,
+    grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips, npcs,
     start: { x: 9 * TS + 8, y: 38 * TS + 14 },
     exits: [
       { x: 22, y: 1, label: "UPPER WARD", dir: "n" },

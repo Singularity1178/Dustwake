@@ -16,6 +16,9 @@ const G: Record<string, string> = {
   "^": "010101000000000", "*": "000101010101000",
 };
 
+/** Characters the bitmap font can draw (uppercase only). Anything else renders as "?". */
+export const FONT_GLYPHS: ReadonlySet<string> = new Set(Object.keys(G));
+
 export function textWidth(s: string, scale = 1) {
   return s.length * 4 * scale - scale;
 }

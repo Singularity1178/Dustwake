@@ -7,9 +7,9 @@ import { emit, hasFlag, player, areaOf, type Actor, type World } from "../world/
 import type { Area } from "../world/area";
 import { tickTask, runScheduled, beginTask } from "./tasks";
 import { reconcileCapacity } from "./inventory";
-import { boxFree } from "./collision";
+import { boxFree as boxFreeAt, actorBoxes } from "./collision";
 import { RULES } from "../content/interactions";
-import { findTarget, interact, type Interactable, type InteractUi } from "./interact";
+import { findTarget, interact, npcInteractables, type Interactable, type InteractUi } from "./interact";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -24,7 +24,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const area = areaOf(w, pl);
   tickTask(w, pl, dt);
   move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, (hasFlag(w, FLAGS.golemArm) ? 30 : 24) * (input.speed ?? 1));
-  const target = pl.task ? null : findTarget(area, pl);
+  const target = pl.task ? null : findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
   // Tutorial beat (one-shot): standing on the freshly charged circle starts the
@@ -76,6 +76,9 @@ export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy
   pl.vy += (ty - pl.vy) * Math.min(1, acc * dt);
   const sp = Math.hypot(pl.vx, pl.vy);
   pl.moving = sp > 4;
+  // Other actors' bodies (NPCs) block like props do.
+  const bodies = actorBoxes(w, area.id, pl.id);
+  const boxFree = (a: Area, x: number, y: number) => boxFreeAt(a, x, y, bodies);
   const nx = pl.x + pl.vx * dt;
   if (boxFree(area, nx, pl.y)) pl.x = nx;
   else {

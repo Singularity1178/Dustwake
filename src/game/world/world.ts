@@ -5,6 +5,7 @@ import type { Facing } from "../golem";
 import type { ItemId } from "../content/items";
 import type { Effect, Task, Cue } from "../content/tasks";
 import { Area } from "./area";
+import type { NpcSpawn } from "../map";
 import { AREAS } from "./areas";
 
 /** One inventory slot: a stack of one item kind, or empty. */
@@ -24,6 +25,8 @@ export interface Actor {
   queue: Task[];
   /** Ordered slots. Length tracks derived capacity (sim/inventory.ts). Actor-owned so any actor can carry things. */
   inventory: Slot[];
+  /** kind "npc" only: the NpcDef id (content/npcs.ts) that gives this actor its name, dialogue, sprite and body. */
+  npc?: string;
 }
 
 /** A delayed effect. `area` is where it was scheduled: it always applies there, even if the actor has travelled. */
@@ -54,7 +57,13 @@ export type SimEvent =
   | { t: "harvestHit"; actor: string; prop: string; kind: string; x: number; y: number; depleted: boolean }
   | { t: "built"; actor: string; prop: string; x: number; y: number }
   | { t: "learned"; flag: string }
-  | { t: "areaEntered"; actor: string; area: string };
+  | { t: "areaEntered"; actor: string; area: string }
+  /** `actor` addressed NPC actor `npc`; presentation opens `segment` of `script`. */
+  | { t: "dialogue"; actor: string; npc: string; script: string; segment: string }
+  /** An NPC woke or went dormant (reversible state). */
+  | { t: "npcState"; npc: string; awake: boolean }
+  /** The golem's eye was mended (by NPC `by`). */
+  | { t: "eyeRepaired"; actor: string; by?: string };
 
 export interface World {
   seed: number;
@@ -77,7 +86,8 @@ export function createWorld(seed: number): World {
     areas: new Map(), actors: [], playerId: "golem", scheduled: [], events: [],
   };
   const dungeon = getArea(w, "dungeon");
-  w.actors.push(makeActor("golem", "golem", dungeon.id, dungeon.start.x, dungeon.start.y));
+  // The player first; the dungeon's NPCs were spawned by getArea.
+  w.actors.unshift(makeActor("golem", "golem", dungeon.id, dungeon.start.x, dungeon.start.y));
   return w;
 }
 
@@ -85,7 +95,15 @@ export function makeActor(id: string, kind: string, area: string, x: number, y: 
   return { id, kind, area, x, y, vx: 0, vy: 0, facing: "down", phase: 0, moving: false, steps: 0, task: null, queue: [], inventory: [] };
 }
 
-/** Instantiate an area from its definition on first visit. */
+/** An NPC actor from an area's spawn row. Its inventory starts empty (it is still per actor). */
+export function makeNpc(s: NpcSpawn, area: string): Actor {
+  const a = makeActor(s.id, "npc", area, s.x, s.y);
+  a.npc = s.npc;
+  if (s.facing) a.facing = s.facing;
+  return a;
+}
+
+/** Instantiate an area from its definition on first visit (and spawn its NPCs). */
 export function getArea(w: World, id: string): Area {
   let a = w.areas.get(id);
   if (!a) {
@@ -94,6 +112,7 @@ export function getArea(w: World, id: string): Area {
     a = new Area(build());
     if (a.base.ritual) a.initRitual(shuffle(w.rng, [0, 1, 2, 3]));
     w.areas.set(id, a);
+    for (const s of a.base.npcs ?? []) if (!actorById(w, s.id)) w.actors.push(makeNpc(s, id));
   }
   return a;
 }

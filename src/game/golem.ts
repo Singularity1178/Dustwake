@@ -13,6 +13,8 @@ export interface GolemPose {
   raise: number; // arm raise: 1 overhead, 0 rest, -1 thrust
   reach: number; // 0..1 near-arm reach
   t: number;
+  /** The eye has been mended (golem.eye): it no longer gutters. */
+  eyeFixed?: boolean;
 }
 
 const C = { o: "#1c1a18", d: "#3a3733", m: "#5a5650", l: "#7a756c", h: "#958f84", moss: "#4a5a32", moss2: "#5e7040" };
@@ -103,7 +105,7 @@ export function drawGolem(p: Pen, x: number, y: number, g: GolemPose) {
       p.r(-2, -18 + by + hd, 4, 1, "#0c0a0a");
       if (eye) {
         p.g(-2, -18 + by + hd, 2, 1, eye);
-        const flick = Math.sin(g.t * 23) + Math.sin(g.t * 7.3) > -0.6;
+        const flick = g.eyeFixed || Math.sin(g.t * 23) + Math.sin(g.t * 7.3) > -0.6;
         if (flick) p.g(0, -18 + by + hd, 2, 1, eye);
       }
       p.p(3, -22 + by + hd, C.o); p.p(2, -22 + by + hd, C.d);

@@ -12,6 +12,8 @@ import { checkRune, deactivate } from "./ritual";
 import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
 import { travel } from "./runes";
 import { applyBuild } from "./build";
+import { actorBoxes } from "./collision";
+import { applyDialogueEffect } from "./dialogue";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
@@ -185,7 +187,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       const s = a.inventory[e.slot];
       if (!s) break;
       if (!isDroppable(s.item)) { emit(w, { t: "message", text: "THAT IS TOO IMPORTANT TO DROP" }); break; }
-      const spot = dropSpot(area, a);
+      const spot = dropSpot(area, a, actorBoxes(w, area.id, a.id));
       if (!spot) { emit(w, { t: "message", text: "NO ROOM TO DROP IT HERE" }); break; }
       const n = Math.min(e.n, s.n), item = s.item;
       s.n -= n;
@@ -220,6 +222,9 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       break;
     case "learn":
       if (!hasFlag(w, e.flag)) { setFlag(w, e.flag); emit(w, { t: "learned", flag: e.flag }); }
+      break;
+    case "talk": case "npcAwake": case "repairEye": case "npcGive": case "segmentDone":
+      applyDialogueEffect(w, a, e, target);
       break;
   }
 }

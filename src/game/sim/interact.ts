@@ -11,6 +11,7 @@ import { RITUAL_SPOTS, socketPositions } from "../content/ritual";
 import type { Target } from "../content/tasks";
 import { emit, hasFlag, type Actor, type World } from "../world/world";
 import { FLAGS } from "../content/flags";
+import { npcDef } from "../content/npcs";
 import { meets } from "./requirements";
 import type { Area } from "../world/area";
 import { beginTask, faceTo } from "./tasks";
@@ -68,13 +69,33 @@ function deriveInteractables(area: Area): Interactable[] {
   return I;
 }
 
-/** Closest interactable in front of the actor, within its reach radius. */
-export function findTarget(area: Area, a: Actor): Interactable | null {
+/**
+ * Interactables derived from the NPC actors standing in an area (actors live on
+ * the World, not the Area, so these are not part of the area's cached list).
+ * One generic path for every NPC: the talk target carries the actor id and the
+ * NpcDef id; the "npc" rules (content/interactions.ts) decide the work.
+ */
+export function npcInteractables(w: World, area: Area): Interactable[] {
+  const out: Interactable[] = [];
+  for (const a of w.actors) {
+    if (a.kind !== "npc" || a.area !== area.id) continue;
+    const d = npcDef(a.npc);
+    if (!d) continue;
+    out.push({ kind: "npc", x: a.x, y: a.y + 2, r: d.reach, itemZ: d.height - 12, actorId: a.id, npc: a.npc });
+  }
+  return out;
+}
+
+/** Everything the golem could interact with in an area: area-derived plus NPCs. */
+export const allInteractables = (w: World, area: Area) => [...interactables(area), ...npcInteractables(w, area)];
+
+/** Closest interactable in front of the actor, within its reach radius (`extra`: NPC interactables). */
+export function findTarget(area: Area, a: Actor, extra: readonly Interactable[] = []): Interactable | null {
   const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
   const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
   const px = a.x + fx * 6, py = a.y - 3 + fy * 6;
   let best: Interactable | null = null, bd = 1;
-  for (const it of interactables(area)) {
+  for (const it of [...interactables(area), ...extra]) {
     const d = Math.hypot(it.x - px, it.y - py) / it.r;
     if (d < bd) { bd = d; best = it; }
   }

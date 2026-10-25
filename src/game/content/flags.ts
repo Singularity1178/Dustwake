@@ -5,8 +5,13 @@
 //   know.*      — knowledge the golem has acquired
 //   tutorial.*  — one-shot tutorial beats
 //   rune.*      — teleportation rune sites (rune.<site>.active)
+//   npc.<id>.*  — per-NPC runtime state and story progress, namespaced by the
+//                 NPC actor's id (npc.guardian.awake, npc.guardian.met, ...).
+//                 NPC state never lives under golem.* (that is the player).
 export const FLAGS = {
   golemArm: "golem.arm",
+  /** The golem's flickering eye has been repaired (by the Treasury Guardian). Unlocks zoom. */
+  golemEye: "golem.eye",
   golemBasket: "golem.basket",
   knowSchematic: "know.schematic",
   knowBuild: "know.build",
@@ -17,3 +22,8 @@ export const FLAGS = {
 } as const;
 
 export type Flag = string;
+
+/** A flag namespaced by an NPC actor's id: npcFlag("npc.guardian", "met") -> "npc.guardian.met". */
+export const npcFlag = (actorId: string, key: string) => `${actorId}.${key}`;
+/** Runtime state every NPC has: present = awake, absent = dormant. Reversible by design. */
+export const NPC_AWAKE = "awake";

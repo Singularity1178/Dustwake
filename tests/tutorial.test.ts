@@ -9,7 +9,8 @@ import { T, TS } from "../src/game/content/tiles";
 import { FLAGS } from "../src/game/content/flags";
 import { interactables, findTarget } from "../src/game/sim/interact";
 import { placeGlyph } from "../src/game/sim/ritual";
-import { events, find, frame, frames, newWorld, propItem, standAt, useOn } from "./helpers";
+import { events, find, frame, frames, newWorld, propItem, standAt, useOn, guardianIt, talkThrough } from "./helpers";
+import { countItem } from "../src/game/sim/inventory";
 
 test("start state matches the authored dungeon", () => {
   const w = newWorld();
@@ -86,8 +87,14 @@ test("full tutorial playthrough", () => {
   assert.ok(!hasItem(pl, "key"), "key consumed");
   assert.equal(area.decals[area.decals.length - 1].kind, "door_open");
 
+  // The treasury was looted long ago: its chest is open and empty. The core
+  // comes from the Treasury Guardian, who wakes, mends the eye and hands it over.
+  assert.ok(!interactables(area).some((i) => i.propId === "chest@57,4"));
+  assert.deepEqual(talkThrough(w, guardianIt(w)), ["intro", "repair", "core", "farewell"]);
+  assert.ok(hasFlag(w, FLAGS.golemEye));
+  assert.equal(countItem(pl, "core"), 1);
+
   // Collect everything else.
-  useOn(w, propItem(w, "chest@57,4"));
   useOn(w, propItem(w, "workbench@13.5,37"));
   useOn(w, propItem(w, "maptable@39.5,5"));
   useOn(w, propItem(w, "hearth@60.5,43"));

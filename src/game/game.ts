@@ -29,11 +29,25 @@ import { interactables, type Interactable } from "./sim/interact";
 import { placeGlyph } from "./sim/ritual";
 import { AreaView } from "./view/areaView";
 import { ScreenStack, type Screen } from "./ui/screens";
+import { BASE_W, BASE_H, ZOOM_STEPS, ZOOM_DEFAULT, viewSize, nextZoomStep } from "./view/zoom";
+import { npcDef } from "./content/npcs";
+import { NPC_ART, type NpcPose } from "./npcArt";
+import { DIALOGUE, type DialoguePage, type DialogueSegment } from "./content/dialogue";
+import { dialogueBeat, finishSegment, segmentPages, isAwake, npcActor } from "./sim/dialogue";
+import type { Actor } from "./world/world";
 
 /** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
 const DEBUG_SPEED_MULT = 3;
 
-export const W = 320, H = 180;
+/** Base logical size. HUD and overlay screens are laid out for it (they draw on a base-size UI layer). */
+export const W = BASE_W, H = BASE_H;
+export { ZOOM_STEPS, ZOOM_DEFAULT, viewSize };
+
+/** Seconds a beat holds the page before its text starts typing (presentation timing only). */
+const BEAT_HOLD: Record<string, number> = { wake: 1.4, pause: 1.2, repairEye: 1.6, giveCore: 0.5 };
+
+/** Presentation state of one NPC (eased pose, eye, flare). Not saved: derived from flags on load. */
+interface NpcLook { awake: number; eye: number; wakeT: number; sleepT: number; reach: number; flare: number }
 
 /**
  * First arrival on the surface, in seconds since the arrive screen opened. The
@@ -70,10 +84,25 @@ interface GolemLook { eye: number; core: number; dormant: number; sparkT: number
 const newSeed = () => (Math.random() * 4294967296) >>> 0;
 
 export class Game {
+  /** Base-size (W x H) UI layer: HUD, overlays, title and end cards. */
   ctx: CanvasRenderingContext2D;
+  /** World layer: the lit scene, sized to the current view (vw x vh). */
+  wctx: CanvasRenderingContext2D;
+  /** Current view size in world pixels (W x H at 1x). */
+  vw = W; vh = H;
+  /** Current (possibly easing) zoom and its animation. */
+  zoom = 1;
+  zoomAnim: { from: number; to: number; t: number; dur: number } | null = null;
+  /** Called when the view size changes (App refits the world canvas). */
+  onView: ((w: number, h: number) => void) | null = null;
   scene = makeCanvas(W, H);
   emit = makeCanvas(W, H);
   lighting = new Lighting(W, H);
+  npcLooks = new Map<string, NpcLook>();
+  /** The open dialogue (presentation cursor only; progress lives in flags). */
+  dlg: { npc: string; seg: DialogueSegment; pages: DialoguePage[]; page: number; chars: number; hold: number } | null = null;
+  /** Show the zoom hint when the dialogue closes (after the eye repair). */
+  zoomHint = false;
   sfx = new Sfx();
   circle: CircleArt = buildCircle();
   shaft: Sprite;
@@ -106,7 +135,7 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "dialogue", Screen>;
   /** Feedback line (blocked actions, pack full, rune dark...). */
   note: { text: string; t: number } | null = null;
   /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
@@ -126,10 +155,12 @@ export class Game {
   buildRecipe = "torch";
   book: { id: ItemId; page: number } | null = null;
 
-  constructor(public canvas: HTMLCanvasElement) {
-    this.ctx = canvas.getContext("2d")!;
+  constructor(public canvas: HTMLCanvasElement, public uiCanvas: HTMLCanvasElement) {
+    this.wctx = canvas.getContext("2d")!;
+    this.wctx.imageSmoothingEnabled = false;
+    this.ctx = uiCanvas.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
-    this.outImg = this.ctx.createImageData(W, H);
+    this.outImg = this.wctx.createImageData(W, H);
     this.shaft = this.buildShaft();
     this.makeScreens();
     this.reset();
@@ -150,7 +181,12 @@ export class Game {
     this.glight = makeLight(pl.x, pl.y - 6, 108, [1, 0.78, 0.5], 0, 0.05, "golem");
     this.dripT = area.drips.map(() => Math.random() * 4);
     this.look = { eye: 0, core: 0, dormant: 1, sparkT: 1.5, sputter: 0, z: 0 };
-    this.cam.x = pl.x - W / 2; this.cam.y = pl.y - H / 2 - 10;
+    // Zoom is not saved: a world with a mended eye starts at the default zoomed-out view.
+    this.zoomAnim = null;
+    this.setZoom(hasFlag(world, FLAGS.golemEye) ? ZOOM_DEFAULT : 1);
+    this.cam.x = pl.x - this.vw / 2; this.cam.y = pl.y - this.vh / 2 - 10;
+    this.npcLooks.clear();
+    this.dlg = null; this.zoomHint = false;
     this.invCursor = 0;
     this.particles = [];
     this.toast = null;
@@ -177,7 +213,51 @@ export class Game {
     this.glight.vx = -999;
     // new area: snap the camera instead of panning across the map
     const pl = this.pl;
-    this.cam.x = clamp(pl.x - W / 2, 0, area.w * TS - W); this.cam.y = clamp(pl.y - 12 - H / 2, 0, area.h * TS - H);
+    this.cam.x = clamp(pl.x - this.vw / 2, 0, area.w * TS - this.vw); this.cam.y = clamp(pl.y - 12 - this.vh / 2, 0, area.h * TS - this.vh);
+  }
+
+  // ---------------------------------------------------------------- zoom
+  /** Apply a zoom level now: resize the world canvas and the scene/emissive/lighting buffers if the view size changes. */
+  setZoom(z: number) {
+    this.zoom = z;
+    const { w, h } = viewSize(z);
+    if (w === this.vw && h === this.vh) return;
+    // keep the view centred on the same point while it grows/shrinks
+    this.cam.x -= (w - this.vw) / 2; this.cam.y -= (h - this.vh) / 2;
+    this.vw = w; this.vh = h;
+    this.scene = makeCanvas(w, h);
+    this.emit = makeCanvas(w, h);
+    this.lighting = new Lighting(w, h);
+    this.canvas.width = w; this.canvas.height = h;
+    this.wctx.imageSmoothingEnabled = false;
+    this.outImg = this.wctx.createImageData(w, h);
+    if (this.view) {
+      const a = this.area;
+      this.cam.x = clamp(this.cam.x, 0, a.w * TS - w); this.cam.y = clamp(this.cam.y, 0, a.h * TS - h);
+    }
+    this.onView?.(w, h);
+  }
+  /** Ease to a zoom level over `dur` seconds (presentation clock). */
+  zoomTo(z: number, dur: number) {
+    if (z === this.zoom && !this.zoomAnim) return;
+    this.zoomAnim = { from: this.zoom, to: z, t: 0, dur };
+  }
+  private stepZoom(dt: number) {
+    const a = this.zoomAnim;
+    if (!a) return;
+    a.t += dt;
+    const k = clamp(a.t / a.dur, 0, 1), e = k * k * (3 - 2 * k);
+    this.setZoom(lerp(a.from, a.to, e));
+    if (k >= 1) this.zoomAnim = null;
+  }
+  /** Mouse wheel (App.tsx): discrete zoom steps, on the play screen only, once the eye is mended. */
+  wheel(deltaY: number) {
+    if (!this.screens.is("play") || !hasFlag(this.world, FLAGS.golemEye) || deltaY === 0) return;
+    const cur = this.zoomAnim?.to ?? this.zoom;
+    const next = nextZoomStep(cur, deltaY);
+    if (next === cur) return;
+    this.zoomTo(next, 0.25);
+    this.sfx.tone(next > cur ? 420 : 560, 0.05, "triangle", 0.03);
   }
 
   buildShaft(): Sprite {
@@ -241,6 +321,10 @@ export class Game {
       setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.golemBasket);
       addItems(w, pl, "wood", 20); addItems(w, pl, "stone", 20);
       say("DEBUG: BUILD + BASKET + MATERIALS");
+    } else if (n === 5) {
+      // Toggle the mended eye (golem.eye) and the zoom it unlocks.
+      if (hasFlag(w, FLAGS.golemEye)) { w.flags.delete(FLAGS.golemEye); this.zoomTo(1, 0.4); say("DEBUG: EYE REPAIR OFF"); }
+      else { setFlag(w, FLAGS.golemEye); this.zoomTo(ZOOM_DEFAULT, 1); this.eyeBoost = 1.5; say("DEBUG: EYE REPAIR ON (SCROLL TO ZOOM)"); }
     }
   }
   has(...k: string[]) { return k.some((x) => this.keys.has(x)); }
@@ -296,6 +380,7 @@ export class Game {
       arrive: scr("arrive", true, (dt) => { g.updateArrive(dt); g.worldFrame(dt); }, () => g.renderArrive()),
       book: scr("book", false, () => g.updateBook(), () => g.renderBook()),
       build: scr("build", false, () => g.updateBuild(), () => g.renderBuild()),
+      dialogue: scr("dialogue", false, (dt) => g.updateDialogue(dt), () => g.renderDialogue()),
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
         if (et > 5 && g.hit("r")) { g.reset(); g.screens.set(g.S.intro); }
@@ -325,6 +410,7 @@ export class Game {
       this.uiTimers = this.uiTimers.filter((u) => u.at > this.t);
       for (const u of due) u.fn();
     }
+    this.stepZoom(dt);
     this.screens.update(dt);
     this.pressed.clear();
   }
@@ -462,6 +548,41 @@ export class Game {
         this.screens.set(this.S.tele); this.sfx.teleport();
         break;
       case "areaEntered": break;
+      case "dialogue":
+        if (this.screens.is("play")) this.openDialogue(e.npc, e.script, e.segment);
+        break;
+      case "npcState": {
+        const a = npcActor(this.world, e.npc);
+        if (!a) break;
+        const L = this.npcLook(a);
+        if (e.awake) {
+          L.wakeT = 0;
+          this.sfx.wakeSputter();
+          this.npcSparks(a, 10);
+          this.later(0.5, () => this.npcSparks(a, 6));
+        } else {
+          L.sleepT = 0;
+          this.sfx.powerDown();
+          this.later(1.1, () => { this.shake(0.2, 1); this.npcDust(a); });
+        }
+        break;
+      }
+      case "eyeRepaired": {
+        const lk = this.look;
+        lk.sputter = 0; lk.eye = 1;
+        this.eyeBoost = 2.2;
+        this.sfx.eyeRepair();
+        this.shake(0.25, 1);
+        this.sparkBurst(10);
+        for (let i = 0; i < 24; i++)
+          this.spawn({ x: pl.x + (Math.random() - 0.5) * 4, y: pl.y, z: 18, vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 24, vz: 10 + Math.random() * 40, life: 0.4 + Math.random() * 0.5, kind: "spark", col: Math.random() < 0.5 ? "#bff4ff" : "#7fe8ff", emit: true, g: 110 });
+        const by = e.by ? npcActor(this.world, e.by) : undefined;
+        if (by) this.npcLook(by).reach = 1.8; // the guardian's hand holds still, then lowers
+        // the camera pulls out as the eye clears; the wheel takes over from here
+        this.later(0.5, () => this.zoomTo(ZOOM_DEFAULT, 1.1));
+        this.zoomHint = true;
+        break;
+      }
     }
   }
 
@@ -501,8 +622,10 @@ export class Game {
       if (Math.random() < 0.12) lk.sputter = 0.25;
     }
     lk.sputter = Math.max(0, lk.sputter - dt);
+    // The sputter is the damaged body's: the core keeps flickering (the golem is
+    // still damaged), but once the guardian mends the eye it no longer gutters.
     lk.core = lk.sputter > 0 ? (Math.random() < 0.5 ? 0.3 : 0.8) : 1;
-    lk.eye = lk.sputter > 0 ? 0.3 : 1;
+    lk.eye = lk.sputter > 0 && !hasFlag(w, FLAGS.golemEye) ? 0.3 : 1;
     lk.dormant = 0;
     this.eyeBoost = Math.max(0, this.eyeBoost - dt);
     this.target = res.target;
@@ -513,7 +636,7 @@ export class Game {
       this.rumbleT = 50 + Math.random() * 50;
       this.sfx.rumble();
       this.shake(2.2, 1.5);
-      for (let i = 0; i < 30; i++) this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 60 + Math.random() * 40, vz: -10, life: 4, kind: "debris", col: Math.random() < 0.5 ? "#6a6372" : "#4b4552", g: 60 });
+      for (let i = 0; i < 30 * this.zoom * this.zoom; i++) this.spawn({ x: this.cam.x + Math.random() * this.vw, y: this.cam.y + Math.random() * this.vh, z: 60 + Math.random() * 40, vz: -10, life: 4, kind: "debris", col: Math.random() < 0.5 ? "#6a6372" : "#4b4552", g: 60 });
     }
     this.worldFrame(dt);
   }
@@ -600,7 +723,7 @@ export class Game {
     const fall = clamp((t - A.FLASH) / 1.2, 0, 1);
     lk.z = 30 * (1 - fall) ** 2;
     lk.eye = 1; lk.core = 1; lk.dormant = 0;
-    this.cam.x = clamp(c.x - W / 2, 0, this.area.w * TS - W); this.cam.y = clamp(c.y - 12 - H / 2, 0, this.area.h * TS - H);
+    this.cam.x = clamp(c.x - this.vw / 2, 0, this.area.w * TS - this.vw); this.cam.y = clamp(c.y - 12 - this.vh / 2, 0, this.area.h * TS - this.vh);
     if (t > A.END) {
       this.runeAnim = null; this.hideGolem = false; lk.z = 0;
       this.screens.set(this.S.play);
@@ -633,7 +756,8 @@ export class Game {
   updateWorldFx(dt: number) {
     const pl = this.pl, area = this.area;
     // camera
-    const tx = clamp(pl.x - W / 2, 0, area.w * TS - W), ty = clamp(pl.y - 12 - H / 2, 0, area.h * TS - H);
+    const VW = this.vw, VH = this.vh;
+    const tx = clamp(pl.x - VW / 2, 0, area.w * TS - VW), ty = clamp(pl.y - 12 - VH / 2, 0, area.h * TS - VH);
     this.cam.x += (tx - this.cam.x) * Math.min(1, dt * 3.5);
     this.cam.y += (ty - this.cam.y) * Math.min(1, dt * 3.5);
     this.shakeT = Math.max(0, this.shakeT - dt);
@@ -645,6 +769,8 @@ export class Game {
     if (Math.abs(gl.x - gl.vx) > 2 || Math.abs(gl.y - gl.vy) > 2) computeVis(gl, area);
     const base = this.screens.is("tele") ? gl.int : 1.0;
     gl.cur = base * this.look.core * (0.95 + 0.05 * Math.sin(this.t * 13) * Math.sin(this.t * 3.1)) + this.eyeBoost * 0.3;
+    // NPCs: eased pose and eye, eye light through the light registry
+    this.updateNpcLooks(dt);
     // light flicker
     for (const L of this.view.lights.values()) {
       const n = Math.sin(this.t * 9 + L.seed) * 0.5 + Math.sin(this.t * 23.7 + L.seed * 2) * 0.3 + Math.sin(this.t * 3.3 + L.seed) * 0.2;
@@ -685,16 +811,16 @@ export class Game {
     if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
     // drifting leaves on the night wind
     if (area.base.outdoor && Math.random() < dt * 1.5)
-      this.spawn({ x: this.cam.x - 20 + Math.random() * W, y: this.cam.y + Math.random() * H, z: 30 + Math.random() * 40, vx: 8 + Math.random() * 8, vy: (Math.random() - 0.3) * 3, vz: -4 - Math.random() * 3, life: 7, kind: "mote", col: ["#7a5630", "#946a34", "#5a7a34", "#a07c40"][(Math.random() * 4) | 0], emit: false, g: 0 });
+      this.spawn({ x: this.cam.x - 20 + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 30 + Math.random() * 40, vx: 8 + Math.random() * 8, vy: (Math.random() - 0.3) * 3, vz: -4 - Math.random() * 3, life: 7, kind: "mote", col: ["#7a5630", "#946a34", "#5a7a34", "#a07c40"][(Math.random() * 4) | 0], emit: false, g: 0 });
     // fireflies under the open sky
-    if (area.base.outdoor && Math.random() < dt * 3)
-      this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
+    if (area.base.outdoor && Math.random() < dt * 3 * this.zoom * this.zoom)
+      this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
     // drips
     area.drips.forEach((d, i) => {
       this.dripT[i] -= dt;
       if (this.dripT[i] <= 0) {
         this.dripT[i] = 1.5 + Math.random() * 4;
-        if (Math.abs(d.x - this.cam.x - W / 2) < 260 && Math.abs(d.y - this.cam.y - H / 2) < 180)
+        if (Math.abs(d.x - this.cam.x - VW / 2) < VW / 2 + 100 && Math.abs(d.y - this.cam.y - VH / 2) < VH / 2 + 90)
           this.spawn({ x: d.x, y: d.y, z: 70, vz: -20, life: 3, kind: "drip", col: "#6a8aa8", g: 140 });
       }
     });
@@ -703,13 +829,13 @@ export class Game {
       if (!p.lit) continue;
       const fire = propDef(p.kind).fire;
       if (!fire) continue;
-      if (Math.abs(p.x - this.cam.x - W / 2) > 200 || Math.abs(p.y - this.cam.y - H / 2) > 140) continue;
+      if (Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 50) continue;
       if (Math.random() < dt * fire.embers)
         this.spawn({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + fire.emberDy, z: 14, vx: (Math.random() - 0.5) * 6, vz: 10 + Math.random() * 10, life: 1 + Math.random(), kind: "ember", col: Math.random() < 0.5 ? "#ffb040" : "#ff6a1a", emit: true, g: -4 });
     }
     // ambient dust motes
-    if (Math.random() < dt * 8)
-      this.spawn({ x: this.cam.x + Math.random() * W, y: this.cam.y + Math.random() * H, z: 4 + Math.random() * 30, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2, life: 5, kind: "mote", col: "#b8b0a0", emit: false, g: 0 });
+    if (Math.random() < dt * 8 * this.zoom * this.zoom)
+      this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 4 + Math.random() * 30, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2, life: 5, kind: "mote", col: "#b8b0a0", emit: false, g: 0 });
     // moonbeam motes
     const moon = this.view.byId("moon");
     if (moon && Math.random() < dt * 5)
@@ -718,7 +844,7 @@ export class Game {
     if (Math.random() < dt * 2) {
       const cands: [number, number][] = [];
       for (const it of interactables(area)) if (it.kind === "item" || it.kind === "propItem" || (it.kind === "container" && it.hasItem)) cands.push([it.x, it.y - (it.itemZ ?? 6) - 2]);
-      const near = cands.filter(([x, y]) => Math.abs(x - this.cam.x - W / 2) < 170 && Math.abs(y - this.cam.y - H / 2) < 100);
+      const near = cands.filter(([x, y]) => Math.abs(x - this.cam.x - VW / 2) < VW / 2 + 10 && Math.abs(y - this.cam.y - VH / 2) < VH / 2 + 10);
       if (near.length) {
         const [x, y] = near[(Math.random() * near.length) | 0];
         this.spawn({ x: x + (Math.random() - 0.5) * 8, y: y + 2, z: 2 + Math.random() * 4, life: 0.45, kind: "glint", col: "#fff4d0", emit: true });
@@ -876,7 +1002,8 @@ export class Game {
     }
   }
   renderBuild() {
-    const ctx = this.ctx, c = this.buildCur, r = RECIPES[this.buildRecipe];
+    const c = this.buildCur, r = RECIPES[this.buildRecipe];
+    let ctx = this.wctx; // the ghost is in world space
     const ok = placement(this.world, this.pl, this.area, this.buildRecipe, c.tx, c.ty);
     const camX = Math.round(this.cam.x), camY = Math.round(this.cam.y);
     const x = c.tx * TS - camX, y = c.ty * TS - camY;
@@ -887,6 +1014,7 @@ export class Game {
     ctx.fillRect(x, y, TS, 1); ctx.fillRect(x, y + TS - 1, TS, 1); ctx.fillRect(x, y, 1, TS); ctx.fillRect(x + TS - 1, y, 1, TS);
     const s = propSprite(r.prop, 0, true);
     if (s) { const a = buildAnchor(c.tx, c.ty); ctx.globalAlpha = 0.6; ctx.drawImage(s.a, Math.round(a.x - s.ax - camX), Math.round(a.y - s.ay - camY)); ctx.globalAlpha = 1; }
+    ctx = this.ctx; // the bar is UI
     ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(0, 0, W, 22);
     const cost = r.cost.map((k) => `${k.n} ${ITEM_NAMES[k.item]} (${countItem(this.pl, k.item)})`).join("  ");
     drawText(ctx, `BUILD ${r.name}: ${cost}`, W / 2, 3, "#e8d8b0", 1, "center");
@@ -894,16 +1022,19 @@ export class Game {
     this.renderNote();
   }
 
-  renderNote() {
+  renderNote(y = H - 40) {
     if (!this.note) return;
     const ctx = this.ctx;
     ctx.globalAlpha = clamp(3 - this.note.t, 0, 1);
-    drawTextS(ctx, this.note.text, W / 2, H - 40, "#e8d8b0", 1, "center", "#000");
+    drawTextS(ctx, this.note.text, W / 2, y, "#e8d8b0", 1, "center", "#000");
     ctx.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------- render
-  render() { this.screens.render(); }
+  render() {
+    this.ctx.clearRect(0, 0, W, H);
+    this.screens.render();
+  }
 
   private renderWorldScene() {
     this.view.flush();
@@ -916,6 +1047,7 @@ export class Game {
     let sx = 0, sy = 0;
     if (this.shakeT > 0) { sx = (Math.random() - 0.5) * this.shakeMag * 2; sy = (Math.random() - 0.5) * this.shakeMag * 2; }
     const camX = Math.round(this.cam.x + sx), camY = Math.round(this.cam.y + sy);
+    const W = this.vw, H = this.vh; // the world layer is view-sized (zoom)
     sc.fillStyle = "#000"; sc.fillRect(0, 0, W, H);
     ec.fillStyle = "#000"; ec.fillRect(0, 0, W, H);
     this.view.prepare(camX, camY, W, H);
@@ -1002,6 +1134,11 @@ export class Game {
         else if (t === T.LOCKED) { const s = doorSprite(); list.push({ y, f: () => spr(s, x, y) }); }
         else if (t === T.BARS) { const s = barsSprite(); list.push({ y, f: () => spr(s, x, y) }); }
       }
+    // NPCs (one generic path: art looked up by NpcDef id)
+    for (const a of this.world.actors) {
+      if (a.kind !== "npc" || a.area !== area.id || a.x < vx0 || a.x > vx1 || a.y < vy0 || a.y > vy1) continue;
+      list.push({ y: a.y, f: () => this.drawNpc(a, camX, camY) });
+    }
     // player
     const pl = this.pl;
     if (!this.hideGolem) list.push({ y: pl.y, f: () => this.drawPlayer(camX, camY) });
@@ -1047,7 +1184,7 @@ export class Game {
     for (const L of this.view.lights.values()) if (L.on) active.push(L);
     this.lighting.accumulate(active, camX, camY);
     this.lighting.compose(sImg.data, eImg.data, this.outImg.data, area.base.ambient ?? [0.05, 0.045, 0.065]);
-    this.ctx.putImageData(this.outImg, 0, 0);
+    this.wctx.putImageData(this.outImg, 0, 0);
   }
 
   /**
@@ -1058,7 +1195,7 @@ export class Game {
   drawSurfaceRune(p: PropInst, camX: number, camY: number) {
     const st = this.surfaceRuneState();
     const ccx = Math.round(p.x - CR - camX), ccy = Math.round(p.y - CR - camY);
-    if (ccx > -140 && ccx < W + 10 && ccy > -140 && ccy < H + 10) {
+    if (ccx > -140 && ccx < this.vw + 10 && ccy > -140 && ccy < this.vh + 10) {
       const sc = this.scene.ctx, ec = this.emit.ctx;
       const L = this.runeArt.layers(st.t);
       sc.drawImage(L.scene, ccx, ccy);
@@ -1097,7 +1234,7 @@ export class Game {
   /** Foliage in the wind: the upper part of the sprite shifts by a pixel now and then. */
   drawSwaying(s: Sprite, p: PropInst, camX: number, camY: number) {
     const dx = Math.round(p.x - s.ax - camX), dy = Math.round(p.y - s.ay - camY);
-    if (dx > W || dy > H || dx + s.w < 0 || dy + s.h < 0) return;
+    if (dx > this.vw || dy > this.vh || dx + s.w < 0 || dy + s.h < 0) return;
     const sc = this.scene.ctx, ec = this.emit.ctx;
     const wv = Math.sin(this.t * 1.6 + p.x * 0.031 + p.y * 0.017) + 0.4 * Math.sin(this.t * 3.7 + p.x * 0.11);
     const o = Math.round(wv * 0.75);
@@ -1183,16 +1320,178 @@ export class Game {
     const pose: GolemPose = {
       facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
       eye: clamp(lk.eye + this.eyeBoost, 0, 1.6), core: lk.core, raise, reach, t: this.t,
+      eyeFixed: hasFlag(this.world, FLAGS.golemEye),
     };
     const ox = pl.x - camX + (a?.kind === "push" ? Math.round(Math.sin(a.t * 40)) : 0), oy = pl.y - camY - lk.z;
     drawGolem(new Pen(sc, false), ox, oy, pose);
     drawGolem(new Pen(this.emit.ctx, true), ox, oy, pose);
   }
 
+  // ---------------------------------------------------------------- NPCs
+  /** Presentation state for an NPC actor, created from its sim state (so a loaded world looks right at once). */
+  npcLook(a: Actor): NpcLook {
+    let L = this.npcLooks.get(a.id);
+    if (!L) {
+      const on = isAwake(this.world, a.id) ? 1 : 0;
+      L = { awake: on, eye: on, wakeT: 99, sleepT: 99, reach: 0, flare: 0 };
+      this.npcLooks.set(a.id, L);
+    }
+    return L;
+  }
+
+  /** Ease every NPC in view toward its sim state: wake sputter, straighten, dim and slump. Drives its eye light. */
+  updateNpcLooks(dt: number) {
+    const area = this.area;
+    for (const a of this.world.actors) {
+      if (a.kind !== "npc" || a.area !== area.id) continue;
+      const def = npcDef(a.npc);
+      if (!def) continue;
+      const L = this.npcLook(a), on = isAwake(this.world, a.id);
+      L.wakeT += dt; L.sleepT += dt;
+      // awake: the eye sputters on first, then it straightens; dormant: the eye dims, then it slumps
+      const target = on ? (L.wakeT > 0.6 ? 1 : 0) : (L.sleepT > 0.7 ? 0 : 1);
+      L.awake += clamp(target - L.awake, -dt / 1.1, dt / 1.1);
+      if (on) L.eye = L.wakeT < 0.9 ? (Math.random() < 0.45 + L.wakeT * 0.5 ? 1 : 0.12) : 1;
+      else L.eye = Math.max(0, Math.min(L.eye, 1 - L.sleepT / 1.2));
+      if (on && L.wakeT < 0.05) L.flare = 0.8;
+      L.flare = Math.max(0, L.flare - dt * 1.5);
+      L.reach = Math.max(0, L.reach - dt * 0.7);
+      const el = def.eyeLight;
+      if (el) {
+        const lt = this.view.dynamicLight("npc:" + a.id, () => makeLight(a.x + el.dx, a.y + el.dy, el.rad, el.col, 0, 0.05, "npc:" + a.id));
+        lt.int = L.eye * 0.42 + L.flare * 0.5 + (L.reach > 0.8 ? 0.25 : 0);
+      }
+    }
+  }
+
+  npcSparks(a: Actor, n: number) {
+    for (let i = 0; i < n; i++)
+      this.spawn({ x: a.x + (Math.random() - 0.5) * 16, y: a.y - 2, z: 18 + Math.random() * 14, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 20, vz: 10 + Math.random() * 30, life: 0.3 + Math.random() * 0.4, kind: "spark", col: Math.random() < 0.5 ? "#fff2a0" : "#7fe8ff", emit: true, g: 120 });
+  }
+  npcDust(a: Actor) {
+    for (let i = 0; i < 12; i++)
+      this.spawn({ x: a.x + (Math.random() - 0.5) * 26, y: a.y, z: 2 + Math.random() * 6, vx: (Math.random() - 0.5) * 24, vz: 6 + Math.random() * 8, life: 1, kind: "dust", col: "#8a8478", g: 14 });
+  }
+
+  /** Draw any NPC: shadow, then its NPC_ART entry (albedo + emissive passes), looked up by NpcDef id. */
+  drawNpc(a: Actor, camX: number, camY: number) {
+    const def = npcDef(a.npc), art = def && NPC_ART[def.art];
+    if (!def || !art) return;
+    const L = this.npcLook(a), sc = this.scene.ctx;
+    const x = Math.round(a.x - camX), y = Math.round(a.y - camY);
+    const hw = Math.round(def.box[0] / 2) + 2;
+    sc.fillStyle = "rgba(0,0,0,0.45)";
+    sc.fillRect(x - hw, y - 1, hw * 2, 2);
+    sc.fillRect(x - hw + 3, y - 3, hw * 2 - 6, 4);
+    const ease = (v: number) => v * v * (3 - 2 * v);
+    const pose: NpcPose = { facing: a.facing, awake: ease(clamp(L.awake, 0, 1)), eye: L.eye + L.flare, reach: clamp(L.reach, 0, 1), t: this.t };
+    art(new Pen(sc, false), x, y, pose);
+    art(new Pen(this.emit.ctx, true), x, y, pose);
+  }
+
+  // ---------------------------------------------------------------- dialogue
+  // A non-opaque overlay: the world pauses beneath it (no stepWorld) while
+  // presentation keeps animating. Every state change is a sim command
+  // (dialogueBeat / finishSegment); this screen only holds a page cursor.
+  openDialogue(npc: string, script: string, segment: string) {
+    const seg = DIALOGUE[script]?.segments.find((s) => s.id === segment);
+    if (!seg) return;
+    this.dlg = { npc, seg, pages: [], page: 0, chars: 0, hold: 0 };
+    this.screens.push(this.S.dialogue);
+    this.startSegment(seg);
+  }
+  private startSegment(seg: DialogueSegment) {
+    const d = this.dlg!;
+    d.seg = seg;
+    d.pages = segmentPages(this.world, this.pl, seg);
+    if (!d.pages.length) { this.advanceSegment(); return; }
+    this.startPage(0);
+  }
+  private startPage(i: number) {
+    const d = this.dlg!, p = d.pages[i];
+    d.page = i; d.chars = 0; d.hold = 0;
+    if (p.beat) {
+      dialogueBeat(this.world, this.pl, d.npc, d.seg.id, p.beat);
+      this.drainEvents();
+      d.hold = BEAT_HOLD[p.beat] ?? 0;
+    }
+  }
+  private advanceSegment() {
+    const d = this.dlg!;
+    const next = finishSegment(this.world, this.pl, d.npc, d.seg.id);
+    this.drainEvents();
+    if (next && this.dlg) this.startSegment(next);
+    else this.closeDialogue();
+  }
+  closeDialogue() {
+    this.dlg = null;
+    if (this.screens.is("dialogue")) this.screens.popToBase();
+    if (this.zoomHint) { this.zoomHint = false; this.say("(SCROLL TO ZOOM)"); }
+  }
+  updateDialogue(dt: number) {
+    this.updateWorldFx(dt);
+    const d = this.dlg;
+    if (!d) { this.screens.popToBase(); return; }
+    // Esc leaves; progress is in flags, so the next talk resumes at the first unfinished segment.
+    if (this.hit("escape")) { this.closeDialogue(); return; }
+    if (d.hold > 0) { d.hold -= dt; return; }
+    const p = d.pages[d.page];
+    const total = p.lines.reduce((n, l) => n + l.length, 0);
+    if (d.chars < total) {
+      const before = Math.floor(d.chars);
+      d.chars = Math.min(total, d.chars + dt * 42);
+      const flat = p.lines.join("");
+      for (let i = before; i < Math.floor(d.chars); i++) if (flat[i] !== " " && i % 2 === 0) { this.sfx.blip(); break; }
+    }
+    if (this.S.dialogue.t > 0.15 && this.hit("e", "enter", " ")) {
+      if (d.chars < total) { d.chars = total; return; }
+      if (p.then) { dialogueBeat(this.world, this.pl, d.npc, d.seg.id, p.then); this.drainEvents(); }
+      if (!this.dlg) return;
+      if (d.page + 1 < d.pages.length) { this.startPage(d.page + 1); this.sfx.tone(240, 0.04, "triangle", 0.02); }
+      else this.advanceSegment();
+    }
+  }
+  renderDialogue() {
+    const d = this.dlg;
+    if (!d) return;
+    const ctx = this.ctx, p = d.pages[d.page];
+    const npc = npcActor(this.world, d.npc);
+    const name = p.speaker ?? npcDef(npc?.npc)?.name ?? "";
+    const bx = 14, bw = W - 28, bh = 54, by = H - bh - 6;
+    this.renderToast(by - 24);
+    // box
+    ctx.fillStyle = "#08070a"; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = "#3a3540"; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = "#4e4856"; ctx.fillRect(bx, by, bw, 1); ctx.fillRect(bx, by, 1, bh);
+    ctx.fillStyle = "rgba(14,12,18,0.94)"; ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
+    for (const [cx, cy] of [[bx + 3, by + 3], [bx + bw - 5, by + 3], [bx + 3, by + bh - 5], [bx + bw - 5, by + bh - 5]]) { ctx.fillStyle = "#6a6372"; ctx.fillRect(cx, cy, 2, 2); }
+    // speaker tag, trimmed in the guardian's rank gold
+    const tw = textWidth(name) + 10;
+    ctx.fillStyle = "#08070a"; ctx.fillRect(bx + 7, by - 9, tw + 2, 10);
+    ctx.fillStyle = "#2a2430"; ctx.fillRect(bx + 8, by - 8, tw, 8);
+    ctx.fillStyle = "#7a5a1c"; ctx.fillRect(bx + 8, by - 8, tw, 1);
+    drawText(ctx, name, bx + 13, by - 6, "#e0c060");
+    // typewriter text
+    let left = Math.floor(d.chars);
+    p.lines.forEach((line, i) => {
+      const n = Math.max(0, Math.min(line.length, left));
+      left -= line.length;
+      if (n > 0) drawTextS(ctx, line.slice(0, n), bx + 10, by + 8 + i * 10, "#e8dcc0", 1, "left", "#000");
+    });
+    const total = p.lines.reduce((n, l) => n + l.length, 0);
+    if (d.hold <= 0 && d.chars >= total && Math.sin(this.t * 6) > -0.3) {
+      const last = d.page === d.pages.length - 1;
+      drawText(ctx, last ? "E" : "E >", bx + bw - 8, by + bh - 9, "#8a8392", 1, "right");
+    }
+    drawText(ctx, "ESC LEAVE", bx + 10, by + bh - 9, "#4e4856");
+    this.renderNote(by - 36);
+  }
+
   renderHud() {
     const ctx = this.ctx;
-    // interaction marker
+    // interaction marker (world space: drawn on the world layer)
     if (this.screens.is("play") && this.target) {
+      const ctx = this.wctx;
       const it = this.target;
       const x = Math.round(it.x - this.cam.x), y = Math.round(it.y - this.cam.y - (it.itemZ ?? 10) - 14 + Math.sin(this.t * 4) * 1.5);
       ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -1208,14 +1507,19 @@ export class Game {
       drawTextS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", 1, "center");
       ctx.globalAlpha = 1;
     }
-    // toast
-    if (this.toast && !this.screens.is("schem")) {
+    // toast (the dialogue box draws it above itself)
+    if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(H - 26);
+  }
+
+  renderToast(y: number) {
+    const ctx = this.ctx;
+    if (this.toast) {
       const t = this.toast.t;
       const a = t < 0.2 ? t / 0.2 : t > 2.5 ? 1 - (t - 2.5) / 0.5 : 1;
       ctx.globalAlpha = clamp(a, 0, 1);
       const name = this.toast.name;
       const w = name.length * 4 + 30;
-      const x = Math.round(W / 2 - w / 2), y = H - 26;
+      const x = Math.round(W / 2 - w / 2);
       ctx.fillStyle = "#0c0a0e"; ctx.fillRect(x, y, w, 20);
       ctx.fillStyle = "#3a3540"; ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y + 19, w, 1); ctx.fillRect(x, y, 1, 20); ctx.fillRect(x + w - 1, y, 1, 20);
       ctx.drawImage(this.toast.icon.a, x + 3, y + 2);

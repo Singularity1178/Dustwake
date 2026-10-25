@@ -1,7 +1,8 @@
 // Test helpers: drive the simulation the way the play screen does, without a browser.
 import { createWorld, player, currentArea, type World } from "../src/game/world/world";
 import { stepPlayer, stepWorld, addPlayTime, type PlayerInput } from "../src/game/sim/step";
-import { interactables, type Interactable } from "../src/game/sim/interact";
+import { allInteractables, type Interactable } from "../src/game/sim/interact";
+import { currentSegment, playSegment, scriptOf } from "../src/game/sim/dialogue";
 import type { SimEvent } from "../src/game/world/world";
 
 export const DT = 1 / 60;
@@ -27,7 +28,7 @@ export function events(w: World): SimEvent[] {
 }
 
 export function find(w: World, pred: (it: Interactable) => boolean): Interactable {
-  const it = interactables(currentArea(w)).find(pred);
+  const it = allInteractables(w, currentArea(w)).find(pred);
   if (!it) throw new Error("interactable not found");
   return it;
 }
@@ -50,3 +51,23 @@ export function useOn(w: World, it: Interactable) {
 
 export const propItem = (w: World, propId: string) => find(w, (i) => i.propId === propId);
 export const newWorld = (seed = 12345) => createWorld(seed);
+
+export const GUARDIAN = "npc.guardian";
+export const guardianIt = (w: World) => find(w, (i) => i.kind === "npc" && i.actorId === GUARDIAN);
+
+/**
+ * Talk to an NPC through the normal interaction path, then play every segment
+ * the dialogue offers in order, exactly as the dialogue screen would. Returns
+ * the ids of the segments played.
+ */
+export function talkThrough(w: World, it: Interactable): string[] {
+  events(w);
+  useOn(w, it);
+  const ev = events(w).find((e) => e.t === "dialogue");
+  if (!ev || ev.t !== "dialogue") return [];
+  const pl = player(w), played: string[] = [];
+  let seg = scriptOf(w, ev.npc)!.segments.find((s) => s.id === ev.segment) ?? null;
+  while (seg) { played.push(seg.id); seg = playSegment(w, pl, ev.npc, seg); }
+  return played;
+}
+export { currentSegment };

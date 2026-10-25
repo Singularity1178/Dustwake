@@ -7,6 +7,8 @@ import { TS, isSolidT } from "../content/tiles";
 import { emit, areaOf, type Actor, type Slot, type World } from "../world/world";
 import type { Area } from "../world/area";
 import { meets } from "./requirements";
+import { actorBoxes } from "./collision";
+import type { Box } from "./reach";
 
 /** Slot count for this actor right now: the highest satisfied tier. */
 export function capacity(w: World, a: Actor): number {
@@ -28,6 +30,9 @@ export const heldItems = (a: Actor) => a.inventory.flatMap((s) => (s ? [s.item] 
  * world next to the actor. Items never vanish.
  */
 export function reconcileCapacity(w: World, a: Actor) {
+  // Capacity tiers describe the golem's body (golem.* flags). NPC packs are
+  // per actor too but have no tiers yet: leave them exactly as they are.
+  if (a.kind === "npc") return;
   const cap = capacity(w, a);
   const inv = a.inventory;
   while (inv.length < cap) inv.push(null);
@@ -38,7 +43,7 @@ export function reconcileCapacity(w: World, a: Actor) {
     const left = addItems(w, a, s.item, s.n);
     if (left > 0) {
       const area = areaOf(w, a);
-      const spot = dropSpot(area, a);
+      const spot = dropSpot(area, a, actorBoxes(w, area.id, a.id));
       const x = spot ? spot.x : a.x, y = spot ? spot.y : a.y;
       spawnLoose(area, s.item, left, x, y);
       emit(w, { t: "itemDropped", actor: a.id, item: s.item, n: left, x, y, reason: "overflow" });
@@ -98,7 +103,7 @@ export function giveItem(w: World, a: Actor, id: ItemId, n = 1) {
   if (left < n) emit(w, { t: "itemGained", actor: a.id, item: id, stored: true, n: n - left });
   if (left > 0) {
     const area = areaOf(w, a);
-    const spot = dropSpot(area, a);
+    const spot = dropSpot(area, a, actorBoxes(w, area.id, a.id));
     const x = spot ? spot.x : a.x, y = spot ? spot.y : a.y;
     spawnLoose(area, id, left, x, y);
     emit(w, { t: "packFull", actor: a.id, item: id });
@@ -113,7 +118,7 @@ const DROP_ORDER: [number, number][] = [
   [2, 0], [2, -1], [2, 1], [0, -2], [0, 2], [-2, 0], [2, -2], [2, 2], [-2, -1], [-2, 1],
 ];
 
-function tileFree(area: Area, tx: number, ty: number) {
+function tileFree(area: Area, tx: number, ty: number, bodies: readonly Box[]) {
   if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return false;
   if (isSolidT(area.grid[ty * area.w + tx])) return false;
   const cx = tx * TS + 8, cy = ty * TS + 11;
@@ -121,6 +126,7 @@ function tileFree(area: Area, tx: number, ty: number) {
     const b = p.box;
     if (b && !p.taken && cx > b[0] - 3 && cx < b[2] + 3 && cy > b[1] - 3 && cy < b[3] + 3) return false;
   }
+  for (const b of bodies) if (cx > b[0] - 3 && cx < b[2] + 3 && cy > b[1] - 3 && cy < b[3] + 3) return false;
   return true;
 }
 
@@ -129,13 +135,13 @@ function tileFree(area: Area, tx: number, ty: number) {
  * its own tile, then the nearest free tile around it in a fixed order relative
  * to facing. Fully deterministic (no randomness). Null if boxed in.
  */
-export function dropSpot(area: Area, a: Actor): { x: number; y: number; tx: number; ty: number } | null {
+export function dropSpot(area: Area, a: Actor, bodies: readonly Box[] = []): { x: number; y: number; tx: number; ty: number } | null {
   const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
   const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
   const gx = Math.floor(a.x / TS), gy = Math.floor((a.y - 3) / TS);
   for (const [f, s] of DROP_ORDER) {
     const tx = gx + f * fx - s * fy, ty = gy + f * fy + s * fx;
-    if (tileFree(area, tx, ty)) return { x: tx * TS + 8, y: ty * TS + 11, tx, ty };
+    if (tileFree(area, tx, ty, bodies)) return { x: tx * TS + 8, y: ty * TS + 11, tx, ty };
   }
   return null;
 }
