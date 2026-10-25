@@ -49,8 +49,6 @@ npm test
 
 Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner.
 
-`node scripts/preview.mjs` renders PNG previews (surface views, the buried gate, the rune at several awakening stages, the dungeon's collapsed gate) to `.preview/` through a small software canvas, with no browser needed. They approximate the game's renderer without the golem or particles.
-
 ## Project layout
 
 ```
@@ -58,10 +56,10 @@ src/
   App.tsx            canvas mount, game loop, input wiring
   game/
     core/            seeded RNG, hashing (pure)
-    content/         geo (dungeon<->surface offset), items, props, tiles, glyphs, flags, tasks, interaction rules,
+    content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
                      inventory tiers, rune network, harvest yields, build recipes (data)
     map.ts           tutorial dungeon area builder
-    surface.ts       surface area builder (overgrown wilds hiding the buried dungeon)
+    surface.ts       surface area builder (ruins above the buried dungeon)
     world/           Area, World, area registry, save/load (simulated + saved state)
     sim/             tasks/effects, interactions, inventory, runes, building,
                      collision, ritual puzzle, stepping, UI commands (no DOM)
@@ -75,7 +73,6 @@ src/
     audio.ts         synthesized sound effects
     font.ts          bitmap font
     circle.ts        rune circle art
-    surfaceRune.ts   surface rune: eroded/overgrown layout, awakening sweep, cached layers
     util.ts          canvas helpers
 tests/               headless sim tests
 docs/ARCHITECTURE.md structure, boundaries, deferred work

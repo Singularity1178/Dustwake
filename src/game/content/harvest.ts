@@ -20,5 +20,7 @@ export interface HarvestDef {
 
 export const HARVEST: Record<string, HarvestDef> = {
   tree: { hp: 4, perHit: { item: "wood", n: 1 }, final: { item: "wood", n: 2 } },
+  /** A fallen, rotting trunk: quick wood, and the way opens once it's broken up. */
+  log: { hp: 3, perHit: { item: "wood", n: 1 }, final: { item: "wood", n: 1 }, clearBox: true },
   rock: { hp: 3, perHit: { item: "stone", n: 1 }, final: { item: "stone", n: 2 }, clearBox: true },
 };

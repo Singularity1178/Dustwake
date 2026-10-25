@@ -26,6 +26,8 @@ export interface PropKindDef {
   examine?: string;
   /** Lies flat on the ground: always drawn beneath actors. */
   flat?: boolean;
+  /** Foliage that sways in the wind (presentation only): the sprite's upper part shifts by up to 1px. */
+  sway?: boolean;
 }
 
 export const PROPS: Record<string, PropKindDef> = {
@@ -51,7 +53,7 @@ export const PROPS: Record<string, PropKindDef> = {
   mushrooms: { light: { dx: 0, dy: -3, rad: 44, col: [0.35, 0.95, 0.8], int: 0.55, flick: 0.04, when: "always" } },
   banner: { wallMounted: true },
   // ---- surface
-  tree: { box: [10, 6], alt: "taken" },
+  tree: { box: [10, 6], alt: "taken", sway: true },
   rock: { box: [16, 8], alt: "taken" },
   torch_post: {
     box: [6, 4], alt: "lit",
@@ -59,32 +61,29 @@ export const PROPS: Record<string, PropKindDef> = {
     fire: { big: false, embers: 1.5, emberDy: -2 },
   },
   cart: { box: [30, 10] },
-  /**
-   * The old SURFACE GATE, buried: a walkable marker over the arch's crown (no
-   * collision, drawn flat as a barely-visible squared stone in the turf).
-   */
-  buriedgate: { flat: true, examine: "THE GROUND SOUNDS HOLLOW HERE. SQUARED STONE LIES UNDER THE TURF." },
-  // ---- surface: overgrowth (no collision unless noted)
-  bush: { box: [14, 6] },
-  fern: {},
-  tallgrass: {},
-  wildflowers: { flat: true },
-  sapling: { box: [4, 3] },
+  // The old surface gate, buried: no collision, no visible opening. Only a low
+  // mound where the arch top lies, and a hollow sound if you go looking.
+  buriedgate: { flat: true, examine: "THE GROUND HERE SOUNDS HOLLOW UNDERFOOT." },
+  // ---- surface overgrowth (decorative; small boxes so the woods have texture)
+  bush: { box: [12, 5], sway: true },
+  fern: { sway: true },
+  tallgrass: { sway: true },
+  sapling: { box: [4, 3], sway: true },
   stump: { box: [10, 5] },
-  log: { box: [30, 7] },
-  boulder: { box: [22, 8] },
-  outcrop: { box: [38, 10] },
-  // ---- surface: the few rocky remains that poke through
-  wallstub: { box: [30, 8], examine: "OLD MASONRY, SUNK TO ITS SHOULDERS IN THE EARTH." },
-  masonry: { box: [18, 7] },
+  log: { box: [30, 7], alt: "taken" },
+  boulder: { box: [22, 9] },
+  outcrop: { box: [40, 12] },
+  // ---- the few remains that still break the surface (moss- and vine-covered)
+  wallstub: { box: [30, 9], examine: "OLD MASONRY, HALF SWALLOWED BY THE EARTH." },
+  masonry: { box: [18, 8] },
   stoneslab: { flat: true },
-  cairn: { box: [12, 6] },
-  standingstone: { box: [10, 5] },
-  statue_toppled: { box: [32, 9], examine: "A FALLEN STATUE, WRAPPED IN IVY." },
-  /** A squared block or lintel corner barely peeking through the soil (flat). */
-  capstone: { flat: true },
-  // ---- dungeon: the collapsed SURFACE GATE corridor
-  rockpile: { box: [26, 10] },
+  cairn: { box: [14, 6] },
+  standingstone: { box: [12, 6] },
+  statue_toppled: { box: [30, 10] },
+  /** A squared block peeking through the soil along a buried wall line. */
+  capstone: { flat: true, examine: "A SQUARED STONE, SUNK DEEP. THE EARTH AROUND IT RINGS HOLLOW." },
+  // ---- dungeon: the collapsed surface gate
+  rockpile: { box: [16, 8] },
   runesite: { rune: true },
   runecircle: { rune: true },
   chains: { wallMounted: true },

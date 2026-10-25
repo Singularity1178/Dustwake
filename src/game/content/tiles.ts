@@ -4,23 +4,29 @@ export const TS = 16;
 
 export const T = {
   WALL: 0, FLOOR: 1, RUBBLE: 2, CRACKED: 3, LOCKED: 4, PILLAR: 5, BARS: 6,
-  /** Surface: impassable undergrowth (the world's edge, dense woods). */
+  /** Surface: impassable undergrowth at the edge of the world. */
   THICKET: 7,
-  // 8 was PIT (open sinkholes into the dungeon); removed with the overgrown surface.
+  // 8 was PIT (surface sinkholes into the dungeon); retired, the dungeon is hidden now.
 } as const;
 export type TileId = (typeof T)[keyof typeof T];
 
 /** Floor styles (background art). */
 export const FS = {
   FLAG: 0, MARBLE: 1, BRICK: 2, WOOD: 3, COBBLE: 4,
-  /** Surface styles. RUIN on a WALL tile bakes as weathered, sunlit masonry. */
-  GRASS: 5, DIRT: 6, RUIN: 7,
-  /** Overgrown surface ground: soft moss, leaf litter, wet mud, bare/heaped earth. */
-  MOSS: 8, LEAF: 9, MUD: 10, EARTH: 11,
+  /** Surface ground styles (7 was RUIN, the keep's masonry; retired). */
+  GRASS: 5, DIRT: 6,
+  /** Soft cushion moss (damp ground, buried stone). */
+  MOSS: 8,
+  /** Fallen leaves under the trees. */
+  LEAF: 9,
+  /** Wet mud in damp hollows. */
+  MUD: 10,
+  /** Bare, packed earth (heaped soil over the buried halls; spilled earth below ground). */
+  EARTH: 11,
 } as const;
 
-/** Surface ground styles: baked by groundPix, with noise-blended patch edges. */
-export const isGroundStyle = (s: number) => s === FS.GRASS || s === FS.DIRT || s >= FS.MOSS;
+/** Natural ground styles: they bake with organic, noise-warped borders between each other. */
+export const isGroundFS = (s: number) => s === FS.GRASS || s === FS.DIRT || s === FS.MOSS || s === FS.LEAF || s === FS.MUD || s === FS.EARTH;
 
 export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>

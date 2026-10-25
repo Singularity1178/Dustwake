@@ -1,80 +1,88 @@
-// Reachability over an area's static layout (pure, no DOM). Flood-fills the
-// standing positions of a golem-sized box (10x5 px, feet at x,y — the same box
-// as sim/collision.ts) on a 4 px lattice, treating solid tiles and blocking
-// prop boxes as walls. Builders and tests use it to prove there are no sealed
-// pockets; it is also the obvious seed for a future nav grid.
+// Walkable reachability over an area at tile granularity, using the same rule
+// as locomotion (sim/collision.ts boxFree): a golem-sized 10x5 box must be
+// free of solid tiles and blocking prop boxes. A cell is standable if the golem
+// fits with its feet at the tile's centre; two neighbouring cells connect if
+// the box stays free at every 4px along the straight step between them.
+// Pure and deterministic; used by the surface builder (to open sealed pockets)
+// and by the tests (to prove everything meaningful can be walked to).
 import { TS, isSolidT } from "../content/tiles";
-import { propDef } from "../content/props";
-import { HARVEST } from "../content/harvest";
 
-export interface ReachSource {
-  w: number; h: number; grid: Uint8Array;
-  props: { kind: string; x: number; y: number; taken?: boolean }[];
+export type Box = [number, number, number, number];
+export interface ReachGrid { w: number; h: number; grid: ArrayLike<number> }
+
+/** Feet position used for a cell. */
+export const cellFeet = (tx: number, ty: number) => ({ x: tx * TS + 8, y: ty * TS + 11 });
+
+/** Is the golem box (feet at x, y) free? Same test as sim/collision.ts boxFree. */
+export function freeAt(g: ReachGrid, boxes: Box[], x: number, y: number): boolean {
+  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
+  for (let ty = Math.floor(y0 / TS); ty <= Math.floor((y1 - 0.01) / TS); ty++)
+    for (let tx = Math.floor(x0 / TS); tx <= Math.floor((x1 - 0.01) / TS); tx++) {
+      if (tx < 0 || ty < 0 || tx >= g.w || ty >= g.h) return false;
+      if (isSolidT(g.grid[ty * g.w + tx])) return false;
+    }
+  for (const b of boxes) if (x1 > b[0] && x0 < b[2] && y1 > b[1] && y0 < b[3]) return false;
+  return true;
 }
 
-const STEP = 4;
-
-export interface ReachMap {
-  /** Is a golem standing with its feet at (x, y) px reachable? (nearest lattice point) */
-  at(x: number, y: number): boolean;
-  /** Is any reachable standing point within `r` px of (x, y)? */
-  near(x: number, y: number, r: number): boolean;
-  /** Reachable lattice points (for stats). */
-  count: number;
-}
-
-/** Blocked-pixel bitmap of the static layout. */
-export function blockedPixels(a: ReachSource): Uint8Array {
-  const W = a.w * TS, H = a.h * TS, b = new Uint8Array(W * H);
-  for (let ty = 0; ty < a.h; ty++) for (let tx = 0; tx < a.w; tx++) {
-    if (!isSolidT(a.grid[ty * a.w + tx])) continue;
-    for (let y = ty * TS; y < ty * TS + TS; y++) b.fill(1, y * W + tx * TS, y * W + tx * TS + TS);
+/** Bucket boxes by tile so the flood fill stays cheap on big areas. */
+function bucketBoxes(g: ReachGrid, boxes: Box[]) {
+  const buckets = new Map<number, Box[]>();
+  for (const b of boxes) {
+    for (let ty = Math.floor(b[1] / TS) - 1; ty <= Math.floor(b[3] / TS) + 1; ty++)
+      for (let tx = Math.floor(b[0] / TS) - 1; tx <= Math.floor(b[2] / TS) + 1; tx++) {
+        if (tx < 0 || ty < 0 || tx >= g.w || ty >= g.h) continue;
+        const k = ty * g.w + tx;
+        let l = buckets.get(k);
+        if (!l) buckets.set(k, (l = []));
+        l.push(b);
+      }
   }
-  for (const p of a.props) {
-    const bx = propDef(p.kind).box;
-    if (!bx || (p.taken && HARVEST[p.kind]?.clearBox)) continue;
-    const x0 = Math.max(0, Math.floor(p.x - bx[0] / 2)), x1 = Math.min(W, Math.ceil(p.x + bx[0] / 2));
-    const y0 = Math.max(0, Math.floor(p.y - bx[1])), y1 = Math.min(H, Math.ceil(p.y));
-    for (let y = y0; y < y1; y++) if (x1 > x0) b.fill(1, y * W + x0, y * W + x1);
-  }
-  return b;
+  return (x: number, y: number) => buckets.get(Math.floor(y / TS) * g.w + Math.floor(x / TS)) ?? [];
 }
 
-/** Flood fill from the standing point (fx, fy) px. */
-export function reachFrom(a: ReachSource, fx: number, fy: number): ReachMap {
-  const W = a.w * TS, H = a.h * TS, blk = blockedPixels(a);
-  const LW = Math.floor(W / STEP) + 1, LH = Math.floor(H / STEP) + 1;
-  const free = (lx: number, ly: number) => {
-    const x = lx * STEP, y = ly * STEP;
-    if (x - 5 < 0 || x + 5 > W || y - 5 < 0 || y > H) return false;
-    for (let py = y - 5; py < y; py++) { const row = py * W; for (let px = x - 5; px < x + 5; px++) if (blk[row + px]) return false; }
-    return true;
+/**
+ * Flood fill from the cell containing `start` (px). Returns a per-tile array:
+ * 1 = reachable standing cell, 0 = not.
+ */
+export function reachable(g: ReachGrid, boxes: Box[], start: { x: number; y: number }): Uint8Array {
+  const near = bucketBoxes(g, boxes);
+  const ok = (x: number, y: number) => freeAt(g, near(x, y), x, y);
+  const stand = new Int8Array(g.w * g.h).fill(-1);
+  const canStand = (tx: number, ty: number) => {
+    const k = ty * g.w + tx;
+    if (stand[k] < 0) { const f = cellFeet(tx, ty); stand[k] = ok(f.x, f.y) ? 1 : 0; }
+    return stand[k] === 1;
   };
-  const seen = new Uint8Array(LW * LH);
-  const sx = Math.round(fx / STEP), sy = Math.round(fy / STEP);
-  const stack: number[] = [];
-  let count = 0;
-  if (free(sx, sy)) { seen[sy * LW + sx] = 1; stack.push(sy * LW + sx); }
-  while (stack.length) {
-    const i = stack.pop()!; count++;
-    const lx = i % LW, ly = (i / LW) | 0;
+  const out = new Uint8Array(g.w * g.h);
+  const sx = Math.floor(start.x / TS), sy = Math.floor((start.y - 3) / TS);
+  if (sx < 0 || sy < 0 || sx >= g.w || sy >= g.h || !canStand(sx, sy)) return out;
+  const q = [sy * g.w + sx];
+  out[q[0]] = 1;
+  while (q.length) {
+    const k = q.pop()!, tx = k % g.w, ty = (k / g.w) | 0;
+    const a = cellFeet(tx, ty);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = lx + dx, ny = ly + dy;
-      if (nx < 0 || ny < 0 || nx >= LW || ny >= LH) continue;
-      const j = ny * LW + nx;
-      if (seen[j]) continue;
-      seen[j] = 2; // visited (blocked unless proven free)
-      if (free(nx, ny)) { seen[j] = 1; stack.push(j); }
+      const nx = tx + dx, ny = ty + dy;
+      if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h) continue;
+      const nk = ny * g.w + nx;
+      if (out[nk] || !canStand(nx, ny)) continue;
+      let clear = true;
+      for (let s = 4; s < TS; s += 4) if (!ok(a.x + dx * s, a.y + dy * s)) { clear = false; break; }
+      if (!clear) continue;
+      out[nk] = 1;
+      q.push(nk);
     }
   }
-  const ok = (lx: number, ly: number) => lx >= 0 && ly >= 0 && lx < LW && ly < LH && seen[ly * LW + lx] === 1;
-  return {
-    count,
-    at: (x, y) => ok(Math.round(x / STEP), Math.round(y / STEP)),
-    near: (x, y, r) => {
-      const R = Math.ceil(r / STEP), cx = Math.round(x / STEP), cy = Math.round(y / STEP);
-      for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) if (i * i + j * j <= R * R && ok(cx + i, cy + j)) return true;
-      return false;
-    },
-  };
+  return out;
+}
+
+/** Is the point (px) within one tile of a reachable cell (i.e. something there can be walked up to)? */
+export function nearReached(g: ReachGrid, reached: Uint8Array, x: number, y: number, rTiles = 1): boolean {
+  const tx = Math.floor(x / TS), ty = Math.floor(y / TS);
+  for (let j = -rTiles; j <= rTiles; j++) for (let i = -rTiles; i <= rTiles; i++) {
+    const nx = tx + i, ny = ty + j;
+    if (nx >= 0 && ny >= 0 && nx < g.w && ny < g.h && reached[ny * g.w + nx]) return true;
+  }
+  return false;
 }

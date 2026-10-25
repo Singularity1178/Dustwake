@@ -21,8 +21,12 @@ const LEGACY_PROPS = [
 ];
 const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph1", "glyph2", "glyph3", "schematic", "crown", "goblet", "coin"];
 
-const GOLDEN = { props: "9b046139", items: "6cae5365", bake: "e1dff93" }; // bake: 558f8993 before the collapsed SURFACE GATE entrance (verified: only that block changes it)
-
+// bake: updated deliberately for the collapsed SURFACE GATE (map.ts): the
+// corridor's floor style became spilled earth, two rubble tiles at the corridor
+// mouth, and 39 entrance decals appended after the procedural pass (all within
+// tiles x 32-39, y 46-49). Everything else in the dungeon is unchanged
+// (was "558f8993").
+const GOLDEN = { props: "9b046139", items: "6cae5365", bake: "c475d9be" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();

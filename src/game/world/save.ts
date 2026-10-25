@@ -9,6 +9,9 @@
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
 import { SeededRng } from "../core/rng";
+import { TS } from "../content/tiles";
+import { RECIPES } from "../content/build";
+import { RUNE_T } from "../surface";
 import type { DecalDef, LooseItem, PropDef } from "../map";
 import type { ItemId } from "../content/items";
 import { Area, type RitualState } from "./area";
@@ -19,13 +22,10 @@ import type { Actor, Scheduled, World } from "./world";
  * v1: inventory was ItemId[] on the actor; scheduled effects had no area.
  * v2: inventory is Slot[] ({item, n} | null); areas gain looseAdded/looseSeq.
  * v3: scheduled effects carry their area; areas gain propsAdded/propSeq and per-prop harvest damage.
- * v4: the surface was rebuilt as overgrown wilds (new layout, new prop ids). Stale
- *     surface diffs are discarded; see MIGRATIONS[3].
+ * v4: the surface builder was rewritten (wild, overgrown land over the buried
+ *     dungeon), so v3 surface diffs no longer describe anything; they are discarded.
  */
 export const SAVE_VERSION = 4;
-
-/** Surface rune centre in px (kept literal: migrations must not change when builders do). */
-const V4_SURFACE_RUNE = { x: 48 * 16 + 8, y: 26 * 16 + 8 };
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -90,25 +90,36 @@ export const MIGRATIONS: Record<number, Migration> = {
     };
   },
   3: (s) => {
-    // The v3 surface diff indexes tiles and prop ids of the old ruined-keep layout,
-    // which mean nothing on the overgrown one. Discard it, keeping only what has
-    // a stable identity: the basket pickup, id counters, built torches (kept as
-    // placed), and dropped stacks (moved next to the rune so nothing is lost).
-    // Anyone standing on the surface is moved to the rune.
+    // The v3 surface diff indexes tiles and prop ids (tree@x,y, ...) of the old
+    // keep-ruin layout, which no longer exist: drop tile edits, prop states,
+    // decals and pending surface work. Nothing the player owns is lost: the
+    // basket pickup keeps its id, dropped stacks and the materials of built
+    // torches are laid down just south of the rune, and anyone standing on the
+    // surface is moved to the rune.
     const sf = s.areas?.surface;
-    const areas = { ...s.areas };
-    if (sf) {
-      areas.surface = {
-        tiles: [], props: {},
-        looseTaken: (sf.looseTaken ?? []).filter((id: string) => id === "basket"),
-        looseAdded: (sf.looseAdded ?? []).map((l: any, i: number) => ({ ...l, x: V4_SURFACE_RUNE.x - 24 + (i % 4) * 16, y: V4_SURFACE_RUNE.y + 76 + Math.floor(i / 4) * 12 })),
-        looseSeq: sf.looseSeq ?? 0,
-        propsAdded: sf.propsAdded ?? [], propSeq: sf.propSeq ?? 0,
-        decalsAdded: [], ritual: null,
-      };
+    if (!sf) return { ...s, version: 4 };
+    const rx = RUNE_T.x * TS + 8, ry = RUNE_T.y * TS + 8;
+    let seq = sf.looseSeq ?? 0;
+    const looseAdded: LooseItem[] = [];
+    const lay = (item: string, n: number, id?: string) => {
+      const k = looseAdded.length;
+      looseAdded.push({ id: id ?? `drop${seq++}`, item: item as ItemId, n, x: rx - 24 + (k % 5) * 12, y: ry + 74 + Math.floor(k / 5) * 10 });
+    };
+    for (const l of sf.looseAdded ?? []) lay(l.item, l.n ?? 1, l.id);
+    for (const p of sf.propsAdded ?? []) {
+      const r = Object.values(RECIPES).find((rc) => rc.prop === p.kind);
+      if (r && !p.taken) for (const c of r.cost) lay(c.item, c.n);
     }
-    const actors = s.actors.map((a: any) => (a.area === "surface" ? { ...a, x: V4_SURFACE_RUNE.x, y: V4_SURFACE_RUNE.y + 4, task: null, queue: [] } : a));
-    return { ...s, version: 4, areas, actors };
+    const surface: AreaSave = {
+      tiles: [], props: {}, decalsAdded: [], ritual: null, propsAdded: [], propSeq: sf.propSeq ?? 0,
+      looseTaken: (sf.looseTaken ?? []).filter((id: string) => id === "basket"), looseAdded, looseSeq: seq,
+    };
+    return {
+      ...s, version: 4,
+      areas: { ...s.areas, surface },
+      scheduled: s.scheduled.filter((e: any) => e.area !== "surface"),
+      actors: s.actors.map((a: any) => a.area !== "surface" ? a : { ...a, x: rx, y: ry + 4, vx: 0, vy: 0, task: null, queue: [] }),
+    };
   },
 };
 

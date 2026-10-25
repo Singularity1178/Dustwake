@@ -21,7 +21,12 @@ export function inGap(dx: number, dy: number) {
   return a >= GAP_A0 && a <= GAP_A1 && dx * dx + dy * dy > 144;
 }
 
-export function buildCircle(): CircleArt {
+/**
+ * The carved grooves of a translocation circle, as a pure pixel set (no DOM):
+ * key = y * 128 + x on the circle canvas, value = lies in the uncarved gap
+ * (dungeon tutorial). Insertion order is the drawing order.
+ */
+export function circlePixelSet(): Map<number, boolean> {
   const S = CR * 2;
   const set = new Map<number, boolean>();
   const add = (x: number, y: number) => {
@@ -55,7 +60,19 @@ export function buildCircle(): CircleArt {
     const sh = 0.16;
     line(CR + a[0] + (b[0] - a[0]) * sh, CR + a[1] + (b[1] - a[1]) * sh, CR + b[0] + (a[0] - b[0]) * sh, CR + b[1] + (a[1] - b[1]) * sh);
   }
+  return set;
+}
 
+/** Carved pixels relative to the circle centre (the order buildCircle draws them in). */
+export function circlePixels(): { x: number; y: number; gap: boolean }[] {
+  const S = CR * 2, out: { x: number; y: number; gap: boolean }[] = [];
+  for (const [k, gap] of circlePixelSet()) out.push({ x: (k % S) - CR, y: ((k / S) | 0) - CR, gap });
+  return out;
+}
+
+export function buildCircle(): CircleArt {
+  const S = CR * 2;
+  const set = circlePixelSet();
   const mk = () => makeCanvas(S, S);
   const base = mk(), chalk = mk(), gapC = mk(), glow = mk(), glowGap = mk(), ghost = mk();
   // dais

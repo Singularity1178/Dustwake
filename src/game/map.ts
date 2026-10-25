@@ -5,7 +5,7 @@ import { TS, T, FS } from "./content/tiles";
 import type { ItemId } from "./content/items";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
-import { GATE_CORRIDOR } from "./content/geo";
+import { GATE_CORRIDOR, GATE_EXIT } from "./content/geography";
 
 export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
 export type { ItemId } from "./content/items";
@@ -118,8 +118,7 @@ export function buildMap(seed: number): MapData {
   rect(51, 33, 2, 2, T.FLOOR, B);
   rect(51, 46, 2, 2, T.FLOOR, B);
   rect(35, 41, 2, 3, T.FLOOR, FS.MARBLE);
-  const GC = GATE_CORRIDOR;
-  rect(GC.x0, GC.y0, GC.x1 - GC.x0 + 1, GC.y1 - GC.y0 + 1, T.FLOOR, FS.MARBLE); // the SURFACE GATE corridor
+  rect(GATE_CORRIDOR.x, GATE_CORRIDOR.y, GATE_CORRIDOR.w, GATE_CORRIDOR.h, T.FLOOR, FS.MARBLE);
   rect(29, 48, 2, 1, T.FLOOR, FS.FLAG);
   rect(34, 16, 4, 4, T.FLOOR, FS.MARBLE);
   rect(69, 46, 2, 2, T.FLOOR, FS.FLAG);
@@ -145,7 +144,8 @@ export function buildMap(seed: number): MapData {
   rect(49, 1, 2, 3, R);
   rect(34, 16, 4, 4, R);
   rect(44, 36, 3, 2, R);
-  rect(GC.x0, GC.y0, GC.x1 - GC.x0 + 1, GC.y1 - GC.y0 + 1, R); // collapsed: see "SURFACE GATE" below
+  // the SURFACE GATE corridor: collapsed and choked with rock and spilled earth
+  rect(GATE_CORRIDOR.x, GATE_CORRIDOR.y, GATE_CORRIDOR.w, GATE_CORRIDOR.h, R, FS.EARTH);
   rect(69, 46, 2, 2, R);
   for (const [x, y] of [
     [43, 2], [44, 2], [45, 2], [44, 3], [45, 3], [45, 4], [43, 3],
@@ -364,34 +364,6 @@ export function buildMap(seed: number): MapData {
       if (wallN && rng() < 0.12) D("moss", bx + rng() * 8, by + rng() * 8, (rng() * 3) | 0);
     }
 
-  // ---- SURFACE GATE: the collapsed, rock-choked entrance (appended after all
-  // shared-rng work with its own seed, so no other room's art shifts) ----
-  {
-    const gr = mulberry(seed ^ 0x9a7e);
-    const gx = (GC.x0 + GC.x1 + 1) / 2; // corridor centre, in tiles
-    // the heap spills one row into the Vestibule
-    for (let x = GC.x0; x <= GC.x1; x++) set(x, GC.y0 - 1, R);
-    // spilled earth fanning 2-3 tiles into the room, loose stones and debris on it
-    D("spill", gx * TS, (GC.y0 - 1.2) * TS, 0, 72, 34);
-    D("spill", (gx - 2.6) * TS, (GC.y0 - 1.6) * TS, 1, 30, 16);
-    D("spill", (gx + 2.4) * TS, (GC.y0 - 1.9) * TS, 2, 26, 14);
-    for (let i = 0; i < 16; i++) D("pebbles", (gx + (gr() - 0.5) * 7) * TS, (GC.y0 - 1 - gr() * 2.4) * TS, 0);
-    for (let i = 0; i < 10; i++) D("debris", (gx + (gr() - 0.5) * 8) * TS, (GC.y0 - 1.2 - gr() * 2.6) * TS, (gr() * 4) | 0);
-    for (let i = 0; i < 3; i++) D("roots", (gx - 2 + gr() * 4) * TS, (GC.y0 - 1.6 - gr()) * TS, 0);
-    // roots forcing through the broken walls and vault over the corridor mouth
-    for (const x of [GC.x0 - 2, GC.x0 - 1, GC.x1 + 1, GC.x1 + 2]) D("rootshang", x * TS + 2, GC.y0 * TS + 1, 0);
-    for (let x = GC.x0; x <= GC.x1; x++) D("rootshang", x * TS + 2, GC.y0 * TS - 2, 1);
-    // heaped boulders and fallen masonry, row upon row down the corridor (solid either way)
-    const piles: [number, number][] = [[gx - 0.5, GC.y0 - 1], [gx + 1, GC.y0 - 0.6], [gx - 1.6, GC.y0], [gx + 0.4, GC.y0 + 0.6], [gx - 0.8, GC.y0 + 1.8], [gx + 1.2, GC.y0 + 2.4], [gx - 1, GC.y0 + 3.4]];
-    piles.forEach(([x, y], i) => {
-      const id = `rockpile@gate${i}`;
-      ids.add(id);
-      props.push({ id, kind: "rockpile", x: x * TS, y: y * TS + 16, v: i % 3 });
-    });
-    // the faintest cool grey of daylight seeping between the stones
-    lights.push({ x: gx * TS, y: GC.y0 * TS + 4, rad: 22, col: [0.55, 0.68, 0.9], int: 0.2, flick: 0.03, id: "gateleak" });
-  }
-
   // ---- Ritual pedestals (one per socket; appended last so draw order is unchanged) ----
   socketPositions(ritual).forEach((s, i) => {
     const id = "ped" + i;
@@ -401,6 +373,32 @@ export function buildMap(seed: number): MapData {
   // The circle as a node of the rune network (content/runes.ts). No sprite, no collision.
   props.push({ id: "rune.dungeon", kind: "runesite", x: ritual.x, y: ritual.y, v: 0 });
 
+  // ---- The collapsed SURFACE GATE (added after the procedural pass, with its
+  // own rng, so nothing else in the dungeon changes). The corridor is heaped
+  // with boulders and fallen masonry; rubble and spilled earth reach a few
+  // tiles into the Vestibule; roots force their way through the broken vault.
+  {
+    const gr = mulberry(seed ^ 0x6a7e);
+    const C = GATE_CORRIDOR;
+    for (const x of [C.x, C.x + C.w - 1]) set(x, C.y - 1, R, FS.EARTH);
+    const cx = (C.x + C.w / 2) * TS, top = C.y * TS;
+    D("earthspill", cx, top - 10, 0, 76, 44);
+    D("earthspill", cx - 20, top - 30, 1, 34, 20);
+    D("earthspill", cx + 18, top - 26, 2, 30, 18);
+    for (let i = 0; i < 16; i++) D("stones", cx + (gr() - 0.5) * 120, top - 6 - gr() * 52, (gr() * 4) | 0);
+    for (let i = 0; i < 10; i++) D("debris", cx + (gr() - 0.5) * 100, top - 4 - gr() * 44, (gr() * 4) | 0);
+    for (const [x, y, v] of [[C.x - 1.6, C.y - 0.2, 0], [C.x - 0.4, C.y - 1.1, 1], [C.x + C.w + 0.3, C.y - 0.1, 1], [C.x + C.w - 0.8, C.y - 1.2, 0], [C.x + 1.4, C.y - 2.2, 1]] as const)
+      D("rootfall", x * TS, y * TS, v);
+    for (let i = 0; i < 5; i++) D("roots", cx + (gr() - 0.5) * 70, top - 18 - gr() * 20, 0);
+    const piles: [number, number, number][] = [
+      [C.x + 0.3, C.y, 0], [C.x + 2.6, C.y + 0.2, 1], [C.x + 1.5, C.y + 1, 2], [C.x + 0.2, C.y + 2, 1], [C.x + 3, C.y + 2.4, 0],
+      [C.x + 1.6, C.y + 3.2, 2], [C.x + 0.5, C.y + 4, 0], [C.x + 2.8, C.y + 4.2, 1], [C.x - 0.5, C.y - 1.9, 1], [C.x + C.w - 0.1, C.y - 1.8, 2],
+    ];
+    for (const [x, y, v] of piles) P("rockpile", x, y, { v });
+    // the faintest cool seam of night air where the gate's crown has slumped
+    lights.push({ x: cx, y: top + 22, rad: 24, col: [0.55, 0.68, 0.95], int: 0.16, flick: 0.04, id: "gateleak" });
+  }
+
   return {
     id: "dungeon", w: MW, h: MH,
     grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips,
@@ -408,7 +406,7 @@ export function buildMap(seed: number): MapData {
     exits: [
       { x: 22, y: 1, label: "UPPER WARD", dir: "n" },
       { x: 50, y: 1, label: "TOWER", dir: "n" },
-      { x: GC.exit.x, y: GC.exit.y, label: "SURFACE GATE", dir: "s" },
+      { x: GATE_EXIT.x, y: GATE_EXIT.y, label: "SURFACE GATE", dir: "s" },
       { x: 71, y: 47, label: "CELLARS", dir: "e" },
     ],
   };
