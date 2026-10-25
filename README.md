@@ -32,24 +32,41 @@ npm run build
 
 The build uses [`vite-plugin-singlefile`](https://github.com/richardtallent/vite-plugin-singlefile), so the output is a single self-contained `dist/index.html` that can be opened directly in a browser.
 
+## Tests
+
+```bash
+npm test
+```
+
+Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner.
+
 ## Project layout
 
 ```
 src/
   App.tsx            canvas mount, game loop, input wiring
   game/
-    game.ts          game states, simulation, rendering
-    map.ts           dungeon layout and rooms
+    core/            seeded RNG, hashing (pure)
+    content/         items, props, tiles, glyphs, flags, tasks, interaction rules (data)
+    map.ts           tutorial dungeon area builder
+    world/           Area, World, area registry, save/load (simulated + saved state)
+    sim/             tasks/effects, interactions, ritual puzzle, stepping (no DOM)
+    view/            area view: baked background + light registry
+    ui/              screen stack
+    game.ts          host + presentation: screens, camera, particles, audio, rendering
     art.ts           procedural pixel-art sprites and tiles
-    golem.ts         player character
+    golem.ts         golem drawing
     schematic.ts     schematic UI
     light.ts         lighting and glow
     audio.ts         synthesized sound effects
     font.ts          bitmap font
-    circle.ts        circle primitives
-    util.ts          shared helpers
-  utils/cn.ts        class name helper
+    circle.ts        rune circle art
+    util.ts          canvas helpers
+tests/               headless sim tests
+docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
 
 ## Status
 

@@ -1,18 +1,22 @@
-import { mulberry } from "./util";
+// The tutorial dungeon, as an area definition. Pure data builder (no DOM): the
+// same seed always yields the same layout. Runtime state lives in world/area.ts.
+import { mulberry } from "./core/rng";
+import { TS, T, FS } from "./content/tiles";
+import type { ItemId } from "./content/items";
+import { propDef } from "./content/props";
+import { socketPositions } from "./content/ritual";
 
-export const TS = 16;
+export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
+export type { ItemId } from "./content/items";
+
+/** Dungeon dimensions. Only this builder uses them; everything else reads area.w / area.h. */
 export const MW = 72;
 export const MH = 56;
-
-export const T = { WALL: 0, FLOOR: 1, RUBBLE: 2, CRACKED: 3, LOCKED: 4, PILLAR: 5, BARS: 6 } as const;
-export const FS = { FLAG: 0, MARBLE: 1, BRICK: 2, WOOD: 3, COBBLE: 4 } as const;
-
-export type ItemId =
-  | "chisel" | "arm" | "key" | "core"
-  | "glyph0" | "glyph1" | "glyph2" | "glyph3"
-  | "schematic" | "crown" | "goblet" | "coin";
+export const DUNGEON_SEED = 1337;
 
 export interface PropDef {
+  /** Stable identity, used by saves and lights. Defaults to kind@tx,ty. */
+  id: string;
   kind: string;
   x: number;
   y: number;
@@ -21,17 +25,22 @@ export interface PropDef {
   item?: ItemId;
   itemZ?: number;
   container?: boolean;
-  id?: string;
 }
 export interface DecalDef { kind: string; x: number; y: number; v: number; w?: number; h?: number }
 export interface LightDef {
   x: number; y: number; rad: number; col: [number, number, number]; int: number; flick: number; id?: string;
+  /** Prop that emits this light; the light follows that prop's state. */
+  owner?: string;
 }
 export interface Room { num: number; name: string; x: number; y: number; w: number; h: number }
-export interface LooseItem { item: ItemId; x: number; y: number }
+export interface LooseItem { id: string; item: ItemId; x: number; y: number }
 export interface Exit { x: number; y: number; label: string; dir: "n" | "s" | "e" | "w" }
 
-export interface MapData {
+/** Static definition of an area. Builders must be deterministic. */
+export interface AreaData {
+  id: string;
+  w: number;
+  h: number;
   grid: Uint8Array;
   plan: Uint8Array;
   style: Uint8Array;
@@ -41,14 +50,18 @@ export interface MapData {
   decals: DecalDef[];
   lights: LightDef[];
   loose: LooseItem[];
+  /** Translocation circle centre, if the area has one. */
   ritual: { x: number; y: number };
   start: { x: number; y: number };
   exits: Exit[];
   drips: { x: number; y: number }[];
 }
+/** @deprecated alias kept for art/schematic signatures */
+export type MapData = AreaData;
 
-export const isSolidT = (t: number) => t !== T.FLOOR;
-export const isOpaqueT = (t: number) => t === T.WALL || t === T.RUBBLE || t === T.CRACKED || t === T.LOCKED || t === T.PILLAR;
+export function buildDungeon(): AreaData {
+  return buildMap(DUNGEON_SEED);
+}
 
 export function buildMap(seed: number): MapData {
   const rng = mulberry(seed);
@@ -151,12 +164,15 @@ export function buildMap(seed: number): MapData {
   const drips: { x: number; y: number }[] = [];
   const px = (tx: number) => tx * TS + 8;
   const py = (ty: number) => ty * TS + 16;
+  const ids = new Set<string>();
   const P = (kind: string, tx: number, ty: number, o: Partial<PropDef> = {}) => {
-    const p: PropDef = { kind, x: px(tx), y: py(ty), v: 0, ...o };
+    let id = o.id ?? `${kind}@${tx},${ty}`;
+    for (let n = 2; ids.has(id); n++) id = `${kind}@${tx},${ty}#${n}`;
+    ids.add(id);
+    const p: PropDef = { kind, x: px(tx), y: py(ty), v: 0, ...o, id };
     props.push(p);
-    if (kind === "torch" && p.lit) lights.push({ x: p.x, y: p.y + 6, rad: 84, col: [1, 0.62, 0.32], int: 0.85, flick: 0.22 });
-    if (kind === "brazier" && p.lit) lights.push({ x: p.x, y: p.y - 4, rad: 96, col: [1, 0.58, 0.3], int: 0.9, flick: 0.2 });
-    if (kind === "mushrooms") lights.push({ x: p.x, y: p.y - 3, rad: 44, col: [0.35, 0.95, 0.8], int: 0.55, flick: 0.04 });
+    const L = propDef(kind).light;
+    if (L && (L.when === "always" || p.lit)) lights.push({ x: p.x + L.dx, y: p.y + L.dy, rad: L.rad, col: L.col, int: L.int, flick: L.flick, owner: id });
     return p;
   };
   const D = (kind: string, x: number, y: number, v = 0, w?: number, h?: number) => decals.push({ kind, x, y, v, w, h });
@@ -173,7 +189,7 @@ export function buildMap(seed: number): MapData {
   for (const x of [27, 31, 40]) P("banner", x, 1, { v: x % 3 });
   P("brazier", 33, 12);
   P("brazier", 38, 12, { v: 1 });
-  loose.push({ item: "crown", x: 33 * TS + 2, y: 6 * TS + 4 });
+  loose.push({ id: "crown", item: "crown", x: 33 * TS + 2, y: 6 * TS + 4 });
   lights.push({ x: 31 * TS, y: 10 * TS, rad: 84, col: [0.55, 0.68, 1], int: 1.0, flick: 0.02, id: "moon" });
   lights.push({ x: 46 * TS + 8, y: 10 * TS + 16, rad: 30, col: [0.55, 0.68, 1], int: 0.35, flick: 0.02 });
   for (let i = 0; i < 14; i++) D("debris", 31 * TS + (rng() - 0.5) * 48, 10 * TS + (rng() - 0.5) * 40, (rng() * 4) | 0);
@@ -257,7 +273,7 @@ export function buildMap(seed: number): MapData {
   P("chest", 54, 4, { v: 2 });
   P("pot", 59, 8);
   P("pot", 52, 8, { v: 1 });
-  loose.push({ item: "coin", x: 55 * TS + 8, y: 7 * TS + 8 });
+  loose.push({ id: "coin", item: "coin", x: 55 * TS + 8, y: 7 * TS + 8 });
   for (let i = 0; i < 12; i++) D("coins", 52 * TS + rng() * 8 * TS, 3 * TS + rng() * 6 * TS, (rng() * 3) | 0);
 
   // Armory
@@ -342,7 +358,15 @@ export function buildMap(seed: number): MapData {
       if (wallN && rng() < 0.12) D("moss", bx + rng() * 8, by + rng() * 8, (rng() * 3) | 0);
     }
 
+  // ---- Ritual pedestals (one per socket; appended last so draw order is unchanged) ----
+  socketPositions(ritual).forEach((s, i) => {
+    const id = "ped" + i;
+    ids.add(id);
+    props.push({ id, kind: "pedestal", x: s.x, y: s.y + 4, v: 0 });
+  });
+
   return {
+    id: "dungeon", w: MW, h: MH,
     grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips,
     start: { x: 9 * TS + 8, y: 38 * TS + 14 },
     exits: [

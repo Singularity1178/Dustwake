@@ -3,7 +3,8 @@ import { makeCanvas, hash2 } from "./util";
 export const CR = 64; // half size of circle canvas
 export const GAP_A0 = (15 * Math.PI) / 180;
 export const GAP_A1 = (75 * Math.PI) / 180;
-export const SOCKET_R = 50;
+import { SOCKET_R } from "./content/ritual";
+export { SOCKET_R };
 
 export interface CircleArt {
   base: HTMLCanvasElement; // carved grooves (non-gap) + dais

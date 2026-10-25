@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Game, W, H } from "./game/game";
+import { serialize, saveToStorage, loadFromStorage } from "./game/world/save";
 
 export default function App() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -8,6 +9,15 @@ export default function App() {
   useEffect(() => {
     const canvas = ref.current!;
     const game = new Game(canvas);
+    // Developer hook (not player-facing): open with ?debug to get window.dustwake.
+    if (new URLSearchParams(window.location.search).has("debug")) {
+      (window as unknown as Record<string, unknown>).dustwake = {
+        game,
+        serialize: () => serialize(game.world),
+        save: () => saveToStorage(game.world),
+        load: () => { const w = loadFromStorage(); if (w) game.resume(w); return !!w; },
+      };
+    }
     let raf = 0;
     let last = performance.now();
     let running = true;

@@ -1,4 +1,8 @@
-import { MapData, MW, MH, TS, T, FS, ItemId, DecalDef } from "./map";
+import { MapData, TS, T, FS, ItemId, DecalDef } from "./map";
+import { isWallMassT } from "./content/tiles";
+import { GLYPHS } from "./content/glyphs";
+export { GLYPHS } from "./content/glyphs";
+export { ITEM_NAMES } from "./content/items";
 import { hash2, makeSprite, Sprite, Pen, Rng, mulberry, clamp } from "./util";
 
 // ---------------- Palettes ----------------
@@ -9,17 +13,12 @@ export const CL = { d: "#4a1418", m: "#6e1f24", l: "#8e3036" };
 export const GD = { d: "#7a5a1c", m: "#b08a34", l: "#e0c060" };
 export const BN = { d: "#8a8270", m: "#b8b09a", l: "#ddd5bd" };
 
-export const GLYPHS = [
-  { name: "SUN GLYPH", color: "#ffc94a", dark: "#8a5a10", pat: ["..###..", ".#...#.", "#..#..#", "#.###.#", "#..#..#", ".#...#.", "..###.."] },
-  { name: "TIDE GLYPH", color: "#5ab0ff", dark: "#1a4a8a", pat: [".......", "..#...#", ".#.#.#.", "#...#..", "..#...#", ".#.#.#.", "#...#.."] },
-  { name: "GALE GLYPH", color: "#c8f0ff", dark: "#4a7088", pat: ["#######", "......#", ".####.#", ".#..#.#", ".#.##.#", ".#....#", ".######"] },
-  { name: "ROOT GLYPH", color: "#7fd65a", dark: "#2a6a1a", pat: ["...#...", "...#...", ".#.#.#.", "..###..", "...#...", "..#.#..", ".#...#."] },
-];
-
 // ---------------- Background baking ----------------
+/** What background baking reads from an area. */
+export type BakeSource = Pick<MapData, "w" | "h" | "grid" | "style" | "decals">;
 type C3 = [number, number, number];
-const isWall = (m: MapData, x: number, y: number) =>
-  x < 0 || y < 0 || x >= MW || y >= MH ? true : m.grid[y * MW + x] === T.WALL || m.grid[y * MW + x] === T.LOCKED;
+const isWall = (m: BakeSource, x: number, y: number) =>
+  x < 0 || y < 0 || x >= m.w || y >= m.h ? true : isWallMassT(m.grid[y * m.w + x]);
 
 function floorPix(style: number, tx: number, ty: number, lx: number, ly: number): C3 {
   const wx = tx * TS + lx, wy = ty * TS + ly;
@@ -109,7 +108,7 @@ function wallFacePix(tx: number, ty: number, lx: number, ly: number): C3 {
   return [66 + t + n, 60 + t + n, 70 + t + n];
 }
 
-function wallTopPix(m: MapData, tx: number, ty: number, lx: number, ly: number): C3 {
+function wallTopPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
   const n = hash2(tx * 16 + lx, ty * 16 + ly, 9) * 4;
   const L = !isWall(m, tx - 1, ty), R = !isWall(m, tx + 1, ty), U = !isWall(m, tx, ty - 1);
   const rim = (L && lx === 0) || (R && lx === 15) || (U && ly === 0);
@@ -119,8 +118,8 @@ function wallTopPix(m: MapData, tx: number, ty: number, lx: number, ly: number):
   return [16 + n, 13 + n, 19 + n];
 }
 
-export function bakeRegion(ctx: CanvasRenderingContext2D, m: MapData, x0: number, y0: number, x1: number, y1: number) {
-  x0 = clamp(x0, 0, MW - 1); y0 = clamp(y0, 0, MH - 1); x1 = clamp(x1, 0, MW - 1); y1 = clamp(y1, 0, MH - 1);
+export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: number, y0: number, x1: number, y1: number) {
+  const MW = m.w; x0 = clamp(x0, 0, m.w - 1); y0 = clamp(y0, 0, m.h - 1); x1 = clamp(x1, 0, m.w - 1); y1 = clamp(y1, 0, m.h - 1);
   const w = (x1 - x0 + 1) * TS, h = (y1 - y0 + 1) * TS;
   const img = ctx.createImageData(w, h);
   const d = img.data;
@@ -855,16 +854,6 @@ function makeProp(kind: string, v: number, alt: boolean): Sprite | null {
   return null;
 }
 
-/** footprint for collision: [w, h] centered at x, ending at y */
-export const PROP_BOX: Record<string, [number, number]> = {
-  bookshelf: [16, 8], shelfrow: [16, 10], shelf_fallen: [28, 10], table: [28, 10], lectern: [10, 6],
-  chair: [8, 5], bed: [14, 26], footlocker: [12, 6], weaponrack: [24, 6], limbrack: [22, 6], armorstand: [10, 5],
-  barrel: [12, 7], crate: [14, 8], statue: [18, 10], statue_fallen: [30, 10], throne: [30, 14], maptable: [28, 10],
-  altar: [30, 10], pew: [36, 6], workbench: [32, 10], forge: [32, 12], anvil: [14, 6], cradle: [28, 5], slab: [36, 10],
-  hearth: [36, 10], longtable: [50, 10], bench: [44, 4], chest: [16, 8], pot: [10, 6], brazier: [12, 6],
-  fountain: [32, 14], pedestal: [10, 5], sack: [10, 5], parts: [16, 5],
-};
-
 // ---------------- Items ----------------
 export function glyphPattern(p: Pen, gi: number, x: number, y: number, color: string, glow: boolean) {
   const pat = GLYPHS[gi].pat;
@@ -927,9 +916,3 @@ export function itemIcon(id: ItemId): Sprite {
     })
   );
 }
-
-export const ITEM_NAMES: Record<ItemId, string> = {
-  chisel: "RUNE CHISEL", arm: "IRON ARM", key: "RUSTED KEY", core: "AETHER CORE",
-  glyph0: GLYPHS[0].name, glyph1: GLYPHS[1].name, glyph2: GLYPHS[2].name, glyph3: GLYPHS[3].name,
-  schematic: "SCHEMATIC", crown: "BROKEN CROWN", goblet: "SILVER GOBLET", coin: "OLD COIN",
-};

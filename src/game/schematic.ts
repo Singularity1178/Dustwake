@@ -1,4 +1,4 @@
-import { MapData, MW, MH, T, TS } from "./map";
+import { MapData, T, TS } from "./map";
 import { drawText, textWidth } from "./font";
 import { makeCanvas, hash2 } from "./util";
 import { GLYPHS } from "./art";
@@ -48,6 +48,7 @@ function label(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, c
 }
 
 export function buildSchematic(m: MapData, solution: number[]): HTMLCanvasElement {
+  const MW = m.w, MH = m.h;
   const { c, ctx } = makeCanvas(320, 180);
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, 320, 180);

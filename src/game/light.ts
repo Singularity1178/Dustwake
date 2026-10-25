@@ -1,4 +1,7 @@
-import { MW, MH, TS, isOpaqueT } from "./map";
+import { TS, isOpaqueT } from "./content/tiles";
+
+/** Anything with a tile grid and its dimensions (an Area). */
+export interface TileGrid { grid: Uint8Array; w: number; h: number }
 
 export interface Light {
   x: number; y: number; rad: number;
@@ -17,7 +20,8 @@ export function makeLight(x: number, y: number, rad: number, col: [number, numbe
   return { x, y, rad, r: col[0], g: col[1], b: col[2], int, flick, id, on: true, cur: int, seed: Math.random() * 100, vis: new Float32Array(0), ox: 0, oy: 0, n: 0, vx: -999, vy: -999 };
 }
 
-export function computeVis(L: Light, grid: Uint8Array) {
+export function computeVis(L: Light, area: TileGrid) {
+  const { grid, w: MW, h: MH } = area;
   const R = Math.ceil(L.rad / TS) + 1;
   const ltx = Math.floor(L.x / TS), lty = Math.floor(L.y / TS);
   const n = 2 * R + 1;
