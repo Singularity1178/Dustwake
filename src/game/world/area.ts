@@ -144,6 +144,19 @@ export class Area {
     this.touch();
     return inst;
   }
+  /**
+   * Remove a prop (deconstruction). Built props simply vanish; for authored
+   * props the save diff records the removal (base ids missing from the area).
+   * Lights a prop owns and cached interactables follow through `revision`.
+   */
+  removeProp(id: string): PropInst | undefined {
+    const p = this.propIndex.get(id);
+    if (!p) return undefined;
+    this.propIndex.delete(id);
+    this.props = this.props.filter((q) => q !== p);
+    this.touch();
+    return p;
+  }
   takeLoose(id: string) {
     const l = this.looseItem(id);
     if (l) { l.taken = true; this.touch(); }

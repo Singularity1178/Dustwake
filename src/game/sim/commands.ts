@@ -2,10 +2,10 @@
 // validates and then goes through the normal Task/Effect path, so it is data,
 // saveable and testable headless.
 import { ITEMS, isDroppable, type ItemId } from "../content/items";
-import { RECIPES } from "../content/build";
+import { RECIPES, DECONSTRUCT_DUR } from "../content/build";
 import { emit, areaOf, type Actor, type World } from "../world/world";
 import { applyEffect, beginTask } from "./tasks";
-import { placement, BLOCK_TEXT, buildAnchor } from "./build";
+import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, DECON_TEXT } from "./build";
 import { dropSpot } from "./inventory";
 import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
@@ -30,10 +30,23 @@ export function dropFromSlot(w: World, a: Actor, slot: number, n = 1): DropResul
 export function orderBuild(w: World, a: Actor, recipe: string, tx: number, ty: number): boolean {
   const ok = placement(w, a, areaOf(w, a), recipe, tx, ty);
   if (!ok.ok) { emit(w, { t: "message", text: BLOCK_TEXT[ok.reason] }); return false; }
-  const at = buildAnchor(tx, ty);
+  const at = recipeAnchor(recipe, tx, ty);
   faceTo(a, at.x, at.y - 4);
-  beginTask(a, { kind: "reach", dur: 0.7, effect: { op: "build", recipe, tx, ty } }, { kind: "build", x: at.x, y: at.y, tx, ty });
-  return RECIPES[recipe] !== undefined;
+  beginTask(a, { kind: "reach", dur: RECIPES[recipe].dur ?? 0.7, effect: { op: "build", recipe, tx, ty } }, { kind: "build", x: at.x, y: at.y, tx, ty });
+  return true;
+}
+
+/**
+ * Confirm a deconstruction: start a `dismantle` task aimed at the prop. The
+ * `deconstruct` effect re-validates when it fires and refunds the full cost.
+ */
+export function orderDeconstruct(w: World, a: Actor, propId: string): boolean {
+  const chk = deconstructCheck(w, a, areaOf(w, a), propId);
+  if (!chk.ok) { emit(w, { t: "message", text: DECON_TEXT[chk.reason] }); return false; }
+  const p = chk.prop;
+  faceTo(a, p.x, p.y - 4);
+  beginTask(a, { kind: "dismantle", dur: DECONSTRUCT_DUR, effect: { op: "deconstruct" } }, { kind: "deconstruct", x: p.x, y: p.y, propId: p.id });
+  return true;
 }
 
 /** Reading a book or document: grants its knowledge flag (once). */

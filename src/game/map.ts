@@ -28,6 +28,8 @@ export interface PropDef {
   container?: boolean;
   /** Starts open (e.g. a chest looted long ago). Uses the prop's alternate "open" sprite. */
   open?: boolean;
+  /** Built props: the recipe that built it (its cost is the deconstruction refund). */
+  recipe?: string;
 }
 export interface DecalDef { kind: string; x: number; y: number; v: number; w?: number; h?: number }
 export interface LightDef {

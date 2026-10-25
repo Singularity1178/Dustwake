@@ -3,11 +3,10 @@
 // entry points; it reacts to the World's events for sound and particles.
 import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, RELICS, isGlyph, glyphItem, type ItemId } from "./content/items";
-import { RECIPES } from "./content/build";
-import { capacity, countItem, hasItem, addItems } from "./sim/inventory";
-import { dropFromSlot, orderBuild, readItem } from "./sim/commands";
-import { placement, frontTile, buildAnchor, BLOCK_TEXT } from "./sim/build";
-import { BUILD_REACH } from "./content/build";
+import { capacity, hasItem, addItems } from "./sim/inventory";
+import { dropFromSlot, readItem } from "./sim/commands";
+import { BuildUi } from "./screens/buildMenu";
+import { CraftingUi } from "./screens/crafting";
 import { propDef } from "./content/props";
 import { GLYPHS } from "./content/glyphs";
 import { FLAGS } from "./content/flags";
@@ -135,7 +134,7 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "dialogue", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "dialogue", Screen>;
   /** Feedback line (blocked actions, pack full, rune dark...). */
   note: { text: string; t: number } | null = null;
   /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
@@ -151,8 +150,12 @@ export class Game {
   private runeArtCache: SurfaceRuneArt | null = null;
   /** The surface rune's layered art (dormant / awakening / restored), built on first use. */
   get runeArt() { return (this.runeArtCache ??= new SurfaceRuneArt(this.circle.pixels)); }
-  buildCur = { tx: 0, ty: 0 };
-  buildRecipe = "torch";
+  /** Build menu, placement and deconstruct tools (screens/buildMenu.ts). */
+  buildUi!: BuildUi;
+  /** Crafting bench screen (screens/crafting.ts). */
+  craftUi!: CraftingUi;
+  /** Printable characters typed this frame (raw case) and "\b" for Backspace: text fields read these. */
+  typed: string[] = [];
   book: { id: ItemId; page: number } | null = null;
 
   constructor(public canvas: HTMLCanvasElement, public uiCanvas: HTMLCanvasElement) {
@@ -280,9 +283,12 @@ export class Game {
 
   // ---------------------------------------------------------------- input
   keyDown(k: string) {
+    const raw = k;
     k = k.toLowerCase();
     if (!this.keys.has(k)) this.pressed.add(k);
     this.keys.add(k);
+    if (raw.length === 1) this.typed.push(raw);
+    else if (k === "backspace") this.typed.push("\b");
   }
   keyUp(k: string) { this.keys.delete(k.toLowerCase()); }
   pointer() { this.pressed.add("click"); }
@@ -317,10 +323,11 @@ export class Game {
       this.debugSpeed = !this.debugSpeed;
       say(this.debugSpeed ? "DEBUG: SUPER SPEED ON" : "DEBUG: SUPER SPEED OFF");
     } else if (n === 4) {
-      // Surface testing: building knowledge, basket, and a pile of materials.
-      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.golemBasket);
-      addItems(w, pl, "wood", 20); addItems(w, pl, "stone", 20);
-      say("DEBUG: BUILD + BASKET + MATERIALS");
+      // Building tests: every build knowledge flag (incl. masonry for the brazier),
+      // the basket, and enough materials to build one of everything several times.
+      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); setFlag(w, FLAGS.golemBasket);
+      addItems(w, pl, "wood", 40); addItems(w, pl, "stone", 40);
+      say("DEBUG: BUILD + MASONRY + BASKET + MATERIALS");
     } else if (n === 5) {
       // Toggle the mended eye (golem.eye) and the zoom it unlocks.
       if (hasFlag(w, FLAGS.golemEye)) { w.flags.delete(FLAGS.golemEye); this.zoomTo(1, 0.4); say("DEBUG: EYE REPAIR OFF"); }
@@ -355,6 +362,8 @@ export class Game {
   private makeScreens() {
     const g = this;
     const scr = (id: string, opaque: boolean, update: (dt: number) => void, render: () => void): Screen => ({ id, opaque, t: 0, update, render });
+    this.buildUi = new BuildUi(this);
+    this.craftUi = new CraftingUi(this);
     this.S = {
       title: scr("title", true, (dt) => {
         if (g.pressed.size) { g.sfx.init(); g.screens.set(g.S.intro); }
@@ -379,7 +388,8 @@ export class Game {
       }),
       arrive: scr("arrive", true, (dt) => { g.updateArrive(dt); g.worldFrame(dt); }, () => g.renderArrive()),
       book: scr("book", false, () => g.updateBook(), () => g.renderBook()),
-      build: scr("build", false, () => g.updateBuild(), () => g.renderBuild()),
+      build: this.buildUi.screen,
+      crafting: this.craftUi.screen,
       dialogue: scr("dialogue", false, (dt) => g.updateDialogue(dt), () => g.renderDialogue()),
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
@@ -413,6 +423,7 @@ export class Game {
     this.stepZoom(dt);
     this.screens.update(dt);
     this.pressed.clear();
+    this.typed.length = 0;
   }
 
   /** One frame of world simulation plus its presentation. */
@@ -424,7 +435,7 @@ export class Game {
     this.updateWorldFx(dt);
   }
 
-  private drainEvents() {
+  drainEvents() {
     const evs = this.world.events;
     if (!evs.length) return;
     this.world.events = [];
@@ -453,7 +464,7 @@ export class Game {
       case "message": this.say(e.text); break;
       case "learned":
         this.sfx.insight(); this.eyeBoost = 1.5;
-        this.say("YOU LEARNED " + ({ [FLAGS.knowBuild]: "THE ART OF BUILDING", [FLAGS.knowRepair]: "THE ART OF MENDING" }[e.flag] ?? e.flag));
+        this.say("YOU LEARNED " + ({ [FLAGS.knowBuild]: "THE ART OF BUILDING", [FLAGS.knowRepair]: "THE ART OF MENDING", [FLAGS.knowMasonry]: "THE MASON'S CRAFT" }[e.flag] ?? e.flag));
         break;
       case "harvestHit": {
         const tree = e.kind === "tree" || e.kind === "log";
@@ -465,6 +476,13 @@ export class Game {
           this.spawn({ x: e.x + (Math.random() - 0.5) * 12, y: e.y, z: tree && i % 2 ? 20 + Math.random() * 14 : 6 + Math.random() * 6, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 20, vz: 10 + Math.random() * 30, life: 1 + Math.random(), kind: "debris", col: cols[(Math.random() * cols.length) | 0], g: tree && i % 2 ? 30 : 120 });
         break;
       }
+      case "deconstructed":
+        this.sfx.clink(); this.sfx.noise(0.2, 0.1, "bandpass", 900, 2);
+        for (let i = 0; i < 12; i++) this.spawn({ x: e.x + (Math.random() - 0.5) * 10, y: e.y, z: e.kind === "torch" || e.kind === "banner" ? 10 : 4, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 16, vz: 10 + Math.random() * 20, life: 0.7, kind: "debris", col: Math.random() < 0.5 ? "#7a5634" : "#6a6372", g: 120 });
+        break;
+      case "openStation":
+        if (e.actor === this.world.playerId && this.screens.is("play") && e.station === "crafting") this.craftUi.open(e.station, e.prop);
+        break;
       case "built":
         this.sfx.place(); this.sfx.tone(520, 0.2, "triangle", 0.05);
         for (let i = 0; i < 10; i++) this.spawn({ x: e.x, y: e.y - 14, z: 2, vx: (Math.random() - 0.5) * 30, vz: 10 + Math.random() * 20, life: 0.6, kind: "spark", col: "#ffb040", emit: true, g: 80 });
@@ -481,6 +499,10 @@ export class Game {
       case "taskTick": {
         const a = e.task;
         if (a.kind === "attach") { if (Math.random() < 0.5) this.sparkBurst(2); }
+        else if (a.kind === "dismantle" && a.target) {
+          if (Math.floor(a.t / 0.3) !== Math.floor((a.t - e.dt) / 0.3)) this.sfx.clink();
+          if (Math.random() < 0.3) this.spawn({ x: a.target.x + (Math.random() - 0.5) * 10, y: a.target.y, z: 4 + Math.random() * 8, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.5, kind: "dust", col: "#8a8478", g: 30 });
+        }
         else if (a.kind === "carve") {
           const c = this.area.ritualPos;
           const k = Math.floor(a.t / 0.22), kp = Math.floor((a.t - e.dt) / 0.22);
@@ -605,7 +627,10 @@ export class Game {
     if (!pl.task) {
       if (this.hit("i", "tab")) { this.openInv("view"); return this.worldFrame(dt); }
       if (this.hit("m") && hasItem(pl, "schematic")) { this.openSchem(); return this.worldFrame(dt); }
-      if (this.hit("b")) { this.openBuild(); return this.worldFrame(dt); }
+      if (this.hit("b")) { this.buildUi.open(); return this.worldFrame(dt); }
+      if (this.hit("v")) { this.buildUi.quickPlace(); return this.worldFrame(dt); }
+      // Repeat placement / deconstruction: reopen the tool once the ordered work is done.
+      if (this.buildUi.pending) { this.buildUi.resumeAfterWork(); if (!this.screens.is("play")) return this.worldFrame(dt); }
     }
     let ix = 0, iy = 0;
     if (this.has("arrowleft", "a")) ix -= 1;
@@ -976,52 +1001,6 @@ export class Game {
     this.renderNote();
   }
 
-  // ---------------------------------------------------------------- building
-  openBuild() {
-    if (!hasFlag(this.world, FLAGS.knowBuild)) { this.say("YOU DON'T KNOW HOW TO BUILD. PERHAPS A BOOK..."); this.sfx.thud(); return; }
-    this.buildCur = frontTile(this.pl);
-    this.screens.push(this.S.build);
-    this.sfx.tone(360, 0.08, "triangle", 0.05);
-  }
-  updateBuild() {
-    if (this.hit("escape", "b", "i", "tab")) { this.screens.popToBase(); return; }
-    const pl = this.pl, c = this.buildCur;
-    const atx = Math.floor(pl.x / TS), aty = Math.floor((pl.y - 3) / TS);
-    const mv = (dx: number, dy: number) => {
-      c.tx = clamp(c.tx + dx, atx - BUILD_REACH, atx + BUILD_REACH); c.ty = clamp(c.ty + dy, aty - BUILD_REACH, aty + BUILD_REACH);
-      this.sfx.tone(500, 0.03, "square", 0.02);
-    };
-    if (this.hit("arrowleft", "a")) mv(-1, 0);
-    if (this.hit("arrowright", "d")) mv(1, 0);
-    if (this.hit("arrowup", "w")) mv(0, -1);
-    if (this.hit("arrowdown", "s")) mv(0, 1);
-    if (this.hit("e", "enter", " ")) {
-      if (orderBuild(this.world, pl, this.buildRecipe, c.tx, c.ty)) this.screens.popToBase();
-      else this.sfx.thud();
-      this.drainEvents();
-    }
-  }
-  renderBuild() {
-    const c = this.buildCur, r = RECIPES[this.buildRecipe];
-    let ctx = this.wctx; // the ghost is in world space
-    const ok = placement(this.world, this.pl, this.area, this.buildRecipe, c.tx, c.ty);
-    const camX = Math.round(this.cam.x), camY = Math.round(this.cam.y);
-    const x = c.tx * TS - camX, y = c.ty * TS - camY;
-    const pulse = 0.25 + 0.12 * Math.sin(this.t * 6);
-    ctx.fillStyle = ok.ok ? `rgba(90,220,120,${pulse})` : `rgba(230,70,70,${pulse})`;
-    ctx.fillRect(x, y, TS, TS);
-    ctx.fillStyle = ok.ok ? "#7ae08a" : "#e05a5a";
-    ctx.fillRect(x, y, TS, 1); ctx.fillRect(x, y + TS - 1, TS, 1); ctx.fillRect(x, y, 1, TS); ctx.fillRect(x + TS - 1, y, 1, TS);
-    const s = propSprite(r.prop, 0, true);
-    if (s) { const a = buildAnchor(c.tx, c.ty); ctx.globalAlpha = 0.6; ctx.drawImage(s.a, Math.round(a.x - s.ax - camX), Math.round(a.y - s.ay - camY)); ctx.globalAlpha = 1; }
-    ctx = this.ctx; // the bar is UI
-    ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(0, 0, W, 22);
-    const cost = r.cost.map((k) => `${k.n} ${ITEM_NAMES[k.item]} (${countItem(this.pl, k.item)})`).join("  ");
-    drawText(ctx, `BUILD ${r.name}: ${cost}`, W / 2, 3, "#e8d8b0", 1, "center");
-    drawText(ctx, ok.ok ? "E PLACE   ARROWS MOVE   ESC CANCEL" : BLOCK_TEXT[ok.reason], W / 2, 12, ok.ok ? "#8a8392" : "#e08a7a", 1, "center");
-    this.renderNote();
-  }
-
   renderNote(y = H - 40) {
     if (!this.note) return;
     const ctx = this.ctx;
@@ -1310,7 +1289,7 @@ export class Game {
     let raise = 0, reach = 0;
     if (a) {
       const k = a.t / a.dur;
-      if (a.kind === "reach" || a.kind === "push") reach = Math.sin(Math.min(1, k) * Math.PI);
+      if (a.kind === "reach" || a.kind === "push" || a.kind === "dismantle") reach = Math.sin(Math.min(1, k) * Math.PI);
       if (a.kind === "smash") raise = a.t < 0.5 ? a.t / 0.5 : a.t < 0.62 ? lerp(1, -1, (a.t - 0.5) / 0.12) : lerp(-1, 0, clamp((a.t - 0.62) / 0.5, 0, 1));
       if (a.kind === "carve") reach = 0.4 + 0.6 * Math.abs(Math.sin(a.t * 14));
       if (a.kind === "attach") reach = 0.3;

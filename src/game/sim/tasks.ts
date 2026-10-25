@@ -11,7 +11,7 @@ import type { Area } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
 import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
 import { travel } from "./runes";
-import { applyBuild } from "./build";
+import { applyBuild, applyDeconstruct } from "./build";
 import { actorBoxes } from "./collision";
 import { applyDialogueEffect } from "./dialogue";
 
@@ -220,6 +220,15 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
     case "build":
       applyBuild(w, a, area, e.recipe, e.tx, e.ty);
       break;
+    case "deconstruct":
+      applyDeconstruct(w, a, area, target?.propId);
+      break;
+    case "useStation": {
+      const p = target?.propId ? area.prop(target.propId) : undefined;
+      const station = p && propDef(p.kind).station;
+      if (p && station) emit(w, { t: "openStation", actor: a.id, prop: p.id, station });
+      break;
+    }
     case "learn":
       if (!hasFlag(w, e.flag)) { setFlag(w, e.flag); emit(w, { t: "learned", flag: e.flag }); }
       break;

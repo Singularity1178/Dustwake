@@ -49,7 +49,8 @@ export default function App() {
     fit();
     window.addEventListener("resize", fit);
 
-    const block = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "tab"]);
+    // "/" and "'" open Firefox quick-find and Backspace may navigate: the build menu's search field uses them.
+    const block = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "tab", "/", "'", "backspace"]);
     const kd = (e: KeyboardEvent) => {
       // Debug keybinds: Ctrl+1 arm, Ctrl+2 runes + core + tools, Ctrl+3 super speed, Ctrl+4 build kit, Ctrl+5 eye repair + zoom.
       if (e.ctrlKey && !e.altKey && !e.shiftKey) {

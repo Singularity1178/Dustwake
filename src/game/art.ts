@@ -1315,6 +1315,41 @@ export const PROP_ART: Record<string, PropArt> = {
       p.r(3, 13, 6, 2, "#9a907a"); p.r(4, 18, 3, 3, IR.d);
     });
   },
+  // ---------- buildables (content/build.ts)
+  /** The crafting bench: a heavier workbench with a tool board, vise and stock on the shelf. */
+  craftbench: (_v, _alt, M) => {
+    return M(32, 28, (p) => {
+      p.r(2, 25, 28, 3, "rgba(0,0,0,0.35)");
+      // tool board
+      p.o(3, 0, 26, 10, WD.d, WD.o); p.r(4, 1, 24, 1, WD.m);
+      p.r(6, 3, 7, 3, IR.l); p.r(6, 5, 7, 1, IR.d); for (let i = 0; i < 4; i++) p.p(6 + i * 2, 6, IR.m);
+      p.r(13, 3, 3, 3, WD.l); p.p(14, 4, WD.o);
+      p.r(19, 2, 1, 7, WD.l); p.r(17, 2, 5, 2, IR.m); p.r(17, 2, 5, 1, IR.h);
+      p.r(24, 2, 1, 5, IR.l); p.r(24, 6, 3, 1, IR.l);
+      // top, with a plank and a vise
+      p.o(0, 10, 32, 6, WD.l, WD.o); p.r(1, 11, 30, 1, WD.h); p.r(1, 14, 30, 1, WD.m);
+      p.r(4, 9, 13, 2, "#b08a5a"); p.r(4, 10, 13, 1, WD.m); p.p(9, 9, WD.h);
+      p.o(23, 7, 7, 4, IR.m, IR.d); p.r(24, 7, 5, 1, IR.l); p.r(29, 8, 3, 1, IR.l);
+      // apron, legs, lower shelf with stone
+      p.o(1, 16, 30, 4, WD.m, WD.o); p.r(2, 17, 28, 1, WD.l);
+      p.r(2, 20, 3, 8, WD.o); p.r(27, 20, 3, 8, WD.o); p.r(3, 20, 1, 7, WD.m); p.r(28, 20, 1, 7, WD.m);
+      p.r(5, 24, 22, 2, WD.d);
+      p.o(7, 21, 5, 3, S.m, S.o); p.p(8, 22, S.h); p.o(13, 22, 4, 2, S.l, S.o);
+      p.r(19, 22, 6, 2, WD.l); p.r(19, 23, 6, 1, WD.d);
+    });
+  },
+  /** Sharpened stakes lashed to a rail. */
+  barricade: (_v, _alt, M) => {
+    return M(18, 18, (p) => {
+      p.r(1, 16, 16, 2, "rgba(0,0,0,0.35)");
+      for (const x of [1, 7, 13]) {
+        p.r(x, 3, 4, 14, WD.o); p.r(x + 1, 3, 2, 13, WD.m); p.r(x + 1, 4, 1, 12, WD.l);
+        p.r(x + 1, 1, 2, 2, "#b08a5a"); p.p(x + 1, 0, WD.h); p.p(x + 2, 2, WD.l);
+      }
+      p.o(0, 9, 18, 4, WD.m, WD.o); p.r(1, 10, 16, 1, WD.l); p.r(1, 12, 16, 1, WD.d);
+      for (const x of [2, 8, 14]) { p.r(x, 9, 2, 4, "#8a7a5a"); p.p(x, 10, "#b0a07a"); }
+    });
+  },
   forge: (_v, _alt, M) => {
     return M(32, 30, (p) => {
       p.o(6, 0, 20, 10, S.m, S.o); p.r(7, 1, 18, 1, S.h); p.r(8, 8, 16, 2, S.d);

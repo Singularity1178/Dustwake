@@ -16,6 +16,8 @@ export const FLAGS = {
   knowSchematic: "know.schematic",
   knowBuild: "know.build",
   knowRepair: "know.repair",
+  /** Stonework (the brazier recipe). No book teaches it yet; Ctrl+4 grants it. */
+  knowMasonry: "know.masonry",
   tutorialInsight: "tutorial.insight",
   /** Set when the golem first travels through the rune network (end of tutorial). */
   tutorialDone: "tutorial.done",

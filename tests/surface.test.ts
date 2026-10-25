@@ -173,7 +173,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 5);
+  assert.equal(SAVE_VERSION, 6);
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");
@@ -301,18 +301,18 @@ test("build placement is validated in sim and gated by know.build", () => {
   for (let ty = 49; ty <= 53; ty++) for (let tx = 18; tx <= 22; tx++) a.setTile(tx, ty, T.FLOOR);
   a.props = a.props.filter((p) => Math.abs(p.x - pl.x) > 64 || Math.abs(p.y - pl.y) > 64);
   const tx = 20, ty = 51;
-  assert.deepEqual(placement(w, pl, a, "torch", tx, ty), { ok: false, reason: "unknown" });
+  assert.deepEqual(placement(w, pl, a, "torch_post", tx, ty), { ok: false, reason: "unknown" });
   addItems(w, pl, "book_build", 1); readItem(w, pl, "book_build");
   assert.ok(w.flags.has(FLAGS.knowBuild));
-  assert.deepEqual(placement(w, pl, a, "torch", tx, ty), { ok: false, reason: "cost" });
+  assert.deepEqual(placement(w, pl, a, "torch_post", tx, ty), { ok: false, reason: "cost" });
   addItems(w, pl, "wood", 4); addItems(w, pl, "stone", 2);
-  assert.deepEqual(placement(w, pl, a, "torch", tx, ty), { ok: true });
-  assert.deepEqual(placement(w, pl, a, "torch", tx, ty + 4), { ok: false, reason: "reach" });
+  assert.deepEqual(placement(w, pl, a, "torch_post", tx, ty), { ok: true });
+  assert.deepEqual(placement(w, pl, a, "torch_post", tx, ty + 4), { ok: false, reason: "reach" });
   a.setTile(tx + 1, ty, T.RUBBLE);
-  assert.deepEqual(placement(w, pl, a, "torch", tx + 1, ty), { ok: false, reason: "solid" });
+  assert.deepEqual(placement(w, pl, a, "torch_post", tx + 1, ty), { ok: false, reason: "solid" });
   const rp = a.prop("rune.surface")!;
   pl.x = rp.x; pl.y = rp.y + 40;
-  assert.deepEqual(placement(w, pl, a, "torch", Math.floor(rp.x / TS), Math.floor(rp.y / TS) + 1), { ok: false, reason: "occupied" });
+  assert.deepEqual(placement(w, pl, a, "torch_post", Math.floor(rp.x / TS), Math.floor(rp.y / TS) + 1), { ok: false, reason: "occupied" });
 });
 
 test("placing a torch consumes materials, creates a lit prop and registers its light; saves", () => {
@@ -323,7 +323,7 @@ test("placing a torch consumes materials, creates a lit prop and registers its l
   pl.x = rp.x + 72; pl.y = rp.y + 8; pl.facing = "right";
   const tx = Math.floor(pl.x / TS) + 1, ty = Math.floor((pl.y - 3) / TS);
   const view = new AreaView(a);
-  assert.ok(orderBuild(w, pl, "torch", tx, ty));
+  assert.ok(orderBuild(w, pl, "torch_post", tx, ty));
   while (pl.task) frame(w);
   const torch = a.props.find((p) => p.kind === "torch_post")!;
   assert.ok(torch && torch.lit && torch.dyn);

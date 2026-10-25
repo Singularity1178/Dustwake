@@ -42,6 +42,8 @@ export const RULES: Record<string, Rule[]> = {
   // ---- surface
   harvest: [{ task: { kind: "punch", dur: 0.75, effect: { op: "harvest" } } }],
   examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],
+  // ---- work stations (props with a `station`, e.g. the crafting bench)
+  station: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStation" } } }],
   // ---- NPCs: any actor of kind "npc". The target carries its actor id and NpcDef id;
   // what is said comes from that NPC's dialogue script (content/dialogue.ts).
   npc: [{ task: { kind: "talk", dur: 0.3, effect: { op: "talk" } } }],

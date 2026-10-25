@@ -13,8 +13,19 @@
 | `E` (pack open) | Use / read the selected item |
 | `Q` (pack open) | Drop one of the selected item in front of the golem |
 | `M` | Read schematic (once found) |
-| `B` | Build (once you know how): placement mode |
-| Movement keys / `E` / `Esc` (placement) | Move the ghost / place / cancel |
+| `B` | Build menu (once you know how). Opens on the last thing you built |
+| Movement keys (build menu) | Move the catalog cursor |
+| `Q` / `R` or `1`-`7` (build menu) | Previous / next category tab, or jump to a tab (ALL, FAV, LIGHT, CRAFT, DEFENSE, FURNITURE, DECOR) |
+| `/` or `T` (build menu) | Search: type letters, digits and spaces. Arrows still browse, `Backspace` deletes, `Enter` keeps the filter, `Esc` clears it |
+| `O` / `G` / `F` (build menu) | Cycle sort (type / name / cost) / toggle "can build only" / toggle favorite |
+| `E` (build menu) | Pick the entry and go to placement |
+| `V` | Quick re-place: straight to the ghost with the last used entry |
+| Movement keys / `E` (placement) | Move the ghost / place |
+| `T` (placement or remove) | Toggle repeat (on by default: the tool comes back after each build or removal) |
+| `X` (build menu or placement) | Deconstruct tool: take apart highlighted props for a full refund (`E` confirm, `X` back to building) |
+| `B` / `Q` (placement or remove) | Back to the build menu |
+| `Esc` (build tools) | Close |
+| `E` on a crafting bench | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `Esc` close) |
 | `E` on a teleport rune | Travel to its linked rune |
 | `E` on a tree or rock | Harvest wood / stone with your fists |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
@@ -24,7 +35,7 @@
 
 Click or press any key on the title screen to begin.
 
-Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build knowledge + basket + materials, `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom.
+Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, basket, 40 wood and 40 stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom.
 
 ## Running locally
 
@@ -67,7 +78,7 @@ src/
     sim/             tasks/effects, interactions, inventory, runes, building,
                      collision, ritual puzzle, dialogue engine, stepping, UI commands (no DOM)
     view/            area view: baked background + light registry; zoom model
-    ui/              screen stack
+    ui/              screen stack, shared overlay kit (frames, text field)
     game.ts          host + presentation: screens, camera, particles, audio, rendering
     art.ts           procedural pixel-art sprites and tiles
     golem.ts         golem drawing
@@ -78,7 +89,9 @@ src/
     font.ts          bitmap font
     circle.ts        rune circle art
     util.ts          canvas helpers
-tests/               headless sim tests
+    screens/         overlay screens split out of game.ts: build menu + tools, crafting
+tests/               headless sim tests (tests/support/uiSnapshot.ts renders the new
+                     screens to PNG at 320x180 without a browser)
 docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```
 

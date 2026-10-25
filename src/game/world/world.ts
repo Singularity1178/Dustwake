@@ -56,6 +56,10 @@ export type SimEvent =
   | { t: "travelled"; actor: string; from: string; to: string; rune: string }
   | { t: "harvestHit"; actor: string; prop: string; kind: string; x: number; y: number; depleted: boolean }
   | { t: "built"; actor: string; prop: string; x: number; y: number }
+  /** A prop was taken apart (its refund went through giveItem). */
+  | { t: "deconstructed"; actor: string; prop: string; kind: string; x: number; y: number }
+  /** `actor` used a work station; presentation opens the station's UI (player only). */
+  | { t: "openStation"; actor: string; prop: string; station: string }
   | { t: "learned"; flag: string }
   | { t: "areaEntered"; actor: string; area: string }
   /** `actor` addressed NPC actor `npc`; presentation opens `segment` of `script`. */

@@ -28,6 +28,11 @@ export interface PropKindDef {
   flat?: boolean;
   /** Foliage that sways in the wind (presentation only): the sprite's upper part shifts by up to 1px. */
   sway?: boolean;
+  /**
+   * A work station: interacting runs the `station` rule, whose `useStation`
+   * effect asks presentation to open this UI (see content/crafting.ts).
+   */
+  station?: "crafting";
 }
 
 export const PROPS: Record<string, PropKindDef> = {
@@ -61,6 +66,11 @@ export const PROPS: Record<string, PropKindDef> = {
     fire: { big: false, embers: 1.5, emberDy: -2 },
   },
   cart: { box: [30, 10] },
+  // ---- buildables (content/build.ts)
+  /** Sharpened stakes: blocks the whole tile width. */
+  barricade: { box: [16, 7] },
+  /** The crafting bench: opens the crafting screen. Two tiles wide. */
+  craftbench: { box: [28, 10], station: "crafting" },
   // The old surface gate, buried: no collision, no visible opening. Only a low
   // mound where the arch top lies, and a hollow sound if you go looking.
   buriedgate: { flat: true, examine: "THE GROUND HERE SOUNDS HOLLOW UNDERFOOT." },

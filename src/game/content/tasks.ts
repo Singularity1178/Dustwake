@@ -4,7 +4,7 @@
 // performed by any actor — today only the golem, later NPCs and animals.
 import type { ItemId } from "./items";
 
-export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk";
+export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle";
 
 /** When a task's effect fires, as a function of its duration. */
 export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
@@ -19,6 +19,8 @@ export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   channel: { fire: (d) => d },
   /** Addressing an NPC: the dialogue opens once the golem has turned to it. */
   talk: { fire: (d) => d },
+  /** Taking a prop apart: it comes loose near the end. */
+  dismantle: { fire: (d) => d * 0.85 },
 };
 
 /** Presentation-only cues an effect can request (sound/particles). */
@@ -49,6 +51,10 @@ export type Effect =
   | { op: "regrow"; prop: string }
   /** Build a recipe at a tile, consuming its cost from the actor's pack. */
   | { op: "build"; recipe: string; tx: number; ty: number }
+  /** Take apart the prop at target.propId, refunding its recipe's full cost (re-validates). */
+  | { op: "deconstruct" }
+  /** Use the work station at target.propId: presentation opens its UI. */
+  | { op: "useStation" }
   /** Gain a knowledge flag (reading a book). */
   | { op: "learn"; flag: string }
   // ---- NPCs and dialogue (sim/dialogue.ts). The NPC is named by its actor id.

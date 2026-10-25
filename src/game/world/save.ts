@@ -31,8 +31,12 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  *     opened (the core taken, placed, or still arriving) the guardian's
  *     `npc.guardian.coreGiven` flag is set so no second core can appear.
  *     Prop `open` is now diffed against the builder (props can start open).
+ * v6: building overhaul. Props can be deconstructed: areas gain `propsRemoved`
+ *     (ids of builder-placed props that were taken apart; restore removes them
+ *     again so they never come back). Built props record their `recipe`. The
+ *     recipe "torch" was renamed "torch_post" (pending build work is rewritten).
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -47,12 +51,14 @@ export interface AreaSave {
   /** Props created during play (built torches), with their state. */
   propsAdded: (Omit<PropDef, "item"> & PropState)[];
   propSeq: number;
+  /** Builder-placed props that were removed during play (deconstructed). */
+  propsRemoved: string[];
   decalsAdded: DecalDef[];
   ritual: RitualState | null;
 }
 
 export interface SaveData {
-  version: 5;
+  version: 6;
   seed: number;
   rng: number;
   time: number;
@@ -117,7 +123,7 @@ export const MIGRATIONS: Record<number, Migration> = {
       const r = Object.values(RECIPES).find((rc) => rc.prop === p.kind);
       if (r && !p.taken) for (const c of r.cost) lay(c.item, c.n);
     }
-    const surface: AreaSave = {
+    const surface: Omit<AreaSave, "propsRemoved"> = {
       tiles: [], props: {}, decalsAdded: [], ritual: null, propsAdded: [], propSeq: sf.propSeq ?? 0,
       looseTaken: (sf.looseTaken ?? []).filter((id: string) => id === "basket"), looseAdded, looseSeq: seq,
     };
@@ -144,6 +150,16 @@ export const MIGRATIONS: Record<number, Migration> = {
     if (coreOut && !flags.includes(GUARDIAN_FLAGS.coreGiven)) flags.push(GUARDIAN_FLAGS.coreGiven);
     if (dungeon) for (const sp of AREAS.dungeon().npcs ?? []) if (!actors.some((a) => a.id === sp.id)) actors.push(makeNpc(sp, "dungeon"));
     return { ...s, version: 5, flags, actors };
+  },
+  5: (s) => {
+    // Nothing had been removed before v6. The old "torch" recipe id is now
+    // "torch_post": rewrite build work still in an actor's hands or queue.
+    const fix = (t: any) => (t?.effect?.op === "build" && t.effect.recipe === "torch" ? { ...t, effect: { ...t.effect, recipe: "torch_post" } } : t);
+    return {
+      ...s, version: 6,
+      actors: s.actors.map((a: any) => ({ ...a, task: fix(a.task), queue: (a.queue ?? []).map(fix) })),
+      areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, { ...d, propsRemoved: [] }])),
+    };
   },
 };
 
@@ -215,6 +231,7 @@ function diffArea(a: Area): AreaSave {
     looseAdded: a.loose.filter((l) => l.dyn && !l.taken).map(({ taken: _t, dyn: _d, ...l }) => l),
     looseSeq: a.looseSeq,
     propsAdded, propSeq: a.propSeq,
+    propsRemoved: base.props.filter((p) => !a.prop(p.id)).map((p) => p.id),
     decalsAdded: a.decals.slice(base.decals.length),
     ritual: a.ritual,
   };
@@ -226,6 +243,7 @@ function restoreArea(id: string, d: AreaSave): Area {
   const a = new Area(build());
   for (const [i, t] of d.tiles) a.grid[i] = t;
   for (const [pid, st] of Object.entries(d.props)) a.setPropState(pid, st);
+  for (const pid of d.propsRemoved ?? []) a.removeProp(pid);
   for (const p of d.propsAdded) {
     const { id: pid, kind, x, y, open, taken, dmg, lit, item, ...rest } = p;
     a.addProp(kind, x, y, { ...rest, lit, item: item ?? undefined }, pid);
