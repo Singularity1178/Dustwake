@@ -19,7 +19,7 @@ import { ScreenStack } from "../src/game/ui/screens";
 import { RECIPES, AUTHORED_SALVAGE, BUILD_CATEGORIES, type Recipe } from "../src/game/content/build";
 import { CRAFT_RECIPES } from "../src/game/content/crafting";
 import { PROPS } from "../src/game/content/props";
-import { PROP_ART } from "../src/game/art";
+import { PROP_ART } from "../src/game/art/props";
 import { FLAGS } from "../src/game/content/flags";
 import { FONT_GLYPHS } from "../src/game/font";
 import { TS, T } from "../src/game/content/tiles";

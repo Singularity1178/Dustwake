@@ -1,5 +1,6 @@
 // Developer tool (not a test): rasterises the build menu, placement and
-// deconstruct tools and the crafting screen at the base 320x180 into PNGs, with
+// deconstruct tools, the crafting screen and every screen of the guardian's
+// dialogue at the base 320x180 into PNGs, with
 // a minimal pixel canvas, so layouts can be checked for overflow without a
 // browser. Run after `npm test` has compiled:
 //   node -e "require('./.test-out/tests/support/uiSnapshot.js').run('snapshots')"
@@ -10,10 +11,13 @@ import { addItems } from "../../src/game/sim/inventory";
 import { orderBuild } from "../../src/game/sim/commands";
 import { BuildUi } from "../../src/game/screens/buildMenu";
 import { CraftingUi } from "../../src/game/screens/crafting";
+import { DialogueUi } from "../../src/game/screens/dialogue";
+import { DIALOGUE } from "../../src/game/content/dialogue";
+import type { World } from "../../src/game/world/world";
 import { ScreenStack } from "../../src/game/ui/screens";
 import { FLAGS } from "../../src/game/content/flags";
 import { stepPlayer, stepWorld } from "../../src/game/sim/step";
-import { propSprite } from "../../src/game/art";
+import { propSprite } from "../../src/game/art/props";
 import { propDef } from "../../src/game/content/props";
 import { TS, isSolidT } from "../../src/game/content/tiles";
 
@@ -87,6 +91,34 @@ function png(c: RCanvas, scale: number): Buffer {
   const chunk = (t: string, d: Buffer) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const cb = Buffer.alloc(4); cb.writeUInt32BE(crc(td)); return Buffer.concat([l, td, cb]); };
   const ih = Buffer.alloc(13); ih.writeUInt32BE(W, 0); ih.writeUInt32BE(H, 4); ih[8] = 8; ih[9] = 2;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ih), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/**
+ * Render every screen of every segment of an NPC script's dialogue box onto a
+ * 320x180 UI canvas, fully typed out, calling `shot` for each. Shared by the
+ * PNG dump and the overflow test (tests/dialogueWrap.test.ts).
+ */
+export function renderDialogueScreens(w: World, npc: string, script: string, shot: (name: string, ui: RCanvas) => void) {
+  const ui = new RCanvas(320, 180);
+  const host: any = {
+    ctx: ui.getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
+    t: 0, screens: new ScreenStack(), typed: [], sfx: new Proxy({}, { get: () => () => {} }),
+    hit: () => false, say: () => {}, renderNote: () => {}, renderToast: () => {}, animate: () => {}, drainEvents: () => { w.events = []; },
+  };
+  host.screens.set({ id: "play", opaque: true, t: 0, update() {}, render() {} });
+  for (const seg of DIALOGUE[script].segments) {
+    const d: any = new DialogueUi(host);
+    d.open(npc, script, seg.id);
+    if (!d.dlg) continue;
+    d.dlg.pages.forEach((_: unknown, i: number) => {
+      Object.assign(d.dlg, { page: i, chars: 1e9, hold: 0 });
+      ui.data.fill(0);
+      ui.getContext().fillStyle = "#1a1620"; ui.getContext().fillRect(0, 0, 320, 180);
+      d.screen.render();
+      shot(`dialogue-${script}-${seg.id}-${i + 1}`, ui);
+    });
+    host.screens.popToBase();
+  }
 }
 
 export function run(dir = "snapshots") {
@@ -170,4 +202,8 @@ export function run(dir = "snapshots") {
   host.screens.popToBase();
   cu.open("crafting", "x");
   shot("crafting-locked", () => cu.screen.render());
+  // the guardian's whole script (with the iron arm, so the optional page shows too)
+  const dw = createWorld(7);
+  setFlag(dw, FLAGS.golemArm);
+  renderDialogueScreens(dw, "npc.guardian", "guardian", (name, c) => writeFileSync(`${dir}/${name}.png`, png(c, 3)));
 }

@@ -2,15 +2,21 @@
 // audio and rendering. It never mutates the World directly except through sim
 // entry points; it reacts to the World's events for sound and particles.
 import { TS, T } from "./content/tiles";
-import { ITEMS, ITEM_NAMES, RELICS, isGlyph, glyphItem, type ItemId } from "./content/items";
-import { capacity, hasItem, addItems } from "./sim/inventory";
-import { dropFromSlot, readItem } from "./sim/commands";
+import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/items";
+import { hasItem, addItems } from "./sim/inventory";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
+import { PackUi } from "./screens/pack";
+import { BookUi } from "./screens/book";
+import { SchematicUi } from "./screens/schematic";
+import { DialogueUi } from "./screens/dialogue";
+import { renderTitle, renderEnd } from "./screens/cards";
 import { propDef } from "./content/props";
 import { GLYPHS } from "./content/glyphs";
 import { FLAGS } from "./content/flags";
-import { propSprite, rubbleSprite, pillarSprite, doorSprite, barsSprite, itemIcon, glyphPattern } from "./art";
+import { propSprite } from "./art/props";
+import { rubbleSprite, pillarSprite, doorSprite, barsSprite } from "./art/tiles";
+import { itemIcon, glyphPattern } from "./art/items";
 import { makeCanvas, Pen, Sprite, hash2, clamp, lerp, makeSprite } from "./util";
 import { drawGolem, GolemPose } from "./golem";
 import { Light, makeLight, computeVis, Lighting } from "./light";
@@ -19,20 +25,18 @@ import { buildCircle, CircleArt, CR } from "./circle";
 import { SurfaceRuneArt } from "./surfaceRune";
 import { carvingVisible, clumpCleared } from "./runeReveal";
 import { RUNE_NODES } from "./content/runes";
-import { buildSchematic, PLAN_X, PLAN_Y, PLAN_S } from "./schematic";
-import { drawText, drawTextS, textWidth } from "./font";
-import { createWorld, player, currentArea, hasFlag, setFlag, getArea, type World, type SimEvent } from "./world/world";
+import { drawText, drawTextS } from "./font";
+import { createWorld, player, currentArea, hasFlag, setFlag, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
 import { stepPlayer, stepWorld, addPlayTime } from "./sim/step";
 import { interactables, type Interactable } from "./sim/interact";
-import { placeGlyph } from "./sim/ritual";
 import { AreaView } from "./view/areaView";
 import { ScreenStack, type Screen } from "./ui/screens";
 import { BASE_W, BASE_H, ZOOM_STEPS, ZOOM_DEFAULT, viewSize, nextZoomStep } from "./view/zoom";
 import { npcDef } from "./content/npcs";
 import { NPC_ART, type NpcPose } from "./npcArt";
-import { DIALOGUE, type DialoguePage, type DialogueSegment } from "./content/dialogue";
-import { dialogueBeat, finishSegment, segmentPages, isAwake, npcActor } from "./sim/dialogue";
+import { isAwake, npcActor } from "./sim/dialogue";
+import { saveToStorage, loadFromStorage } from "./world/save";
 import type { Actor } from "./world/world";
 
 /** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
@@ -41,9 +45,6 @@ const DEBUG_SPEED_MULT = 3;
 /** Base logical size. HUD and overlay screens are laid out for it (they draw on a base-size UI layer). */
 export const W = BASE_W, H = BASE_H;
 export { ZOOM_STEPS, ZOOM_DEFAULT, viewSize };
-
-/** Seconds a beat holds the page before its text starts typing (presentation timing only). */
-const BEAT_HOLD: Record<string, number> = { wake: 1.4, pause: 1.2, repairEye: 1.6, giveCore: 0.5 };
 
 /** Presentation state of one NPC (eased pose, eye, flare). Not saved: derived from flags on load. */
 interface NpcLook { awake: number; eye: number; wakeT: number; sleepT: number; reach: number; flare: number }
@@ -98,24 +99,16 @@ export class Game {
   emit = makeCanvas(W, H);
   lighting = new Lighting(W, H);
   npcLooks = new Map<string, NpcLook>();
-  /** The open dialogue (presentation cursor only; progress lives in flags). */
-  dlg: { npc: string; seg: DialogueSegment; pages: DialoguePage[]; page: number; chars: number; hold: number } | null = null;
-  /** Show the zoom hint when the dialogue closes (after the eye repair). */
-  zoomHint = false;
   sfx = new Sfx();
   circle: CircleArt = buildCircle();
   shaft: Sprite;
 
   world!: World;
   view!: AreaView;
-  schemCanvas: HTMLCanvasElement | null = null;
   screens = new ScreenStack();
   /** Real (presentation) clock: animations run on it even while the world is paused. */
   t = 0;
   particles: Particle[] = [];
-  invCursor = 0;
-  invMode: "view" | "select" = "view";
-  selSocket = -1;
   toast: { icon: Sprite; name: string; t: number } | null = null;
   /** Debug/testing state (not saved, not part of the sim). */
   debugSpeed = false;
@@ -154,9 +147,16 @@ export class Game {
   buildUi!: BuildUi;
   /** Crafting bench screen (screens/crafting.ts). */
   craftUi!: CraftingUi;
+  /** Pack / inventory overlay (screens/pack.ts). */
+  packUi!: PackUi;
+  /** Book reading screen (screens/book.ts). */
+  bookUi!: BookUi;
+  /** Schematic overlay (screens/schematic.ts). */
+  schemUi!: SchematicUi;
+  /** Dialogue box overlay (screens/dialogue.ts). */
+  dialogueUi!: DialogueUi;
   /** Printable characters typed this frame (raw case) and "\b" for Backspace: text fields read these. */
   typed: string[] = [];
-  book: { id: ItemId; page: number } | null = null;
 
   constructor(public canvas: HTMLCanvasElement, public uiCanvas: HTMLCanvasElement) {
     this.wctx = canvas.getContext("2d")!;
@@ -178,8 +178,7 @@ export class Game {
     const area = currentArea(world);
     this.view = new AreaView(area);
     // The schematic is of the dungeon, wherever the golem is.
-    const dg = getArea(world, "dungeon");
-    this.schemCanvas = dg.ritual ? buildSchematic(dg.base, dg.ritual.solution) : null;
+    this.schemUi.reset(world);
     const pl = player(world);
     this.glight = makeLight(pl.x, pl.y - 6, 108, [1, 0.78, 0.5], 0, 0.05, "golem");
     this.dripT = area.drips.map(() => Math.random() * 4);
@@ -189,8 +188,8 @@ export class Game {
     this.setZoom(hasFlag(world, FLAGS.golemEye) ? ZOOM_DEFAULT : 1);
     this.cam.x = pl.x - this.vw / 2; this.cam.y = pl.y - this.vh / 2 - 10;
     this.npcLooks.clear();
-    this.dlg = null; this.zoomHint = false;
-    this.invCursor = 0;
+    this.dialogueUi.reset();
+    this.packUi.reset();
     this.particles = [];
     this.toast = null;
     this.fizzT = 0;
@@ -204,6 +203,21 @@ export class Game {
     this.reset(world);
     this.look.dormant = 0;
     this.screens.set(this.S.play);
+  }
+
+  /** Save the world to the single localStorage slot (K on the play screen). */
+  saveGame() {
+    try { saveToStorage(this.world); this.say("GAME SAVED"); this.sfx.tone(520, 0.1, "triangle", 0.05); }
+    catch { this.say("COULD NOT SAVE"); this.sfx.tone(180, 0.1, "square", 0.04); }
+  }
+  /** Load the saved world and resume play (L on the play or title screen). False if there is none. */
+  loadGame(): boolean {
+    let w: World | null = null;
+    try { w = loadFromStorage(); } catch { w = null; }
+    if (!w) { this.say("NO SAVED GAME"); this.sfx.tone(180, 0.1, "square", 0.04); return false; }
+    this.resume(w);
+    this.say("GAME LOADED");
+    return true;
   }
 
   /** Rebuild the area view when the player has travelled to another area. */
@@ -364,12 +378,17 @@ export class Game {
     const scr = (id: string, opaque: boolean, update: (dt: number) => void, render: () => void): Screen => ({ id, opaque, t: 0, update, render });
     this.buildUi = new BuildUi(this);
     this.craftUi = new CraftingUi(this);
+    this.packUi = new PackUi(this);
+    this.bookUi = new BookUi(this);
+    this.schemUi = new SchematicUi(this);
+    this.dialogueUi = new DialogueUi(this);
     this.S = {
       title: scr("title", true, (dt) => {
+        if (g.hit("l") && g.loadGame()) { g.sfx.init(); return; }
         if (g.pressed.size) { g.sfx.init(); g.screens.set(g.S.intro); }
         if (Math.random() < 0.3) g.spawn({ x: Math.random() * W, y: H + 2, vy: -10 - Math.random() * 12, vx: (Math.random() - 0.5) * 4, life: 6, kind: "ember", col: Math.random() < 0.5 ? "#ff8a3a" : "#c84a10", emit: true });
         g.updateParticles(dt);
-      }, () => g.renderTitle()),
+      }, () => renderTitle(g.ctx, g.t, g.particles)),
       intro: scr("intro", true, (dt) => { g.updateIntro(dt); g.worldFrame(dt); }, () => {
         g.renderWorldScene();
         const t = g.S.intro.t;
@@ -387,28 +406,19 @@ export class Game {
         if (t > w0) { g.ctx.fillStyle = `rgba(235,240,255,${clamp((t - w0) / 1.4, 0, 1)})`; g.ctx.fillRect(0, 0, W, H); }
       }),
       arrive: scr("arrive", true, (dt) => { g.updateArrive(dt); g.worldFrame(dt); }, () => g.renderArrive()),
-      book: scr("book", false, () => g.updateBook(), () => g.renderBook()),
+      book: this.bookUi.screen,
       build: this.buildUi.screen,
       crafting: this.craftUi.screen,
-      dialogue: scr("dialogue", false, (dt) => g.updateDialogue(dt), () => g.renderDialogue()),
+      dialogue: this.dialogueUi.screen,
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
         if (et > 5 && g.hit("r")) { g.reset(); g.screens.set(g.S.intro); }
         else if ((et > 5 && g.pressed.size) || et > 14) { g.particles = []; g.screens.set(g.S.arrive); }
         if (Math.random() < 0.2) g.spawn({ x: Math.random() * W, y: H * 0.4 + Math.random() * 60, vy: -3, vx: 4, life: 5, kind: "mote", col: "#ffd8a0", emit: true });
         g.updateParticles(dt);
-      }, () => g.renderEnd()),
-      inv: scr("inv", false, () => g.updateInv(), () => g.renderInv()),
-      schem: scr("schem", false, () => {
-        if (g.S.schem.t > 0.4 && g.hit("e", "escape", "enter", " ", "m", "i", "tab", "click")) {
-          g.screens.popToBase();
-          if (!hasFlag(g.world, FLAGS.tutorialInsight)) {
-            setFlag(g.world, FLAGS.tutorialInsight);
-            g.sfx.insight();
-            g.eyeBoost = 1.5;
-          }
-        }
-      }, () => g.renderSchem()),
+      }, () => renderEnd(g.ctx, g.t, g.S.end.t, g.particles, g.world, g.pl)),
+      inv: this.packUi.screen,
+      schem: this.schemUi.screen,
     };
   }
 
@@ -452,7 +462,7 @@ export class Game {
         this.sfx.pickup();
         if (e.stored) for (let i = 0; i < 10; i++) this.spawn({ x: pl.x, y: pl.y - 4, z: 14, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 20, vz: 20 + Math.random() * 20, life: 0.6, kind: "glint", col: "#fff0c0", emit: true, g: 40 });
         const def = ITEMS[e.item], id = e.item;
-        if (def.opensOnPickup) this.later(0.5, () => { if (this.screens.is("play")) def.opens === "book" ? this.openBook(id) : this.openSchem(); });
+        if (def.opensOnPickup) this.later(0.5, () => { if (this.screens.is("play")) def.opens === "book" ? this.bookUi.open(id) : this.schemUi.open(); });
         break;
       }
       case "itemDropped":
@@ -571,7 +581,7 @@ export class Game {
         break;
       case "areaEntered": break;
       case "dialogue":
-        if (this.screens.is("play")) this.openDialogue(e.npc, e.script, e.segment);
+        if (this.screens.is("play")) this.dialogueUi.open(e.npc, e.script, e.segment);
         break;
       case "npcState": {
         const a = npcActor(this.world, e.npc);
@@ -602,7 +612,7 @@ export class Game {
         if (by) this.npcLook(by).reach = 1.8; // the guardian's hand holds still, then lowers
         // the camera pulls out as the eye clears; the wheel takes over from here
         this.later(0.5, () => this.zoomTo(ZOOM_DEFAULT, 1.1));
-        this.zoomHint = true;
+        this.dialogueUi.zoomHint = true;
         break;
       }
     }
@@ -623,10 +633,13 @@ export class Game {
   updatePlay(dt: number) {
     const w = this.world, pl = this.pl, lk = this.look;
     addPlayTime(w, dt);
+    // save / load (one slot in localStorage, the versioned format of world/save.ts)
+    if (this.hit("k")) this.saveGame();
+    if (this.hit("l") && this.loadGame()) return;
     // overlays
     if (!pl.task) {
-      if (this.hit("i", "tab")) { this.openInv("view"); return this.worldFrame(dt); }
-      if (this.hit("m") && hasItem(pl, "schematic")) { this.openSchem(); return this.worldFrame(dt); }
+      if (this.hit("i", "tab")) { this.packUi.open("view"); return this.worldFrame(dt); }
+      if (this.hit("m") && hasItem(pl, "schematic")) { this.schemUi.open(); return this.worldFrame(dt); }
       if (this.hit("b")) { this.buildUi.open(); return this.worldFrame(dt); }
       if (this.hit("v")) { this.buildUi.quickPlace(); return this.worldFrame(dt); }
       // Repeat placement / deconstruction: reopen the tool once the ordered work is done.
@@ -654,7 +667,7 @@ export class Game {
     lk.dormant = 0;
     this.eyeBoost = Math.max(0, this.eyeBoost - dt);
     this.target = res.target;
-    if (res.ui) this.openInv("select", res.ui.socket);
+    if (res.ui) this.packUi.open("select", res.ui.socket);
     // rumble events
     if (!this.area.base.outdoor) this.rumbleT -= dt;
     if (this.rumbleT <= 0) {
@@ -903,103 +916,17 @@ export class Game {
     }
   }
 
-  // ---------------------------------------------------------------- inventory
-  get cap() { return capacity(this.world, this.pl); }
-  /** Pack grid layout per capacity tier: stays readable at 8, 16 and 48 slots without scrolling. */
-  invLayout(cap: number) {
-    const L = cap <= 8 ? { cols: 4, pitch: 30, cell: 26 } : cap <= 16 ? { cols: 4, pitch: 26, cell: 24 } : { cols: 8, pitch: 19, cell: 18 };
-    const rows = Math.ceil(cap / L.cols);
-    const gw = L.cols * L.pitch - (L.pitch - L.cell), gh = rows * L.pitch - (L.pitch - L.cell);
-    const pw = 100 + gw + 10, ph = Math.max(132, gh + 46);
-    return { ...L, rows, gw, gh, pw, ph, px: Math.floor((W - pw) / 2), py: Math.floor((H - ph) / 2) };
-  }
+  // ---------------------------------------------------------------- UiHost
   say(text: string) { this.note = { text, t: 0 }; }
-  openInv(mode: "view" | "select", sock = -1) {
-    this.screens.push(this.S.inv);
-    this.invMode = mode;
-    this.selSocket = sock;
-    if (mode === "select") {
-      const i = this.pl.inventory.findIndex((s) => s && isGlyph(s.item));
-      this.invCursor = Math.max(0, i);
-    }
-    this.invCursor = clamp(this.invCursor, 0, this.cap - 1);
-    this.sfx.tone(300, 0.08, "triangle", 0.05);
+  /** Open an item's reading screen (pack E, UiHost.read). */
+  read(id: ItemId) {
+    const opens = ITEMS[id].opens;
+    if (opens === "schematic") this.schemUi.open();
+    else if (opens === "book") this.bookUi.open(id);
   }
-  openSchem() {
-    this.screens.popToBase();
-    this.screens.push(this.S.schem);
-    setFlag(this.world, FLAGS.knowSchematic);
-    this.sfx.noise(0.4, 0.12, "bandpass", 2500, 1, 0, 800);
-  }
-  updateInv() {
-    if (this.hit("escape", "i", "tab")) { this.screens.popToBase(); return; }
-    const cap = this.cap, cols = this.invLayout(cap).cols;
-    const c = clamp(this.invCursor, 0, cap - 1);
-    let n = c;
-    if (this.hit("arrowleft", "a")) n = (c + cap - 1) % cap;
-    if (this.hit("arrowright", "d")) n = (c + 1) % cap;
-    if (this.hit("arrowup", "w")) n = (c - cols + cap) % cap;
-    if (this.hit("arrowdown", "s")) n = (c + cols) % cap;
-    this.invCursor = n;
-    if (n !== c) this.sfx.tone(500, 0.04, "square", 0.02);
-    const slot = this.pl.inventory[this.invCursor];
-    if (this.hit("q") && this.invMode === "view") {
-      if (!slot) return;
-      const r = dropFromSlot(this.world, this.pl, this.invCursor, 1);
-      if (r !== "ok") this.sfx.thud();
-      this.drainEvents();
-      return;
-    }
-    if (this.hit("e", "enter", " ")) {
-      if (!slot) return;
-      const id = slot.item;
-      if (this.invMode === "select") {
-        if (isGlyph(id)) {
-          this.screens.popToBase();
-          placeGlyph(this.world, this.pl, this.area, this.selSocket, ITEMS[id].glyph!);
-          this.drainEvents();
-        } else this.sfx.thud();
-      } else if (ITEMS[id].opens === "schematic") this.openSchem();
-      else if (ITEMS[id].opens === "book") this.openBook(id);
-      else this.sfx.tone(180, 0.1, "square", 0.04);
-    }
-  }
-
-  // ---------------------------------------------------------------- books
-  openBook(id: ItemId) {
-    this.screens.popToBase();
-    this.book = { id, page: 0 };
-    this.screens.push(this.S.book);
-    readItem(this.world, this.pl, id);
-    this.sfx.noise(0.3, 0.1, "bandpass", 2000, 1, 0, 600);
-  }
-  updateBook() {
-    const b = this.book, pages = b ? ITEMS[b.id].book?.pages ?? [] : [];
-    if (!b || this.hit("escape", "i", "tab")) { this.screens.popToBase(); this.drainEvents(); return; }
-    if (this.S.book.t < 0.3) return;
-    if (this.hit("arrowleft", "a") && b.page > 0) { b.page--; this.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
-    if (this.hit("arrowright", "d", "e", "enter", " ")) {
-      if (b.page < pages.length - 1) { b.page++; this.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
-      else if (this.hit("e", "enter", " ")) { this.screens.popToBase(); this.drainEvents(); }
-    }
-  }
-  renderBook() {
-    const ctx = this.ctx, b = this.book;
-    if (!b) return;
-    const def = ITEMS[b.id].book!;
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(0, 0, W, H);
-    const x = 50, y = 22, w = 220, h = 136;
-    ctx.fillStyle = "#2a1a0c"; ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
-    ctx.fillStyle = "#d8ccb0"; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "#b8ac90"; ctx.fillRect(x + w / 2, y, 1, h);
-    for (let i = 0; i < 60; i++) { ctx.fillStyle = "#c8bc9e"; ctx.fillRect(x + ((hash2(i, 1, 9) * w) | 0), y + ((hash2(i, 2, 9) * h) | 0), 2, 1); }
-    drawText(ctx, def.title, x + w / 2, y + 10, "#4a2a10", 1, "center");
-    const lines = def.pages[b.page] ?? [];
-    lines.forEach((l, i) => drawText(ctx, l, x + w / 2, y + 34 + i * 14, "#3a2a1a", 1, "center"));
-    drawText(ctx, `${b.page + 1}/${def.pages.length}`, x + w / 2, y + h - 22, "#7a6a50", 1, "center");
-    drawText(ctx, b.page < def.pages.length - 1 ? "E NEXT PAGE   ESC CLOSE" : "E CLOSE", x + w / 2, y + h - 12, "#7a6a50", 1, "center");
-    this.renderNote();
-  }
+  boostEye(level: number) { this.eyeBoost = level; }
+  /** World presentation without simulation (overlays that keep the scene alive, e.g. dialogue). */
+  animate(dt: number) { this.updateWorldFx(dt); }
 
   renderNote(y = H - 40) {
     if (!this.note) return;
@@ -1368,104 +1295,6 @@ export class Game {
     art(new Pen(this.emit.ctx, true), x, y, pose);
   }
 
-  // ---------------------------------------------------------------- dialogue
-  // A non-opaque overlay: the world pauses beneath it (no stepWorld) while
-  // presentation keeps animating. Every state change is a sim command
-  // (dialogueBeat / finishSegment); this screen only holds a page cursor.
-  openDialogue(npc: string, script: string, segment: string) {
-    const seg = DIALOGUE[script]?.segments.find((s) => s.id === segment);
-    if (!seg) return;
-    this.dlg = { npc, seg, pages: [], page: 0, chars: 0, hold: 0 };
-    this.screens.push(this.S.dialogue);
-    this.startSegment(seg);
-  }
-  private startSegment(seg: DialogueSegment) {
-    const d = this.dlg!;
-    d.seg = seg;
-    d.pages = segmentPages(this.world, this.pl, seg);
-    if (!d.pages.length) { this.advanceSegment(); return; }
-    this.startPage(0);
-  }
-  private startPage(i: number) {
-    const d = this.dlg!, p = d.pages[i];
-    d.page = i; d.chars = 0; d.hold = 0;
-    if (p.beat) {
-      dialogueBeat(this.world, this.pl, d.npc, d.seg.id, p.beat);
-      this.drainEvents();
-      d.hold = BEAT_HOLD[p.beat] ?? 0;
-    }
-  }
-  private advanceSegment() {
-    const d = this.dlg!;
-    const next = finishSegment(this.world, this.pl, d.npc, d.seg.id);
-    this.drainEvents();
-    if (next && this.dlg) this.startSegment(next);
-    else this.closeDialogue();
-  }
-  closeDialogue() {
-    this.dlg = null;
-    if (this.screens.is("dialogue")) this.screens.popToBase();
-    if (this.zoomHint) { this.zoomHint = false; this.say("(SCROLL TO ZOOM)"); }
-  }
-  updateDialogue(dt: number) {
-    this.updateWorldFx(dt);
-    const d = this.dlg;
-    if (!d) { this.screens.popToBase(); return; }
-    // Esc leaves; progress is in flags, so the next talk resumes at the first unfinished segment.
-    if (this.hit("escape")) { this.closeDialogue(); return; }
-    if (d.hold > 0) { d.hold -= dt; return; }
-    const p = d.pages[d.page];
-    const total = p.lines.reduce((n, l) => n + l.length, 0);
-    if (d.chars < total) {
-      const before = Math.floor(d.chars);
-      d.chars = Math.min(total, d.chars + dt * 42);
-      const flat = p.lines.join("");
-      for (let i = before; i < Math.floor(d.chars); i++) if (flat[i] !== " " && i % 2 === 0) { this.sfx.blip(); break; }
-    }
-    if (this.S.dialogue.t > 0.15 && this.hit("e", "enter", " ")) {
-      if (d.chars < total) { d.chars = total; return; }
-      if (p.then) { dialogueBeat(this.world, this.pl, d.npc, d.seg.id, p.then); this.drainEvents(); }
-      if (!this.dlg) return;
-      if (d.page + 1 < d.pages.length) { this.startPage(d.page + 1); this.sfx.tone(240, 0.04, "triangle", 0.02); }
-      else this.advanceSegment();
-    }
-  }
-  renderDialogue() {
-    const d = this.dlg;
-    if (!d) return;
-    const ctx = this.ctx, p = d.pages[d.page];
-    const npc = npcActor(this.world, d.npc);
-    const name = p.speaker ?? npcDef(npc?.npc)?.name ?? "";
-    const bx = 14, bw = W - 28, bh = 54, by = H - bh - 6;
-    this.renderToast(by - 24);
-    // box
-    ctx.fillStyle = "#08070a"; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = "#3a3540"; ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = "#4e4856"; ctx.fillRect(bx, by, bw, 1); ctx.fillRect(bx, by, 1, bh);
-    ctx.fillStyle = "rgba(14,12,18,0.94)"; ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
-    for (const [cx, cy] of [[bx + 3, by + 3], [bx + bw - 5, by + 3], [bx + 3, by + bh - 5], [bx + bw - 5, by + bh - 5]]) { ctx.fillStyle = "#6a6372"; ctx.fillRect(cx, cy, 2, 2); }
-    // speaker tag, trimmed in the guardian's rank gold
-    const tw = textWidth(name) + 10;
-    ctx.fillStyle = "#08070a"; ctx.fillRect(bx + 7, by - 9, tw + 2, 10);
-    ctx.fillStyle = "#2a2430"; ctx.fillRect(bx + 8, by - 8, tw, 8);
-    ctx.fillStyle = "#7a5a1c"; ctx.fillRect(bx + 8, by - 8, tw, 1);
-    drawText(ctx, name, bx + 13, by - 6, "#e0c060");
-    // typewriter text
-    let left = Math.floor(d.chars);
-    p.lines.forEach((line, i) => {
-      const n = Math.max(0, Math.min(line.length, left));
-      left -= line.length;
-      if (n > 0) drawTextS(ctx, line.slice(0, n), bx + 10, by + 8 + i * 10, "#e8dcc0", 1, "left", "#000");
-    });
-    const total = p.lines.reduce((n, l) => n + l.length, 0);
-    if (d.hold <= 0 && d.chars >= total && Math.sin(this.t * 6) > -0.3) {
-      const last = d.page === d.pages.length - 1;
-      drawText(ctx, last ? "E" : "E >", bx + bw - 8, by + bh - 9, "#8a8392", 1, "right");
-    }
-    drawText(ctx, "ESC LEAVE", bx + 10, by + bh - 9, "#4e4856");
-    this.renderNote(by - 36);
-  }
-
   renderHud() {
     const ctx = this.ctx;
     // interaction marker (world space: drawn on the world layer)
@@ -1506,200 +1335,5 @@ export class Game {
       ctx.globalAlpha = 1;
     }
   }
-
-  renderInv() {
-    const ctx = this.ctx, inv = this.pl.inventory, hasArm = this.hasArm, cap = this.cap;
-    const L = this.invLayout(cap), { px, py, pw, ph } = L;
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
-    const frame = (x: number, y: number, w: number, h: number, fill: string, edge = "#3a3540", hi = "#4e4856") => {
-      ctx.fillStyle = "#08070a"; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-      ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = hi; ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y, 1, h);
-      ctx.fillStyle = fill; ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-    };
-    frame(px, py, pw, ph, "#141117");
-    for (const [cx, cy] of [[px + 3, py + 3], [px + pw - 5, py + 3], [px + 3, py + ph - 5], [px + pw - 5, py + ph - 5]]) { ctx.fillStyle = "#6a6372"; ctx.fillRect(cx, cy, 2, 2); }
-    // golem figure
-    const fy = py + Math.floor((ph - 116) / 2);
-    frame(px + 8, fy, 80, 116, "#0e0c10");
-    const fig = makeCanvas(40, 40);
-    const pose: GolemPose = { facing: "down", phase: 0, moving: false, hasArm, dormant: 0, eye: 1, core: 0.8 + 0.2 * Math.sin(this.t * 3), raise: 0, reach: 0, t: this.t, eyeFixed: hasFlag(this.world, FLAGS.golemEye) };
-    drawGolem(new Pen(fig.ctx, false), 20, 34, pose);
-    ctx.drawImage(fig.c, px + 8, fy + 14, 80, 80);
-    if (!hasArm && Math.sin(this.t * 4) > -0.2) {
-      ctx.fillStyle = "#8a4040";
-      const ax = px + 8 + (20 + 6) * 2, ay = fy + 14 + (34 - 13) * 2;
-      for (let i = 0; i < 20; i += 2) { ctx.fillRect(ax + i % 8, ay, 1, 1); ctx.fillRect(ax, ay + i, 1, 1); ctx.fillRect(ax + 8, ay + i, 1, 1); ctx.fillRect(ax + (i % 8), ay + 20, 1, 1); }
-    }
-    if (hasFlag(this.world, FLAGS.golemBasket)) ctx.drawImage(itemIcon("basket").a, px + 66, fy + 4);
-    // relics
-    const rel = RELICS.filter((r) => hasItem(this.pl, r)).length;
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = i < rel ? "#c9a040" : "#2a2630";
-      ctx.fillRect(px + 34 + i * 6, fy + 106, 4, 4);
-    }
-    // header
-    const gx = px + 100, gy = py + 16;
-    const used = inv.slice(0, cap).filter(Boolean).length;
-    drawText(ctx, `PACK ${used}/${cap}`, gx, py + 6, "#8a8392");
-    if (this.invMode === "select") {
-      const s = propSprite("pedestal", 0, false)!;
-      ctx.drawImage(s.a, px + pw - 22, py + 2);
-      drawText(ctx, "?", px + pw - 24, py + 4, "#a070ff");
-    }
-    // grid
-    for (let i = 0; i < cap; i++) {
-      const cx = gx + (i % L.cols) * L.pitch, cy = gy + Math.floor(i / L.cols) * L.pitch;
-      const sel = i === this.invCursor;
-      frame(cx, cy, L.cell, L.cell, sel ? "#221d26" : "#100e12", sel ? (Math.sin(this.t * 6) > 0 ? "#c8b88a" : "#9a8c66") : "#2a2630", sel ? "#e8d8a8" : "#3a3540");
-      const slot = inv[i];
-      if (!slot) continue;
-      const ic = itemIcon(slot.item);
-      const dim = this.invMode === "select" && !isGlyph(slot.item);
-      ctx.globalAlpha = dim ? 0.25 : 1;
-      const o = Math.floor((L.cell - 16) / 2);
-      ctx.drawImage(ic.a, cx + o, cy + o);
-      ctx.globalAlpha = 1;
-      if (slot.n > 1) { const t = String(slot.n); drawTextS(ctx, t, cx + L.cell - 1 - textWidth(t), cy + L.cell - 7, "#f0e8d0", 1, "left", "#000"); }
-    }
-    const slot = inv[this.invCursor];
-    const ty = gy + L.gh + 6;
-    if (slot) {
-      drawTextS(ctx, ITEM_NAMES[slot.item] + (slot.n > 1 ? ` x${slot.n}` : ""), gx + L.gw / 2, ty, "#d8d0b8", 1, "center");
-      const def = ITEMS[slot.item];
-      const hint = this.invMode === "select" ? "E PLACE" : `${def.opens ? "E READ  " : ""}${def.droppable === false ? "CAN'T DROP" : "Q DROP"}`;
-      drawText(ctx, hint, gx + L.gw / 2, ty + 10, "#6a6372", 1, "center");
-    }
-    this.renderNote();
-  }
-
-  renderSchem() {
-    const ctx = this.ctx;
-    if (!this.schemCanvas) return;
-    const k = clamp(this.S.schem.t / 0.45, 0, 1);
-    const e = 1 - (1 - k) * (1 - k);
-    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0, 0, W, H);
-    const w = Math.round(W * e);
-    const x = Math.round((W - w) / 2);
-    ctx.drawImage(this.schemCanvas, x, 0, w, H, x, 0, w, H);
-    if (w < W) { ctx.fillStyle = "#d0d8e8"; ctx.fillRect(x - 3, 0, 3, H); ctx.fillRect(x + w, 0, 3, H); }
-    if (k >= 1 && this.area.id === "dungeon" && Math.sin(this.t * 6) > 0) {
-      const pl = this.pl;
-      const mx = Math.round(PLAN_X + (pl.x / TS) * PLAN_S), my = Math.round(PLAN_Y + (pl.y / TS) * PLAN_S);
-      ctx.fillStyle = "#ffcc55"; ctx.fillRect(mx - 1, my - 1, 3, 3);
-      ctx.fillStyle = "#000"; ctx.fillRect(mx, my, 1, 1);
-    }
-  }
-
-  renderTitle() {
-    const ctx = this.ctx;
-    ctx.fillStyle = "#060508"; ctx.fillRect(0, 0, W, H);
-    // dithered vignette glow
-    for (let y = 0; y < H; y += 1) for (let x = (y & 1); x < W; x += 2) {
-      const d = Math.hypot((x - W / 2) / W, (y - 70) / H);
-      if (hash2(x, y, 1) > d * 2.2) { ctx.fillStyle = "#120e16"; ctx.fillRect(x, y, 1, 1); }
-    }
-    for (const p of this.particles) { ctx.fillStyle = p.col; ctx.globalAlpha = clamp(p.life, 0, 1); ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
-    ctx.globalAlpha = 1;
-    const ty = 46;
-    drawText(ctx, "DUSTWAKE", W / 2 + 2, ty + 2, "#000", 5, "center");
-    drawText(ctx, "DUSTWAKE", W / 2, ty, "#4b4552", 5, "center");
-    drawText(ctx, "DUSTWAKE", W / 2, ty - 1, "#8a8392", 5, "center");
-    ctx.fillStyle = "#4b4552";
-    for (let i = 0; i < 40; i++) { const x = W / 2 - 78 + ((hash2(i, 3, 3) * 156) | 0), y = ty - 1 + ((hash2(i, 4, 3) * 25) | 0); ctx.fillRect(x, y, 1, 1); }
-    // eye
-    const blink = Math.sin(this.t * 1.7) > -0.95;
-    if (blink) { ctx.fillStyle = "#7fe8ff"; ctx.fillRect(W / 2 - 3, ty + 34, 6, 1); ctx.fillStyle = "#2a6a7a"; ctx.fillRect(W / 2 - 5, ty + 34, 2, 1); ctx.fillRect(W / 2 + 3, ty + 34, 2, 1); }
-    // controls
-    const key = (x: number, y: number, s: string, w = 9) => {
-      ctx.fillStyle = "#08070a"; ctx.fillRect(x - 1, y - 1, w + 2, 11);
-      ctx.fillStyle = "#3a3540"; ctx.fillRect(x, y, w, 9);
-      ctx.fillStyle = "#4e4856"; ctx.fillRect(x, y, w, 1);
-      ctx.fillStyle = "#1a171e"; ctx.fillRect(x, y + 8, w, 1);
-      drawText(ctx, s, x + w / 2, y + 2, "#c8c0b0", 1, "center");
-    };
-    const cy = 112;
-    key(90, cy, "W"); key(80, cy + 11, "A"); key(90, cy + 11, "S"); key(100, cy + 11, "D");
-    drawText(ctx, "MOVE", 95, cy + 25, "#6a6372", 1, "center");
-    key(150, cy + 11, "E");
-    drawText(ctx, "USE", 155, cy + 25, "#6a6372", 1, "center");
-    key(200, cy + 11, "I"); key(212, cy + 11, "TAB", 17);
-    drawText(ctx, "PACK", 213, cy + 25, "#6a6372", 1, "center");
-    if (Math.sin(this.t * 3) > -0.3) drawText(ctx, "PRESS ANY KEY", W / 2, 164, "#8a8392", 1, "center");
-  }
-
-  renderEnd() {
-    const ctx = this.ctx;
-    const t = this.S.end.t;
-    // sky bands, dithered
-    const bands = ["#0a0c22", "#141634", "#26204a", "#43285a", "#6a3458", "#9a4a50", "#d07448", "#f0a85a"];
-    const hz = 120;
-    for (let y = 0; y < H; y++) {
-      const f = clamp(y / hz, 0, 1) * (bands.length - 1);
-      const i0 = Math.floor(f), fr = f - i0;
-      for (let x = 0; x < W; x++) {
-        const b = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(y & 3) * 4 + (x & 3)] / 16;
-        ctx.fillStyle = bands[Math.min(bands.length - 1, i0 + (fr > b ? 1 : 0))];
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    // stars
-    for (let i = 0; i < 90; i++) {
-      const x = (hash2(i, 1, 4) * W) | 0, y = (hash2(i, 2, 4) * 70) | 0;
-      const tw = Math.sin(this.t * 2 + i) > 0.3;
-      ctx.fillStyle = tw ? "#e8e8ff" : "#8a8ab0";
-      ctx.fillRect(x, y, 1, 1);
-    }
-    // sun
-    const sunY = hz + 6 - Math.min(t, 12) * 2.6;
-    for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) {
-      const d = x * x + y * y;
-      if (d <= 196) { ctx.fillStyle = d < 120 ? "#fff0c0" : "#ffd080"; ctx.fillRect(W / 2 + 40 + x, Math.round(sunY + y), 1, 1); }
-    }
-    // mountains
-    const ridge = (base: number, amp: number, freq: number, seed: number, col: string) => {
-      ctx.fillStyle = col;
-      for (let x = 0; x < W; x++) {
-        const h = base - Math.abs(Math.sin(x * freq + seed)) * amp - Math.sin(x * freq * 2.7 + seed * 2) * amp * 0.3 - hash2(x >> 2, seed, 1) * 2;
-        ctx.fillRect(x, Math.round(h), 1, H - Math.round(h));
-      }
-    };
-    ridge(hz + 4, 26, 0.018, 1, "#3a2440");
-    ridge(hz + 16, 18, 0.03, 4, "#24182c");
-    // hill with ruins entrance
-    ctx.fillStyle = "#120c16";
-    for (let x = 0; x < W; x++) {
-      const h = 150 - Math.max(0, 22 - Math.abs(x - 110) * 0.18) - Math.sin(x * 0.05) * 3;
-      ctx.fillRect(x, Math.round(h), 1, H);
-    }
-    // broken pillars silhouettes
-    for (const [x, h] of [[60, 18], [72, 10], [150, 14], [162, 22]] as [number, number][]) { ctx.fillStyle = "#0c080e"; ctx.fillRect(x, 150 - h - 6, 5, h + 10); ctx.fillRect(x - 1, 150 - h - 6, 7, 2); }
-    // rune circle on hilltop
-    const cx = 110, cy = 130;
-    const glow = 0.4 + 0.3 * Math.sin(this.t * 2);
-    ctx.fillStyle = `rgba(160,112,255,${glow * Math.max(0, 1 - t / 8)})`;
-    for (let a = 0; a < Math.PI * 2; a += 0.05) ctx.fillRect(Math.round(cx + Math.cos(a) * 14), Math.round(cy + Math.sin(a) * 4), 1, 1);
-    // golem looking at sunrise
-    const pose: GolemPose = { facing: "up", phase: 0, moving: false, hasArm: this.hasArm, dormant: 0, eye: 1, core: 1, raise: 0, reach: 0, t: this.t, eyeFixed: hasFlag(this.world, FLAGS.golemEye) };
-    drawGolem(new Pen(ctx, false), cx, cy, pose);
-    // light motes
-    for (const p of this.particles) { ctx.fillStyle = p.col; ctx.globalAlpha = clamp(p.life, 0, 1) * 0.7; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
-    ctx.globalAlpha = 1;
-    if (t > 3) {
-      ctx.globalAlpha = clamp((t - 3) / 1.5, 0, 1);
-      drawTextS(ctx, "DUSTWAKE", W / 2, 20, "#f0e0c8", 3, "center", "#2a1a2a");
-      ctx.globalAlpha = 1;
-    }
-    if (t > 4.5) {
-      ctx.globalAlpha = clamp((t - 4.5) / 1, 0, 1);
-      const s = Math.floor(this.world.playTime);
-      const mm = String(Math.floor(s / 60)).padStart(2, "0"), ss = String(s % 60).padStart(2, "0");
-      const rel = RELICS.filter((r) => hasItem(this.pl, r)).length;
-      drawTextS(ctx, `TIME ${mm}:${ss}`, W / 2, 44, "#d8c8b0", 1, "center", "#2a1a2a");
-      drawTextS(ctx, `RELICS ${rel}/3`, W / 2, 52, "#d8c8b0", 1, "center", "#2a1a2a");
-      ctx.globalAlpha = 1;
-    }
-    if (t > 6 && Math.sin(this.t * 3) > -0.3) drawTextS(ctx, "ANY KEY - THE SURFACE    R - WAKE AGAIN", W / 2, 168, "#c8b8a0", 1, "center", "#000");
-    if (t < 1.6) { ctx.fillStyle = `rgba(235,240,255,${1 - t / 1.6})`; ctx.fillRect(0, 0, W, H); }
-  }
 }
+

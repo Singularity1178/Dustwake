@@ -1,7 +1,7 @@
 import { MapData, T, TS } from "./map";
 import { drawText, textWidth } from "./font";
 import { makeCanvas, hash2 } from "./util";
-import { GLYPHS } from "./art";
+import { GLYPHS } from "./content/glyphs";
 
 const BG = "#173465";
 const INK = "#e4ecff";

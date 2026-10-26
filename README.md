@@ -31,6 +31,8 @@
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
 | Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended) |
 | `Esc` / `I` / `Tab` | Close menu |
+| `K` | Save the game (one slot, kept in the browser's localStorage) |
+| `L` | Load the saved game (also on the title screen, to continue) |
 | `R` | Wake again (restart) |
 
 Click or press any key on the title screen to begin.
@@ -78,20 +80,29 @@ src/
     sim/             tasks/effects, interactions, inventory, runes, building,
                      collision, ritual puzzle, dialogue engine, stepping, UI commands (no DOM)
     view/            area view: baked background + light registry; zoom model
-    ui/              screen stack, shared overlay kit (frames, text field)
-    game.ts          host + presentation: screens, camera, particles, audio, rendering
-    art.ts           procedural pixel-art sprites and tiles
+    ui/              screen stack, shared overlay kit + UiHost (frames, text field),
+                     text wrapping, dialogue box geometry/layout (no DOM)
+    game.ts          host: input, screen stack, camera, particles, audio, event reactions,
+                     world rendering, render loop
+    art/             procedural pixel art, by what it draws:
+      palette.ts       shared colour ramps
+      common.ts        sprite cache, registry types, shared stone blob
+      tiles.ts         background bake (floors, walls, ground) + tile sprites (rubble, pillars, door, bars)
+      decals.ts        decals painted into the bake
+      props.ts         PROP_ART registry + propSprite (draw functions in propsSurface.ts / propsDungeon.ts)
+      items.ts         ITEM_ART registry, itemIcon, glyph patterns
     golem.ts         golem drawing
     npcArt.ts        NPC drawing (NPC_ART, keyed by NpcDef art id)
-    schematic.ts     schematic UI
+    schematic.ts     schematic plan drawing (the overlay is screens/schematic.ts)
     light.ts         lighting and glow
     audio.ts         synthesized sound effects
     font.ts          bitmap font
     circle.ts        rune circle art
     util.ts          canvas helpers
-    screens/         overlay screens split out of game.ts: build menu + tools, crafting
-tests/               headless sim tests (tests/support/uiSnapshot.ts renders the new
-                     screens to PNG at 320x180 without a browser)
+    screens/         screens split out of game.ts, behind ui/kit.ts UiHost: build menu + tools,
+                     crafting, pack, book, schematic, dialogue; title/end cards (cards.ts)
+tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
+                     crafting and dialogue screens to PNG at 320x180 without a browser)
 docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```
 

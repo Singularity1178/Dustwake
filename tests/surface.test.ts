@@ -20,7 +20,7 @@ import { HARVEST } from "../src/game/content/harvest";
 import { FLAGS } from "../src/game/content/flags";
 import { T, TS } from "../src/game/content/tiles";
 import { AreaView } from "../src/game/view/areaView";
-import { bakeRegion } from "../src/game/art";
+import { bakeRegion } from "../src/game/art/tiles";
 import { computeVis, makeLight } from "../src/game/light";
 import { makeCanvas } from "../src/game/util";
 import type { ItemId } from "../src/game/content/items";

@@ -13,19 +13,21 @@
 // its own beats here. Beats must be idempotent: their effects are flag-guarded,
 // so replaying or resuming a dialogue never repeats a gift.
 //
-// Text rules (tested): uppercase, only glyphs the bitmap font has, at most
-// DIALOGUE_LINE_MAX characters per line and DIALOGUE_PAGE_LINES lines per page.
+// Text: each page is one plain paragraph, uppercase, using only glyphs the
+// bitmap font has. Don't hand-break lines: the dialogue screen word-wraps the
+// text to the box's real width and splits a long page over as many screens as
+// it needs (ui/dialogueLayout.ts); a page's beat fires on its first screen and
+// its `then` on its last. Split pages where the speaker should pause, not to
+// fit the box. "\n" forces a line break. The wrapped output is linted (tests).
 import type { Requirement } from "./interactions";
 import type { Effect } from "./tasks";
 import { FLAGS, NPC_AWAKE, npcFlag } from "./flags";
 
-export const DIALOGUE_LINE_MAX = 26;
-export const DIALOGUE_PAGE_LINES = 4;
-
 export type BeatId = string;
 
 export interface DialoguePage {
-  lines: string[];
+  /** The page's text as one paragraph (wrapped and paginated at render time). */
+  text: string;
   /** Speaker tag; defaults to the NPC's name. */
   speaker?: string;
   /** Fired when the page is shown (before its text types out). */
@@ -84,44 +86,45 @@ export const DIALOGUE: Record<string, DialogueScript> = {
       {
         id: "intro", done: GUARDIAN_FLAGS.met,
         pages: [
-          { beat: "wake", lines: ["SOMEONE WALKS THESE HALLS.", "I HAD CEASED TO EXPECT IT."] },
-          { lines: ["I AM THE GUARDIAN OF THIS", "TREASURY. I WAS, AT LEAST."] },
-          { lines: ["THERE WAS NOISE BEYOND THE", "DOORS. SHOUTING. THEN", "STEEL. THEN SOMETHING", "WORSE."] },
-          { lines: ["MY ORDERS WERE TO HOLD", "THIS ROOM. SO I HELD IT.", "I DID NOT GO OUT TO SEE."] },
-          { lines: ["I REMEMBER NOTHING AFTER.", "I WENT DARK FOR A TIME I", "CANNOT NAME."] },
-          { lines: ["WHEN I WOKE I WAS BROKEN.", "THE CHESTS STOOD EMPTY.", "CROWNS, COIN, ALL GONE."] },
-          { lines: ["I HAD FAILED MY DUTY.", "A GUARDIAN WITH NOTHING TO", "GUARD IS ONLY A STATUE.", "SO I SLEPT AGAIN."] },
-          { lines: ["NO ONE HAS COME FOR ME", "SINCE. WHO ARE YOU? TELL", "ME WHAT YOU ARE."] },
-          { beat: "pause", lines: ["...YOU DO NOT ANSWER.", "YOU CANNOT. YOU WERE NEVER", "BUILT TO SPEAK.", "AH. A MAINTAINER."] },
-          { lines: ["THEN I SUSPECT NO MASTER", "REMAINS TO GIVE YOU", "ORDERS. BUT I OUTRANK YOU,", "AND SO I SAY IT:"] },
-          { lines: ["YOU ARE FREE.", "DO AS YOU PLEASE."] },
+          { beat: "wake", text: "SOMEONE WALKS THESE HALLS. I HAD CEASED TO EXPECT IT." },
+          { text: "I AM THE GUARDIAN OF THIS TREASURY. I WAS, AT LEAST." },
+          { text: "THERE WAS NOISE BEYOND THE DOORS. SHOUTING. THEN STEEL. THEN SOMETHING WORSE." },
+          { text: "MY ORDERS WERE TO HOLD THIS ROOM. SO I HELD IT. I DID NOT GO OUT TO SEE." },
+          { text: "I REMEMBER NOTHING AFTER. I WENT DARK FOR A TIME I CANNOT NAME." },
+          { text: "WHEN I WOKE I WAS BROKEN. THE CHESTS STOOD EMPTY. CROWNS, COIN, ALL GONE." },
+          { text: "I HAD FAILED MY DUTY. A GUARDIAN WITH NOTHING TO GUARD IS ONLY A STATUE. SO I SLEPT AGAIN." },
+          { text: "NO ONE HAS COME FOR ME SINCE. WHO ARE YOU? TELL ME WHAT YOU ARE." },
+          { beat: "pause", text: "...YOU DO NOT ANSWER. YOU CANNOT. YOU WERE NEVER BUILT TO SPEAK. AH. A MAINTAINER." },
+          { text: "THEN I SUSPECT NO MASTER REMAINS TO GIVE YOU ORDERS. BUT I OUTRANK YOU, AND SO I SAY IT:" },
+          { text: "YOU ARE FREE. DO AS YOU PLEASE." },
         ],
       },
       {
         id: "repair", when: { flags: [GUARDIAN_FLAGS.met] }, done: FLAGS.golemEye,
         pages: [
-          { lines: ["THAT EYE OF YOURS GUTTERS", "LIKE A DYING CANDLE.", "COME CLOSER. HOLD STILL."] },
-          { beat: "repairEye", lines: ["THERE. NOW YOU SEE AS FAR", "AS YOU WERE MEANT TO.", "(SCROLL TO ZOOM)"] },
-          { when: { flags: [FLAGS.golemArm] }, lines: ["THAT ARM CAME FROM THE", "ARMORY, I WOULD GUESS. SO", "SOMETHING THERE SURVIVED."] },
+          { text: "THAT EYE OF YOURS GUTTERS LIKE A DYING CANDLE. COME CLOSER. HOLD STILL." },
+          { beat: "repairEye", text: "THERE. NOW YOU SEE AS FAR AS YOU WERE MEANT TO.\n(SCROLL TO ZOOM)" },
+          { when: { flags: [FLAGS.golemArm] }, text: "THAT ARM CAME FROM THE ARMORY, I WOULD GUESS. SO SOMETHING THERE SURVIVED." },
         ],
       },
       {
         id: "core", when: { flags: [GUARDIAN_FLAGS.met] }, done: GUARDIAN_FLAGS.coreGiven,
         pages: [
-          { lines: ["TAKE THIS. IT IS ALL THE", "TREASURY HAS LEFT."] },
-          { beat: "giveCore", lines: ["AN AETHER CORE.", "SET IN A TELEPORTATION", "RUNE, IT WILL CARRY YOU", "OUT OF HERE."] },
-          { lines: ["I CANNOT SEE BEYOND THIS", "ROOM. I ONLY GUESS.", "BUT I HEAR WATER WHERE", "THERE WAS NONE."] },
-          { lines: ["THE AIR HAS GONE COLD.", "THE LAMPS DIED LONG AGO.", "AND NOW AND THEN, FROM FAR", "OFF, STONE SETTLES."] },
-          { lines: ["IF THE ENTRANCE IS CHOKED,", "THIS IS YOUR WAY OUT."] },
-          { lines: ["A PLACE THAT NO ONE MENDS", "DOES NOT LAST. I DOUBT YOU", "WOULD SURVIVE LONG HERE."] },
+          { text: "TAKE THIS. IT IS ALL THE TREASURY HAS LEFT." },
+          { beat: "giveCore", text: "AN AETHER CORE. SET IN A TELEPORTATION RUNE, IT WILL CARRY YOU OUT OF HERE." },
+          { text: "I CANNOT SEE BEYOND THIS ROOM. I ONLY GUESS. BUT I HEAR WATER WHERE THERE WAS NONE." },
+          { text: "THE AIR HAS GONE COLD. THE LAMPS DIED LONG AGO. AND NOW AND THEN, FROM FAR OFF, STONE SETTLES." },
+          { text: "IF THE ENTRANCE IS CHOKED, THIS IS YOUR WAY OUT. A PLACE THAT NO ONE MENDS DOES NOT LAST. I DOUBT YOU WOULD SURVIVE LONG HERE." },
+          // Only a mention: the village is not built (no flag, map or content yet).
+          { text: "BUT THERE WAS A VILLAGE WEST OF HERE, ABOVE THESE HALLS. IF ANYONE STILL LIVES THERE, THEY MAY BE ABLE TO REPAIR YOU." },
         ],
       },
       {
         id: "farewell", when: { flags: [GUARDIAN_FLAGS.coreGiven] }, done: GUARDIAN_FLAGS.farewell,
         pages: [
-          { lines: ["I CANNOT FOLLOW. MY DAMAGE", "IS TOO GREAT."] },
-          { lines: ["GO WELL, MAINTAINER."] },
-          { then: "goDormant", lines: ["IF YOU MEND THIS PLACE,", "TELL IT I HELD THE DOOR."] },
+          { text: "I CANNOT FOLLOW. MY DAMAGE IS TOO GREAT." },
+          { text: "GO WELL, MAINTAINER." },
+          { then: "goDormant", text: "IF YOU MEND THIS PLACE, TELL IT I HELD THE DOOR." },
         ],
       },
     ],

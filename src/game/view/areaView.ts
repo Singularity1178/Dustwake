@@ -14,7 +14,7 @@ import { ITEMS } from "../content/items";
 import { propDef } from "../content/props";
 import { socketPositions } from "../content/ritual";
 import { GLYPHS } from "../content/glyphs";
-import { bakeRegion } from "../art";
+import { bakeRegion } from "../art/tiles";
 import { makeCanvas } from "../util";
 import { computeVis, makeLight, type Light } from "../light";
 import { unionRect, type Area, type TileRect } from "../world/area";

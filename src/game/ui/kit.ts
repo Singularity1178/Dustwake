@@ -7,8 +7,13 @@ import type { Sfx } from "../audio";
 import type { ScreenStack } from "./screens";
 import type { World, Actor } from "../world/world";
 import type { Area } from "../world/area";
+import type { ItemId } from "../content/items";
 
-/** What a screen module needs from the host (Game). Keeps screens out of game.ts. */
+/**
+ * What a screen module needs from the host (Game). Keeps screens out of game.ts.
+ * The host owns input, the screen stack, camera, particles, audio and the
+ * render loop; screens only read state and call back through these members.
+ */
 export interface UiHost {
   readonly ctx: CanvasRenderingContext2D;
   readonly wctx: CanvasRenderingContext2D;
@@ -27,6 +32,14 @@ export interface UiHost {
   say(text: string): void;
   renderNote(y?: number): void;
   drainEvents(): void;
+  /** The item-received toast, drawn at a given height (overlays that cover the HUD place it themselves). */
+  renderToast(y: number): void;
+  /** Open an item's reading screen (book or schematic), as using it from the pack does. */
+  read(id: ItemId): void;
+  /** Flash the golem's eye (presentation only), e.g. on a moment of insight. */
+  boostEye(level: number): void;
+  /** Advance world presentation one frame (camera, lights, particles, NPC poses) without simulating. */
+  animate(dt: number): void;
 }
 
 export const UI = {

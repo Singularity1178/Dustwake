@@ -19,7 +19,7 @@ import {
   deconTargetAt, deconstructCheck, isDeconstructable, propTile, salvageOf, DECON_TEXT,
 } from "../sim/build";
 import { orderBuild, orderDeconstruct } from "../sim/commands";
-import { propSprite } from "../art";
+import { propSprite } from "../art/props";
 import { drawText, textWidth } from "../font";
 import { hasFlag } from "../world/world";
 import type { PropInst } from "../world/area";

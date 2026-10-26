@@ -4,7 +4,7 @@
 // twice per frame: once with an albedo Pen and once with an emissive Pen
 // (non-glowing pixels write black there so they occlude glow behind them).
 import { Pen } from "./util";
-import { GD } from "./art";
+import { GD } from "./art/palette";
 import type { Facing } from "./golem";
 
 export interface NpcPose {

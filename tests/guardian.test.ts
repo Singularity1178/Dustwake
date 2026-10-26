@@ -5,9 +5,10 @@ import assert from "node:assert/strict";
 import { player, currentArea, hasFlag, setFlag, getArea, makeNpc, actorById, type World } from "../src/game/world/world";
 import { T, TS } from "../src/game/content/tiles";
 import { FLAGS, npcFlag } from "../src/game/content/flags";
-import { DIALOGUE, BEATS, DIALOGUE_LINE_MAX, DIALOGUE_PAGE_LINES, GUARDIAN_FLAGS } from "../src/game/content/dialogue";
+import { DIALOGUE, BEATS, GUARDIAN_FLAGS } from "../src/game/content/dialogue";
+import { layoutDialogue, DIALOGUE_BOX, DIALOGUE_COLS, DIALOGUE_LINES } from "../src/game/ui/dialogueLayout";
 import { NPCS } from "../src/game/content/npcs";
-import { FONT_GLYPHS } from "../src/game/font";
+import { FONT_GLYPHS, textWidth } from "../src/game/font";
 import { interactables } from "../src/game/sim/interact";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
 import { applyEffect } from "../src/game/sim/tasks";
@@ -202,7 +203,7 @@ test("the golem cannot walk through the guardian", () => {
 });
 
 // ------------------------------------------------------------------ data lint
-test("dialogue text fits the bitmap font, the line width and the page height", () => {
+test("dialogue text, as wrapped for the box, uses font glyphs only and never overflows it", () => {
   const ok = (s: string, where: string) => {
     for (const ch of s) assert.ok(FONT_GLYPHS.has(ch), `${where}: glyph ${JSON.stringify(ch)} not in the font`);
   };
@@ -215,8 +216,20 @@ test("dialogue text fits the bitmap font, the line width and the page height", (
       assert.ok(seg.pages.length > 0);
       seg.pages.forEach((p, i) => {
         const where = `${sid}.${seg.id}[${i}]`;
-        assert.ok(p.lines.length >= 1 && p.lines.length <= DIALOGUE_PAGE_LINES, `${where}: ${p.lines.length} lines`);
-        for (const l of p.lines) { assert.ok(l.length <= DIALOGUE_LINE_MAX, `${where}: "${l}" is ${l.length} chars`); ok(l, where); }
+        assert.ok(p.text.trim().length > 0, `${where}: empty page`);
+        // What the box shows: the paragraph wrapped to the box width, paginated to its line capacity.
+        const screens = layoutDialogue([p]);
+        for (const sc of screens) {
+          assert.ok(sc.lines.length >= 1 && sc.lines.length <= DIALOGUE_LINES, `${where}: ${sc.lines.length} lines on one screen`);
+          for (const l of sc.lines) {
+            ok(l, where);
+            assert.ok(l.length <= DIALOGUE_COLS, `${where}: "${l}" is ${l.length} chars`);
+            // glyphs + the 1 px shadow stay inside the inset text area
+            assert.ok(textWidth(l) + 1 <= DIALOGUE_BOX.w - 2 * DIALOGUE_BOX.padX, `${where}: "${l}" overflows the box`);
+          }
+        }
+        // wrapping only re-flows whitespace: nothing authored is lost or reordered
+        assert.equal(screens.flatMap((sc) => sc.lines).join(" ").replace(/\s+/g, " ").trim(), p.text.replace(/\s+/g, " ").trim(), where);
         if (p.speaker) ok(p.speaker, where);
         for (const b of [p.beat, p.then]) if (b) assert.ok(BEATS[b], `${where}: unknown beat ${b}`);
       });
@@ -305,7 +318,7 @@ test("dormant is reversible: wake it again and a later data-only segment plays",
   // a future post-repair chapter, added purely as data
   script.segments.push({
     id: "afterRepair", when: { flags: [repaired] }, done: npcFlag(G, "thanked"),
-    pages: [{ beat: "wake", lines: ["I AM WHOLE AGAIN."] }],
+    pages: [{ beat: "wake", text: "I AM WHOLE AGAIN." }],
   });
   try {
     assert.equal(talkTo(w, pl, G), null, "nothing to say yet");
@@ -327,8 +340,8 @@ test("a second NPC is pure data: its own NpcDef row and script, talked to throug
   DIALOGUE.tester = {
     idle: "IT IGNORES YOU.",
     segments: [
-      { id: "hello", done: "npc.tester.hello", pages: [{ beat: "wake", lines: ["HELLO."] }] },
-      { id: "bye", when: { flags: ["npc.tester.hello"] }, done: "npc.tester.bye", pages: [{ then: "goDormant", lines: ["BYE."] }] },
+      { id: "hello", done: "npc.tester.hello", pages: [{ beat: "wake", text: "HELLO." }] },
+      { id: "bye", when: { flags: ["npc.tester.hello"] }, done: "npc.tester.bye", pages: [{ then: "goDormant", text: "BYE." }] },
     ],
   };
   try {

@@ -12,7 +12,8 @@ import type { Screen } from "../ui/screens";
 import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
 import { ITEM_NAMES } from "../content/items";
 import { craftEntries, craftLocked, orderCraft, CRAFT_TEXT, CRAFT_LOCKED_TEXT, type CraftEntry } from "../sim/crafting";
-import { itemIcon, propSprite } from "../art";
+import { itemIcon } from "../art/items";
+import { propSprite } from "../art/props";
 import { drawText } from "../font";
 import { clamp } from "../util";
 

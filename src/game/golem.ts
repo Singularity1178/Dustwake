@@ -1,5 +1,5 @@
 import { Pen } from "./util";
-import { IR } from "./art";
+import { IR } from "./art/palette";
 
 export type Facing = "down" | "up" | "left" | "right";
 export interface GolemPose {

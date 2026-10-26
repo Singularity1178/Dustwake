@@ -19,7 +19,7 @@ import { serialize, deserialize } from "../src/game/world/save";
 import { circlePixels } from "../src/game/circle";
 import { runeModel, carvingVisible, plantVisible, clumpCleared, RUNE_SURVIVE } from "../src/game/runeReveal";
 import { SurfaceRuneArt } from "../src/game/surfaceRune";
-import { propSprite } from "../src/game/art";
+import { propSprite } from "../src/game/art/props";
 import { events, find, frames, newWorld, useOn } from "./helpers";
 
 const surfaceOf = (w: World = newWorld()) => getArea(w, "surface");
@@ -143,7 +143,13 @@ test("in the dungeon, the SURFACE GATE corridor is solid rock and can't be enter
   assert.ok(d.props.filter((p) => p.kind === "rockpile").length >= 8, "heaped rock piles");
   assert.ok(d.decals.some((dc) => dc.kind === "earthspill") && d.decals.some((dc) => dc.kind === "rootfall"));
   const r = reachable(d, boxesOf(d), d.base.start);
-  for (let y = C.y - 1; y < d.h; y++) for (let x = C.x - 1; x <= C.x + C.w; x++) assert.equal(r[y * d.w + x], 0, `reached ${x},${y}`);
+  // Nothing from the corridor's first row down (walls included) is reachable.
+  // Row C.y - 1 is the Vestibule's own bottom floor row: the builder heaps
+  // rubble on its outer tiles but leaves the corridor mouth open, so the golem
+  // can walk up to the rock face (pinned below), just not into the corridor.
+  for (let y = C.y; y < d.h; y++) for (let x = C.x - 1; x <= C.x + C.w; x++) assert.equal(r[y * d.w + x], 0, `reached ${x},${y}`);
+  for (const x of [C.x - 1, C.x, C.x + C.w - 1, C.x + C.w]) assert.equal(d.tile(x, C.y - 1), T.RUBBLE, `rubble at ${x},${C.y - 1}`);
+  assert.equal(r[(C.y - 1) * d.w + C.x + 1], 1, "the corridor mouth in the Vestibule is reachable");
   // the Vestibule itself is still walkable
   assert.equal(r[46 * d.w + 33], 1);
 });
