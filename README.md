@@ -25,7 +25,7 @@
 | `X` (build menu or placement) | Deconstruct tool: take apart highlighted props for a full refund (`E` confirm, `X` back to building) |
 | `B` / `Q` (placement or remove) | Back to the build menu |
 | `Esc` (build tools) | Close |
-| `E` on a crafting bench | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `Esc` close) |
+| `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `Esc` close). It opens greyed out, with no plans shown, until you know how to build |
 | `E` on a teleport rune | Travel to its linked rune |
 | `E` on a tree or rock | Harvest wood / stone with your fists |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |

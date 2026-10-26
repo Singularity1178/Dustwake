@@ -1,7 +1,7 @@
 // Crafting: UI SHELL ONLY (see content/crafting.ts). Status checks are real
 // (knowledge and ingredients against the crafter's own pack, since stations have
 // no slots); there is no craft task yet, so orderCraft never changes the world.
-import { craftRecipesFor, CRAFT_RECIPES, type CraftRecipe } from "../content/crafting";
+import { craftRecipesFor, CRAFT_RECIPES, STATION_REQUIRES, type CraftRecipe } from "../content/crafting";
 import { emit, type Actor, type World } from "../world/world";
 import { meets } from "./requirements";
 import { countItem } from "./inventory";
@@ -14,8 +14,15 @@ export const CRAFT_TEXT: Record<Exclude<CraftStatus, "ok">, string> = {
   cost: "NOT ENOUGH MATERIALS",
   placeholder: "NO PLANS YET",
 };
+/** Shown when the crafter doesn't know the craft at all (the station opens greyed out). */
+export const CRAFT_LOCKED_TEXT = "YOU DON'T KNOW HOW TO CRAFT YET";
 
+/** True while `a` lacks the knowledge to read a station's plans (see STATION_REQUIRES). */
+export const craftLocked = (w: World, a: Actor, station: string) => !meets(w, a, STATION_REQUIRES[station]);
+
+/** The plans a station shows `a`. Empty while the craft is unknown: nothing is viewable. */
 export function craftEntries(w: World, a: Actor, station: string, list: readonly CraftRecipe[] = CRAFT_RECIPES): CraftEntry[] {
+  if (craftLocked(w, a, station)) return [];
   return craftRecipesFor(station, list).map((r) => {
     const lines = r.inputs.map((c) => ({ item: c.item, need: c.n, have: countItem(a, c.item) }));
     const status: CraftStatus = !meets(w, a, r.requires) ? "unknown" : r.placeholder || !r.output ? "placeholder" : lines.every((l) => l.have >= l.need) ? "ok" : "cost";
@@ -29,6 +36,7 @@ export function craftEntries(w: World, a: Actor, station: string, list: readonly
  * satisfiable recipe only reports that the work isn't understood.
  */
 export function orderCraft(w: World, a: Actor, station: string, id: string): boolean {
+  if (craftLocked(w, a, station)) { emit(w, { t: "message", text: CRAFT_LOCKED_TEXT }); return false; }
   const e = craftEntries(w, a, station).find((x) => x.recipe.id === id);
   if (!e) return false;
   emit(w, { t: "message", text: e.status === "ok" ? "THE BENCH ISN'T READY FOR THIS YET" : CRAFT_TEXT[e.status] });

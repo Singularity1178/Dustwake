@@ -35,8 +35,11 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  *     (ids of builder-placed props that were taken apart; restore removes them
  *     again so they never come back). Built props record their `recipe`. The
  *     recipe "torch" was renamed "torch_post" (pending build work is rewritten).
+ * v7: the CRAFTING BENCH recipe builds the dungeon's own `workbench` prop (one
+ *     kind, one sprite, one station) instead of a separate `craftbench` kind.
+ *     Built `craftbench` props become `workbench` (ids and recipe id stay).
  */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -58,7 +61,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 6;
+  version: 7;
   seed: number;
   rng: number;
   time: number;
@@ -159,6 +162,19 @@ export const MIGRATIONS: Record<number, Migration> = {
       ...s, version: 6,
       actors: s.actors.map((a: any) => ({ ...a, task: fix(a.task), queue: (a.queue ?? []).map(fix) })),
       areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, { ...d, propsRemoved: [] }])),
+    };
+  },
+  6: (s) => {
+    // The built crafting bench is now the `workbench` prop. Only the kind changes:
+    // prop ids (`craftbench#b0`), the recorded recipe id (`craftbench`), position
+    // and state are kept, so queued work that targets a bench still finds it.
+    // Collision boxes aren't saved (they come from the kind), so the bench simply
+    // takes the workbench's box (2 px wider each side) on load.
+    return {
+      ...s, version: 7,
+      areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, {
+        ...d, propsAdded: (d.propsAdded ?? []).map((p: any) => (p.kind === "craftbench" ? { ...p, kind: "workbench" } : p)),
+      }])),
     };
   },
 };

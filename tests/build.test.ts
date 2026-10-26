@@ -3,9 +3,9 @@
 // caches, persistence of removed authored props, refusals).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { installFakeCanvas } from "./support/fakeCanvas";
+import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
 installFakeCanvas();
-import { player, currentArea, setFlag, enterArea, makeActor, type World } from "../src/game/world/world";
+import { player, currentArea, setFlag, hasFlag, enterArea, makeActor, type World } from "../src/game/world/world";
 import { serialize, deserialize, migrate, SAVE_VERSION } from "../src/game/world/save";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
 import { orderBuild, orderDeconstruct } from "../src/game/sim/commands";
@@ -13,7 +13,9 @@ import { placement, siteFor, suggestTile, deconstructCheck, deconTargetAt, salva
 import { enqueueTask, applyEffect } from "../src/game/sim/tasks";
 import { interactables, allInteractables } from "../src/game/sim/interact";
 import { catalogEntries, queryCatalog, matchesSearch, sortEntries, entryFor, entryReason, type CatalogEntry, type CatalogQuery } from "../src/game/sim/catalog";
-import { craftEntries, orderCraft } from "../src/game/sim/crafting";
+import { craftEntries, orderCraft, craftLocked, CRAFT_LOCKED_TEXT } from "../src/game/sim/crafting";
+import { CraftingUi } from "../src/game/screens/crafting";
+import { ScreenStack } from "../src/game/ui/screens";
 import { RECIPES, AUTHORED_SALVAGE, BUILD_CATEGORIES, type Recipe } from "../src/game/content/build";
 import { CRAFT_RECIPES } from "../src/game/content/crafting";
 import { PROPS } from "../src/game/content/props";
@@ -22,7 +24,7 @@ import { FLAGS } from "../src/game/content/flags";
 import { FONT_GLYPHS } from "../src/game/font";
 import { TS, T } from "../src/game/content/tiles";
 import { AreaView } from "../src/game/view/areaView";
-import { newWorld, frame, frames, events, useOn } from "./helpers";
+import { newWorld, frame, frames, events, useOn, propItem } from "./helpers";
 
 // ------------------------------------------------------------------ fixtures
 const finish = (w: World) => { let g = 0; while (player(w).task && g++ < 600) frame(w); };
@@ -75,6 +77,10 @@ test("catalog data: every recipe has a prop kind with art, a known category, and
   assert.ok(PROPS.torch.wallMounted);
   // Only the dungeon's wall torch opts in among authored props.
   assert.deepEqual(Object.keys(AUTHORED_SALVAGE), ["torch"]);
+  // The crafting bench IS the dungeon's workbench: same prop kind, same sprite, one station. No second kind.
+  assert.equal(RECIPES.craftbench.prop, "workbench");
+  assert.equal(PROPS.workbench.station, "crafting");
+  assert.ok(!("craftbench" in PROPS) && !("craftbench" in PROP_ART), "no separate craftbench kind or sprite");
 });
 
 // ------------------------------------------------------------------ wall placement
@@ -215,12 +221,34 @@ test("v5 -> v6 migration: areas gain propsRemoved, pending 'torch' build work be
   assert.ok(deserialize(s));
 });
 
-// ------------------------------------------------------------------ crafting bench
-test("the crafting bench is interactable and opens its UI through the normal rule + task path", () => {
+test("v6 -> v7 migration: a saved crafting bench becomes the workbench prop, keeping its id, recipe and station", () => {
   const w = newWorld(); kit(w);
   const { a, pl } = inClearing(w);
   assert.ok(orderBuild(w, pl, "craftbench", 20, 52)); finish(w);
-  const bench = a.props.find((p) => p.kind === "craftbench")!;
+  const bench = a.props.find((p) => p.dyn && p.kind === "workbench")!;
+  // what a v6 save looked like: the bench was its own `craftbench` kind
+  const s: any = serialize(w);
+  s.version = 6;
+  s.areas.surface.propsAdded.find((p: any) => p.id === bench.id).kind = "craftbench";
+  const m: any = migrate(s);
+  assert.equal(m.version, SAVE_VERSION);
+  const moved = m.areas.surface.propsAdded.find((p: any) => p.id === bench.id);
+  assert.deepEqual([moved.kind, moved.recipe], ["workbench", "craftbench"], "only the kind changes; the recipe id keeps its name");
+  assert.ok(!m.areas.surface.propsAdded.some((p: any) => p.kind === "craftbench"));
+  const w2 = deserialize(s), a2 = currentArea(w2);
+  const b2 = a2.prop(bench.id)!;
+  assert.ok(b2 && b2.dyn && b2.kind === "workbench" && b2.recipe === "craftbench");
+  assert.equal(interactables(a2).find((i) => i.propId === bench.id)!.kind, "station");
+  assert.deepEqual(serialize(w2), serialize(w), "loading the old save is the same world as building it now");
+});
+
+// ------------------------------------------------------------------ crafting bench
+test("the built crafting bench is a workbench: interactable, and opens its UI through the normal rule + task path", () => {
+  const w = newWorld(); kit(w);
+  const { a, pl } = inClearing(w);
+  assert.ok(orderBuild(w, pl, "craftbench", 20, 52)); finish(w);
+  const bench = a.props.find((p) => p.dyn && p.kind === "workbench")!;
+  assert.equal(bench.recipe, "craftbench");
   const it = interactables(a).find((i) => i.propId === bench.id)!;
   assert.equal(it.kind, "station");
   events(w);
@@ -233,9 +261,90 @@ test("the crafting bench is interactable and opens its UI through the normal rul
   assert.ok(list.length >= 1 && list[0].recipe.placeholder && list[0].status === "placeholder");
   assert.equal(orderCraft(w, pl, "crafting", list[0].recipe.id), false);
   assert.equal(JSON.stringify(pl.inventory), before);
-  // the authored workbench (holding the chisel) is not a station
-  const dg = w.areas.get("dungeon")!;
-  assert.ok(!interactables(dg).some((i) => i.kind === "station"));
+});
+
+test("the dungeon's workbench gives up its chisel first, then works as a crafting bench", () => {
+  const w = newWorld(); frame(w);
+  const a = currentArea(w), pl = player(w);
+  const id = "workbench@13.5,37";
+  // chisel still on it: the pickup is what is offered (the tutorial depends on this)
+  assert.equal(interactables(a).find((i) => i.propId === id)!.kind, "propItem");
+  assert.ok(!interactables(a).some((i) => i.kind === "station"));
+  useOn(w, propItem(w, id));
+  assert.equal(countItem(pl, "chisel"), 1);
+  // chisel gone: the same prop is now a station, and using it opens the crafting UI
+  const it = interactables(a).find((i) => i.propId === id)!;
+  assert.equal(it.kind, "station");
+  events(w);
+  useOn(w, it);
+  assert.deepEqual(events(w).find((e) => e.t === "openStation"), { t: "openStation", actor: pl.id, prop: id, station: "crafting" });
+  // it is still the authored prop: it cannot be taken apart
+  assert.equal(salvageOf(a.prop(id)!), null);
+});
+
+test("without the knowledge to build, a workbench still opens but nothing is viewable or craftable", () => {
+  const w = newWorld(); frame(w);
+  const a = currentArea(w), pl = player(w);
+  const id = "workbench@13.5,37";
+  useOn(w, propItem(w, id)); // the chisel
+  assert.ok(!hasFlag(w, FLAGS.knowBuild));
+  assert.ok(craftLocked(w, pl, "crafting"));
+  assert.deepEqual(craftEntries(w, pl, "crafting"), [], "no plans are listed, not even greyed ones");
+  // using it is not refused: the station still opens (the screen shows it greyed out)
+  events(w);
+  useOn(w, interactables(a).find((i) => i.propId === id)!);
+  assert.ok(events(w).some((e) => e.t === "openStation"));
+  // and CRAFT, even for a real plan id, only says why
+  events(w);
+  assert.equal(orderCraft(w, pl, "crafting", "placeholder"), false);
+  assert.deepEqual(events(w), [{ t: "message", text: CRAFT_LOCKED_TEXT }]);
+  // learning to build unlocks the plans
+  setFlag(w, FLAGS.knowBuild);
+  assert.ok(!craftLocked(w, pl, "crafting"));
+  assert.equal(craftEntries(w, pl, "crafting").length, CRAFT_RECIPES.length);
+});
+
+/** A UiHost just big enough to drive the crafting screen against a real world and the recording canvas. */
+function craftingHost(w: World) {
+  const ctx = (globalThis as any).document.createElement("canvas").getContext("2d");
+  const keys: string[] = [], notes: string[] = [];
+  const host: any = {
+    ctx, wctx: ctx, world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
+    t: 0.1, cam: { x: 0, y: 0 }, vw: 320, vh: 180, screens: new ScreenStack(), typed: [],
+    sfx: new Proxy({}, { get: () => () => {} }), hit: (...k: string[]) => k.some((x) => keys.includes(x)),
+    say: (s: string) => notes.push(s), renderNote: () => {}, drainEvents: () => { for (const e of w.events) if (e.t === "message") notes.push(e.text); w.events = []; },
+  };
+  host.screens.set({ id: "play", opaque: true, t: 0, update() {}, render() {} });
+  return { host, press: (...k: string[]) => { keys.splice(0, keys.length, ...k); }, notes };
+}
+
+test("the crafting screen opens greyed out and empty while the craft is unknown, and lights up once it is learned", () => {
+  const w = newWorld(); frame(w);
+  const { host, press, notes } = craftingHost(w);
+  const ui = new CraftingUi(host);
+  const draw = () => { resetTrace(); ui.screen.render(); return traceHash(); };
+
+  ui.open("crafting", "workbench@13.5,37");
+  assert.ok(host.screens.is("crafting"));
+  assert.equal(ui.locked, true);
+  const greyed = draw();
+  // nothing to choose: movement does nothing, and E explains rather than crafting
+  press("arrowdown", "s", "arrowright", "d");
+  host.screens.update(1 / 60);
+  assert.deepEqual([ui.cursor, ui.focus], [0, "list"]);
+  press("e");
+  host.screens.update(1 / 60);
+  assert.deepEqual(notes, [CRAFT_LOCKED_TEXT]);
+  assert.ok(host.screens.is("crafting"), "E doesn't close it");
+  press("escape");
+  host.screens.update(1 / 60);
+  assert.ok(host.screens.is("play"), "Esc closes it");
+
+  setFlag(w, FLAGS.knowBuild);
+  ui.open("crafting", "workbench@13.5,37");
+  assert.equal(ui.locked, false);
+  assert.notEqual(draw(), greyed, "the unlocked screen draws differently from the greyed one");
+  assert.equal(draw(), draw(), "rendering is deterministic");
 });
 
 // ------------------------------------------------------------------ deconstruction
@@ -243,7 +352,7 @@ test("deconstructing a built prop refunds 100% of its recipe and clears it from 
   const w = newWorld(); kit(w, 10, 10);
   const { a, pl } = inClearing(w);
   assert.ok(orderBuild(w, pl, "craftbench", 20, 52)); finish(w);
-  const bench = a.props.find((p) => p.kind === "craftbench")!;
+  const bench = a.props.find((p) => p.dyn && p.kind === "workbench")!;
   assert.equal(countItem(pl, "wood"), 4); assert.equal(countItem(pl, "stone"), 8);
   assert.ok(interactables(a).some((i) => i.propId === bench.id));
   assert.equal(deconTargetAt(a, 20, 52)?.id, bench.id);

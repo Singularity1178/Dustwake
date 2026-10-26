@@ -7,6 +7,10 @@
 // a real `output`, and orderCraft starts a task whose effect consumes `inputs`
 // from the crafter's pack and gives `output` (overflow to the ground, as always).
 // Crafting draws from the crafter's own pack: stations have no item slots.
+//
+// Knowledge: a station can be used by anyone, but its plans can only be read by
+// someone who knows the craft (STATION_REQUIRES). Without it the screen still
+// opens, greyed out and empty, so the bench is never a dead prop.
 import type { ItemId } from "./items";
 import type { Requirement } from "./interactions";
 import type { Cost } from "./build";
@@ -30,12 +34,16 @@ export interface CraftRecipe {
   placeholder?: boolean;
 }
 
+/** What a crafter must know before a station shows any plans. Same knowledge as building: the bench is a built thing. */
+export const STATION_REQUIRES: Record<string, Requirement> = {
+  crafting: { flags: [FLAGS.knowBuild] },
+};
+
 export const CRAFT_RECIPES: CraftRecipe[] = [
   {
     id: "placeholder", name: "UNKNOWN WORK", station: "crafting", placeholder: true,
     desc: ["PLACEHOLDER. THE BENCH IS", "READY, BUT NO PLANS HAVE", "BEEN WORKED OUT YET."],
     inputs: [{ item: "wood", n: 2 }, { item: "stone", n: 1 }],
-    requires: { flags: [FLAGS.knowBuild] },
   },
 ];
 

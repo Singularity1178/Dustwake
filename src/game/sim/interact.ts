@@ -45,7 +45,9 @@ function deriveInteractables(area: Area): Interactable[] {
       continue;
     }
     if (HARVEST[p.kind] && !p.taken) { I.push({ kind: "harvest", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
-    if (def.station) { I.push({ kind: "station", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
+    // A station is used once nothing rests on it: the dungeon workbench hands over its chisel first (the tutorial
+    // needs that), then works as a bench. Built benches carry no item, so they are stations straight away.
+    if (def.station && !(p.item && !p.container && !p.taken)) { I.push({ kind: "station", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
     if (def.examine) { I.push({ kind: "examine", x: p.x, y: p.y + 2, r: propReach(p.kind) + 4, propId: p.id }); continue; }
     const r = propReach(p.kind);
     if (p.container && !p.open) I.push({ kind: "container", x: p.x, y: p.y + 2, r, propId: p.id, itemZ: p.itemZ, hasItem: !!p.item });

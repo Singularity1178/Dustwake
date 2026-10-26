@@ -80,8 +80,9 @@ export const RECIPES: Record<string, Recipe> = {
     cost: [{ item: "stone", n: 4 }, { item: "wood", n: 2 }], requires: { flags: [FLAGS.knowMasonry] },
   },
   craftbench: {
-    name: "CRAFTING BENCH", category: "craft", order: 0, prop: "craftbench", dur: 1.4,
-    desc: ["A STURDY BENCH TO WORK AT.", "USE IT TO OPEN THE CRAFTING", "PLANS. TAKES TWO TILES."],
+    // Builds the same `workbench` prop the dungeon's artificery has (same sprite, same station).
+    name: "CRAFTING BENCH", category: "craft", order: 0, prop: "workbench", dur: 1.4,
+    desc: ["A STURDY BENCH TO WORK AT.", "USE IT TO OPEN THE CRAFTING", "PLANS. TAKES THREE TILES."],
     cost: [{ item: "wood", n: 6 }, { item: "stone", n: 2 }], requires: KNOW_BUILD,
   },
   barricade: {

@@ -41,7 +41,9 @@ export const PROPS: Record<string, PropKindDef> = {
   weaponrack: { box: [24, 6] }, limbrack: { box: [22, 6], alt: "taken" }, armorstand: { box: [10, 5] },
   barrel: { box: [12, 7] }, crate: { box: [14, 8] }, statue: { box: [18, 10] }, statue_fallen: { box: [30, 10] },
   throne: { box: [30, 14] }, maptable: { box: [28, 10], alt: "taken" }, altar: { box: [30, 10] }, pew: { box: [36, 6] },
-  workbench: { box: [32, 10], itemDx: -6 }, forge: { box: [32, 12] }, anvil: { box: [14, 6] }, cradle: { box: [28, 5] },
+  // The workbench is the crafting station: the dungeon's authored one and the buildable CRAFTING BENCH are the same prop.
+  // While something rests on it (the dungeon's chisel) taking that comes first; see deriveInteractables.
+  workbench: { box: [32, 10], itemDx: -6, station: "crafting" }, forge: { box: [32, 12] }, anvil: { box: [14, 6] }, cradle: { box: [28, 5] },
   slab: { box: [36, 10] }, hearth: { box: [36, 10] }, longtable: { box: [50, 10] }, bench: { box: [44, 4] },
   chest: { box: [16, 8] }, pot: { box: [10, 6] }, fountain: { box: [32, 14] }, pedestal: { box: [10, 5] },
   sack: { box: [10, 5] }, parts: { box: [16, 5] },
@@ -69,8 +71,6 @@ export const PROPS: Record<string, PropKindDef> = {
   // ---- buildables (content/build.ts)
   /** Sharpened stakes: blocks the whole tile width. */
   barricade: { box: [16, 7] },
-  /** The crafting bench: opens the crafting screen. Two tiles wide. */
-  craftbench: { box: [28, 10], station: "crafting" },
   // The old surface gate, buried: no collision, no visible opening. Only a low
   // mound where the arch top lies, and a hollow sound if you go looking.
   buriedgate: { flat: true, examine: "THE GROUND HERE SOUNDS HOLLOW UNDERFOOT." },

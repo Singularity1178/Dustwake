@@ -12,7 +12,7 @@ import { BuildUi } from "../../src/game/screens/buildMenu";
 import { CraftingUi } from "../../src/game/screens/crafting";
 import { ScreenStack } from "../../src/game/ui/screens";
 import { FLAGS } from "../../src/game/content/flags";
-import { stepWorld } from "../../src/game/sim/step";
+import { stepPlayer, stepWorld } from "../../src/game/sim/step";
 import { propSprite } from "../../src/game/art";
 import { propDef } from "../../src/game/content/props";
 import { TS, isSolidT } from "../../src/game/content/tiles";
@@ -137,6 +137,9 @@ export function run(dir = "snapshots") {
   b.search.active = false; b.search.value = ""; b.tab = 2; b["refresh"]();
   b.cursor = b["list"].findIndex((e: any) => e.id === "wall_torch");
   shot("build-menu-light", () => b.screen.render());
+  b.tab = 3; b["refresh"](); b.cursor = b["list"].findIndex((e: any) => e.id === "craftbench");
+  shot("build-menu-craft", () => b.screen.render());
+  b.tab = 2; b["refresh"](); b.cursor = b["list"].findIndex((e: any) => e.id === "wall_torch");
   b.recipe = "wall_torch"; b["toPlace"]();
   shot("place-wall-torch", () => b.screen.render());
   b.cur = { tx: 10, ty: 3 };
@@ -152,7 +155,9 @@ export function run(dir = "snapshots") {
   for (const p of [...sa.props]) if (Math.abs(p.x - pl.x) < 96 && Math.abs(p.y - pl.y) < 96) sa.removeProp(p.id);
   addItems(w, pl, "wood", 20); addItems(w, pl, "stone", 10);
   host.cam.x = pl.x - 160; host.cam.y = pl.y - 100;
-  orderBuild(w, pl, "craftbench", 20, 52); for (let i = 0; i < 200; i++) stepWorld(w, 1 / 60);
+  // The player's own task advances in stepPlayer (stepWorld only ticks other actors), so step both like the host does.
+  orderBuild(w, pl, "craftbench", 20, 52);
+  for (let i = 0; i < 200; i++) { stepPlayer(w, 1 / 60, { ix: 0, iy: 0, use: false }); stepWorld(w, 1 / 60); }
   b.recipe = "table"; b["toPlace"](); b.cur = { tx: 22, ty: 49 };
   shot("place-table", () => b.screen.render());
   b["toRemove"](); b.cur = { tx: 20, ty: 52 };
@@ -160,4 +165,9 @@ export function run(dir = "snapshots") {
   const cu: any = new CraftingUi(host);
   cu.open("crafting", "x");
   shot("crafting", () => cu.screen.render());
+  // the same bench for a golem that doesn't know how to build: greyed out, nothing listed
+  w.flags.delete(FLAGS.knowBuild);
+  host.screens.popToBase();
+  cu.open("crafting", "x");
+  shot("crafting-locked", () => cu.screen.render());
 }
