@@ -14,6 +14,7 @@ import { travel } from "./runes";
 import { applyBuild, applyDeconstruct } from "./build";
 import { actorBoxes } from "./collision";
 import { applyDialogueEffect } from "./dialogue";
+import { applyWear, applyTakeOff, gearRefusal } from "./gear";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
@@ -40,6 +41,13 @@ export function tickTask(w: World, a: Actor, dt: number) {
   }
   // An effect may have replaced the task (e.g. picking up the arm begins attaching it).
   if (task.t >= task.dur && a.task === task) a.task = null;
+}
+
+/** Where a slam's fists meet the ground: just in front of the actor. */
+export function strikePoint(a: Actor) {
+  const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
+  const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
+  return { x: a.x + fx * 10, y: a.y + (fy > 0 ? 3 : fy < 0 ? -7 : 0) };
 }
 
 export function faceTo(a: Actor, x: number, y: number) {
@@ -196,6 +204,31 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       emit(w, { t: "itemDropped", actor: a.id, item, n, x: spot.x, y: spot.y, reason: "drop" });
       break;
     }
+    case "wear": {
+      const r = applyWear(w, a, e.slot);
+      if (!r.ok && r.reason !== "empty") emit(w, { t: "message", text: gearRefusal(r) });
+      break;
+    }
+    case "takeOff": {
+      const r = applyTakeOff(w, a, e.gear);
+      if (!r.ok && r.reason !== "empty") emit(w, { t: "message", text: gearRefusal(r) });
+      break;
+    }
+    case "slam": {
+      // The blow lands: both fists into the ground in front of the actor. The
+      // target chosen when the slam started is re-checked: it may be gone.
+      const p = strikePoint(a), t = target;
+      const prop = t?.propId ? area.prop(t.propId) : undefined;
+      const there = !!e.then && !!t && (t.tx !== undefined && t.ty !== undefined ? TILE_INTERACT[area.tile(t.tx, t.ty)]?.kind === t.kind : !!prop && !prop.taken);
+      emit(w, { t: "slam", actor: a.id, x: p.x, y: p.y, hit: there });
+      if (there) applyEffect(w, a, e.then!, t);
+      break;
+    }
+    case "withstand":
+      // The target takes the blow and holds: nothing in the world changes.
+      emit(w, { t: "withstood", actor: a.id, x: target?.x ?? a.x, y: target?.y ?? a.y, tx: target?.tx, ty: target?.ty });
+      if (e.text) emit(w, { t: "message", text: e.text });
+      break;
     case "travel":
       if (target?.propId) travel(w, a, area, target.propId);
       break;

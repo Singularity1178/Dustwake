@@ -7,7 +7,7 @@ installFakeCanvas();
 import { player, currentArea, getArea, setFlag, enterArea, makeActor, type World } from "../src/game/world/world";
 import { serialize, deserialize, SAVE_VERSION } from "../src/game/world/save";
 import { capacity, addItems, giveItem, countItem, hasItem, reconcileCapacity } from "../src/game/sim/inventory";
-import { dropFromSlot, orderBuild, readItem } from "../src/game/sim/commands";
+import { dropFromSlot, orderBuild, readItem, wearFromSlot } from "../src/game/sim/commands";
 import { placement } from "../src/game/sim/build";
 import { travel, arrivalSpot } from "../src/game/sim/runes";
 import { checkRune } from "../src/game/sim/ritual";
@@ -42,11 +42,11 @@ function toSurface(w: World) {
 }
 
 // ------------------------------------------------------------------ Part A
-test("capacity is derived from tiers: 8 / 16 with the arm / 48 with the basket", () => {
+test("capacity is derived from tiers: 8 / 16 with the arm / 48 wearing the basket", () => {
   const w = newWorld(), pl = player(w);
   assert.equal(capacity(w, pl), 8);
   setFlag(w, FLAGS.golemArm); assert.equal(capacity(w, pl), 16);
-  w.flags.delete(FLAGS.golemArm); setFlag(w, FLAGS.golemBasket); assert.equal(capacity(w, pl), 48, "highest satisfied tier wins");
+  w.flags.delete(FLAGS.golemArm); pl.gear.back = "basket"; assert.equal(capacity(w, pl), 48, "highest satisfied tier wins");
 });
 
 test("stacking: materials stack to their max, tools take a slot each", () => {
@@ -80,11 +80,11 @@ test("capacity growth reveals slots without moving items; a shrink never loses i
   addItems(w, pl, "chisel", 1);
   for (let i = 0; i < 15; i++) addItems(w, pl, i % 2 ? "wood" : "stone", 20);
   const before = JSON.stringify(pl.inventory.slice(0, 16));
-  setFlag(w, FLAGS.golemBasket); reconcileCapacity(w, pl);
+  pl.gear.back = "basket"; reconcileCapacity(w, pl);
   assert.equal(pl.inventory.length, 48);
   assert.equal(JSON.stringify(pl.inventory.slice(0, 16)), before, "growth keeps slots in place");
   const wood = total(w, "wood"), stone = total(w, "stone");
-  w.flags.delete(FLAGS.golemBasket); w.flags.delete(FLAGS.golemArm);
+  delete pl.gear.back; w.flags.delete(FLAGS.golemArm); // a forced shrink (debug keys): the fallback still never loses items
   stepWorld(w, 1 / 60);
   assert.equal(pl.inventory.length, 8);
   assert.equal(total(w, "wood"), wood); assert.equal(total(w, "stone"), stone);
@@ -138,19 +138,21 @@ test("dropped items can't satisfy ritual sockets or the centre", () => {
   assert.ok(!events(w).some((e) => e.t === "runeActivated" || e.t === "runeFizzled" || e.t === "glyphPlaced"));
 });
 
-test("basket on the surface grants the 48-slot tier", () => {
+test("the surface basket is picked up into the pack; worn, it grants the 48-slot tier", () => {
   const w = newWorld(), pl = player(w);
   enterArea(w, pl, "surface", 100, 100);
   const it = find(w, (i) => i.looseId === "basket");
   useOn(w, it);
-  assert.ok(w.flags.has(FLAGS.golemBasket));
+  assert.ok(hasItem(pl, "basket"), "stored like any item");
+  assert.equal(capacity(w, pl), 8);
+  assert.equal(wearFromSlot(w, pl, pl.inventory.findIndex((s) => s?.item === "basket")), "ok");
   assert.equal(capacity(w, pl), 48);
-  assert.ok(!hasItem(pl, "basket"), "installed, not stored");
+  assert.ok(!hasItem(pl, "basket"), "worn, not stored");
 });
 
 test("a full 48-slot inventory round-trips through save/load", () => {
   const w = newWorld(), pl = player(w);
-  setFlag(w, FLAGS.golemBasket);
+  pl.gear.back = "basket";
   const ids: ItemId[] = ["wood", "stone", "coin", "crown", "goblet", "chisel"];
   for (let i = 0; i < 48; i++) addItems(w, pl, ids[i % ids.length], ids[i % ids.length] === "wood" || ids[i % ids.length] === "stone" ? 20 : 1);
   assert.equal(pl.inventory.filter(Boolean).length, 48);
@@ -173,7 +175,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 7);
+  assert.equal(SAVE_VERSION, 8);
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");

@@ -22,6 +22,61 @@ export const hasItem = (a: Actor, id: ItemId) => a.inventory.some((s) => s?.item
 /** Distinct item ids held, in slot order (for "does the pack contain any X" checks). */
 export const heldItems = (a: Actor) => a.inventory.flatMap((s) => (s ? [s.item] : []));
 
+/** A stack of one item (what an inventory slot holds). */
+export type Stack = { item: ItemId; n: number };
+
+/** Slots these stacks need when packed tight: units of one item merge, up to its stack size per slot. */
+export function slotsNeeded(stacks: readonly Stack[]): number {
+  const units = new Map<ItemId, number>();
+  for (const s of stacks) units.set(s.item, (units.get(s.item) ?? 0) + s.n);
+  let k = 0;
+  for (const [id, n] of units) k += Math.ceil(n / maxStack(id));
+  return k;
+}
+
+/** Pour stacks into slots: matching stacks with room first, then empty slots (as addItems does). False if anything is left over. */
+function pour(slots: Slot[], stacks: readonly Stack[]): boolean {
+  for (const st of stacks) {
+    const max = maxStack(st.item);
+    let n = st.n;
+    for (let i = 0; i < slots.length && n > 0; i++) {
+      const s = slots[i];
+      if (s && s.item === st.item && s.n < max) { const k = Math.min(n, max - s.n); s.n += k; n -= k; }
+    }
+    for (let i = 0; i < slots.length && n > 0; i++) {
+      if (slots[i]) continue;
+      const k = Math.min(n, max);
+      slots[i] = { item: st.item, n: k };
+      n -= k;
+    }
+    if (n > 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Fit the actor's pack, plus `extra`, into exactly `cap` slots without
+ * dropping anything (taking gear off uses it). Gentle first: slots inside
+ * `cap` stay where they are, and stacks beyond it, then `extra`, pour into
+ * matching stacks and empty slots. Only if that isn't enough is the pack
+ * compacted (same items merged, in order of first appearance). If even that
+ * can't hold everything it returns false and changes nothing.
+ */
+export function repackInto(a: Actor, cap: number, extra: readonly Stack[] = []): boolean {
+  const inv = a.inventory;
+  const held: Stack[] = inv.flatMap((s) => (s ? [{ item: s.item, n: s.n }] : []));
+  if (slotsNeeded([...held, ...extra]) > cap) return false;
+  let next: Slot[] = Array.from({ length: cap }, (_, i) => (inv[i] ? { ...inv[i]! } : null));
+  const beyond: Stack[] = inv.slice(cap).flatMap((s) => (s ? [{ item: s.item, n: s.n }] : []));
+  if (!pour(next, [...beyond, ...extra])) {
+    next = Array.from({ length: cap }, () => null);
+    pour(next, [...held, ...extra]);
+  }
+  inv.length = 0;
+  inv.push(...next);
+  return true;
+}
+
 /**
  * Make the slot array match capacity. Growth only appends empty slots, so
  * nothing moves. If capacity shrinks (it shouldn't in play, but debug keys and

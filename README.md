@@ -7,10 +7,12 @@
 | Key | Action |
 | --- | --- |
 | `W` `A` `S` `D` / arrow keys | Move |
-| `E` / `Space` / `Enter` | Interact / use |
+| `E` / `Enter` | Interact / use |
+| `Space` | Attack: a heavy two-arm ground slam. Works anywhere, facing anything, with or without the iron arm, even right next to something you could interact with (that stays on `E`) |
 | `I` / `Tab` | Open pack (inventory) |
 | Movement keys (pack open) | Move the slot cursor |
-| `E` (pack open) | Use / read the selected item |
+| `E` (pack open) | Use / read the selected item, or put on gear (the basket goes on the golem's back: 48 slots) |
+| `A` / left from the first slot (pack open) | The back slot, beside the golem figure (`D` / right goes back to the pack). `E` takes the basket off, if everything still fits without it |
 | `Q` (pack open) | Drop one of the selected item in front of the golem |
 | `M` | Read schematic (once found) |
 | `B` | Build menu (once you know how). Opens on the last thing you built |
@@ -28,6 +30,7 @@
 | `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `Esc` close). It opens greyed out, with no plans shown, until you know how to build |
 | `E` on a teleport rune | Travel to its linked rune |
 | `E` on a tree or rock | Harvest wood / stone with your fists |
+| `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
 | Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended) |
 | `Esc` / `I` / `Tab` | Close menu |
@@ -37,7 +40,7 @@
 
 Click or press any key on the title screen to begin.
 
-Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, basket, 40 wood and 40 stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom.
+Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, the basket worn on the golem's back (the one in the pack if it has one), 40 wood and 40 stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom.
 
 ## Running locally
 
@@ -77,7 +80,7 @@ src/
     map.ts           tutorial dungeon area builder
     surface.ts       surface area builder (ruins above the buried dungeon)
     world/           Area, World, area registry, save/load (simulated + saved state)
-    sim/             tasks/effects, interactions, inventory, runes, building,
+    sim/             tasks/effects, interactions, inventory, gear (the back slot), runes, building,
                      collision, ritual puzzle, dialogue engine, stepping, UI commands (no DOM)
     view/            area view: baked background + light registry; zoom model
     ui/              screen stack, shared overlay kit + UiHost (frames, text field),
@@ -102,7 +105,8 @@ src/
     screens/         screens split out of game.ts, behind ui/kit.ts UiHost: build menu + tools,
                      crafting, pack, book, schematic, dialogue; title/end cards (cards.ts)
 tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
-                     crafting and dialogue screens to PNG at 320x180 without a browser)
+                     crafting and dialogue screens to PNG at 320x180 without a browser;
+                     tests/support/golemSnapshot.ts renders the golem's poses to PNG)
 docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```
 

@@ -1,7 +1,7 @@
 // Commands issued by UI screens (pack, build placement, reading). Each one
 // validates and then goes through the normal Task/Effect path, so it is data,
 // saveable and testable headless.
-import { ITEMS, isDroppable, type ItemId } from "../content/items";
+import { ITEMS, isDroppable, type GearSlot, type ItemId } from "../content/items";
 import { RECIPES, DECONSTRUCT_DUR } from "../content/build";
 import { emit, areaOf, type Actor, type World } from "../world/world";
 import { applyEffect, beginTask } from "./tasks";
@@ -9,6 +9,7 @@ import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, DECON_TEXT } fro
 import { dropSpot } from "./inventory";
 import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
+import { wearCheck, takeOffCheck, gearRefusal } from "./gear";
 
 export type DropResult = "ok" | "empty" | "undroppable" | "noRoom";
 
@@ -23,6 +24,32 @@ export function dropFromSlot(w: World, a: Actor, slot: number, n = 1): DropResul
   if (!isDroppable(s.item)) { emit(w, { t: "message", text: "THAT IS TOO IMPORTANT TO DROP" }); return "undroppable"; }
   if (!dropSpot(areaOf(w, a), a, actorBoxes(w, a.area, a.id))) { emit(w, { t: "message", text: "NO ROOM TO DROP IT HERE" }); return "noRoom"; }
   applyEffect(w, a, { op: "drop", slot, n });
+  return "ok";
+}
+
+export type GearResult = "ok" | "empty" | "notWearable" | "noRoom";
+
+/**
+ * Put on the gear in a pack slot (pack open, world paused), applied at once
+ * like dropping: the basket goes onto the golem's back and the pack grows.
+ * NPCs can queue the same `{op: "wear"}` effect as a task.
+ */
+export function wearFromSlot(w: World, a: Actor, slot: number): GearResult {
+  const chk = wearCheck(w, a, slot);
+  if (!chk.ok) { if (chk.reason !== "empty") emit(w, { t: "message", text: gearRefusal(chk) }); return chk.reason; }
+  applyEffect(w, a, { op: "wear", slot });
+  return "ok";
+}
+
+/**
+ * Take off what is worn in a gear slot, back into the pack. Refused, with a
+ * message and no change at all, unless everything (the item itself included)
+ * still fits once the pack shrinks. Nothing is ever dropped by it.
+ */
+export function takeOffGear(w: World, a: Actor, gear: GearSlot): GearResult {
+  const chk = takeOffCheck(w, a, gear);
+  if (!chk.ok) { if (chk.reason !== "empty") emit(w, { t: "message", text: gearRefusal(chk) }); return chk.reason; }
+  applyEffect(w, a, { op: "takeOff", gear });
   return "ok";
 }
 

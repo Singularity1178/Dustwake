@@ -67,6 +67,20 @@ export class Sfx {
     for (let i = 0; i < 6; i++) this.noise(0.08, 0.15, "bandpass", 1500 + Math.random() * 2000, 4, 0.2 + Math.random() * 0.9);
   }
   thud() { this.tone(70, 0.25, "sine", 0.35, 40); this.noise(0.15, 0.1, "lowpass", 600); }
+  /** Gear on (the basket onto the back): a soft wicker creak and a quiet strap tap. */
+  strap() { this.noise(0.14, 0.05, "bandpass", 1500, 3, 0, 900); this.tone(180, 0.09, "triangle", 0.035, 140, 0.06); }
+  /** Gear off: the same, reversed. */
+  unstrap() { this.tone(150, 0.08, "triangle", 0.03, 190); this.noise(0.12, 0.045, "bandpass", 900, 3, 0.04, 1500); }
+  /** The slam: both arms heave up (a low grind), swing down (a whoosh), land (a deep ground thud). */
+  slamWindup() { this.tone(55, 0.4, "sawtooth", 0.03, 85); this.noise(0.35, 0.04, "lowpass", 300, 1); }
+  slamSwing() { this.noise(0.12, 0.08, "bandpass", 700, 1.2, 0, 180); }
+  slam() { this.tone(48, 0.45, "sine", 0.55, 28); this.noise(0.3, 0.2, "lowpass", 700, 1, 0, 120); }
+  /** A blow that doesn't break what it hits: a hard stone crack and a dull boom, shorter than smash(). */
+  impact() {
+    this.tone(60, 0.5, "sine", 0.5, 34);
+    this.noise(0.45, 0.3, "lowpass", 1400, 1, 0, 200);
+    for (let i = 0; i < 3; i++) this.noise(0.06, 0.14, "bandpass", 1800 + Math.random() * 1500, 4, 0.05 + i * 0.07);
+  }
   spark() { for (let i = 0; i < 3; i++) this.noise(0.03, 0.06, "highpass", 4000 + Math.random() * 3000, 1, i * 0.04); }
   clink() { this.tone(2400 + Math.random() * 400, 0.08, "square", 0.04, 1800); this.noise(0.05, 0.08, "highpass", 5000); }
   drip(vol: number) { if (vol > 0.02) this.tone(1200 + Math.random() * 600, 0.12, "sine", 0.12 * vol, 500); }

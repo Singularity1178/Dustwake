@@ -12,7 +12,8 @@ export const FLAGS = {
   golemArm: "golem.arm",
   /** The golem's flickering eye has been repaired (by the Treasury Guardian). Unlocks zoom. */
   golemEye: "golem.eye",
-  golemBasket: "golem.basket",
+  // "golem.basket" (the basket installed on pickup) was retired in save v8: the
+  // basket is gear worn in the actor's own back slot (Actor.gear, sim/gear.ts).
   knowSchematic: "know.schematic",
   knowBuild: "know.build",
   knowRepair: "know.repair",

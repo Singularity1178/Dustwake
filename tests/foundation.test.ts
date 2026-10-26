@@ -12,7 +12,7 @@ import { interactables } from "../src/game/sim/interact";
 import { T } from "../src/game/content/tiles";
 import { FLAGS } from "../src/game/content/flags";
 import type { AreaData } from "../src/game/map";
-import { events, find, frame, frames, newWorld, propItem, useOn } from "./helpers";
+import { events, find, frame, frames, newWorld, propItem, useOn, slamAt } from "./helpers";
 
 test("tile changes publish padded dirty rects and invalidate derived data", () => {
   const w = newWorld();
@@ -34,7 +34,7 @@ test("tile changes publish padded dirty rects and invalidate derived data", () =
 function midGame(): World {
   const w = newWorld(4242);
   useOn(w, propItem(w, "limbrack@65.5,3"));
-  useOn(w, find(w, (i) => i.kind === "cracked"));
+  slamAt(w, find(w, (i) => i.kind === "cracked"));
   useOn(w, propItem(w, "skeleton@66,32"));
   useOn(w, find(w, (i) => i.kind === "door"));
   useOn(w, propItem(w, "lectern@5,29"));

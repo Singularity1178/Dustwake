@@ -76,7 +76,7 @@ export class RCanvas {
   }
 }
 
-function png(c: RCanvas, scale: number): Buffer {
+export function png(c: RCanvas, scale: number): Buffer {
   const W = c.width * scale, H = c.height * scale;
   const raw = Buffer.alloc((W * 3 + 1) * H);
   for (let y = 0; y < H; y++) {

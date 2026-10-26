@@ -9,7 +9,7 @@ import { T, TS } from "../src/game/content/tiles";
 import { FLAGS } from "../src/game/content/flags";
 import { interactables, findTarget } from "../src/game/sim/interact";
 import { placeGlyph } from "../src/game/sim/ritual";
-import { events, find, frame, frames, newWorld, propItem, standAt, useOn, guardianIt, talkThrough } from "./helpers";
+import { events, find, frame, frames, newWorld, propItem, standAt, useOn, slamAt, guardianIt, talkThrough } from "./helpers";
 import { countItem } from "../src/game/sim/inventory";
 
 test("start state matches the authored dungeon", () => {
@@ -55,9 +55,14 @@ test("full tutorial playthrough", () => {
   const w = newWorld(99);
   const pl = player(w), area = currentArea(w), r = area.ritual!;
 
-  // Without the arm the cracked wall only shudders.
+  // Without the arm the slam (Space) lands but the cracked wall holds; E only shudders it, with a hint.
+  slamAt(w, find(w, (i) => i.kind === "cracked"));
+  assert.ok(events(w).some((e) => e.t === "withstood"));
+  assert.equal(area.tile(47, 10), T.CRACKED);
   useOn(w, find(w, (i) => i.kind === "cracked"));
-  assert.ok(events(w).some((e) => e.t === "cue" && e.cue === "push"));
+  const pushed = events(w);
+  assert.ok(pushed.some((e) => e.t === "cue" && e.cue === "push"));
+  assert.ok(pushed.some((e) => e.t === "message" && /SPACE/.test(e.text)));
   assert.equal(area.tile(47, 10), T.CRACKED);
 
   // Arm: taken from the rack and attached, not stored.
@@ -68,9 +73,11 @@ test("full tutorial playthrough", () => {
   assert.ok(ev.some((e) => e.t === "itemGained" && e.item === "arm" && !e.stored));
   assert.ok(ev.some((e) => e.t === "equipped"));
 
-  // Now the wall breaks: both tiles open, debris decals appear, interactable disappears.
-  const decals0 = area.decals.length, rev0 = area.revision;
+  // E still doesn't break it; the slam does: both tiles open, debris decals appear, interactable disappears.
   useOn(w, find(w, (i) => i.kind === "cracked"));
+  assert.equal(area.tile(47, 10), T.CRACKED);
+  const decals0 = area.decals.length, rev0 = area.revision;
+  slamAt(w, find(w, (i) => i.kind === "cracked"));
   assert.equal(area.tile(47, 10), T.FLOOR);
   assert.equal(area.tile(47, 11), T.FLOOR);
   assert.equal(area.decals.length, decals0 + 26);

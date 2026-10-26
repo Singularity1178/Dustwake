@@ -4,6 +4,7 @@
 import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/items";
 import { hasItem, addItems } from "./sim/inventory";
+import { ensureWorn } from "./sim/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
 import { PackUi } from "./screens/pack";
@@ -18,7 +19,8 @@ import { propSprite } from "./art/props";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite } from "./art/tiles";
 import { itemIcon, glyphPattern } from "./art/items";
 import { makeCanvas, Pen, Sprite, hash2, clamp, lerp, makeSprite } from "./util";
-import { drawGolem, GolemPose } from "./golem";
+import { drawGolem, GolemPose, slamPose } from "./golem";
+import { SLAM_HIT } from "./content/tasks";
 import { Light, makeLight, computeVis, Lighting } from "./light";
 import { Sfx } from "./audio";
 import { buildCircle, CircleArt, CR } from "./circle";
@@ -118,6 +120,8 @@ export class Game {
   rumbleT = 50;
   eyeBoost = 0;
   crackFlash = 0;
+  /** Cracked debris that took a slam and held shudders for a moment (presentation only). */
+  shudder: { tx: number; ty: number; t: number } | null = null;
   fizzT = 0;
   look: GolemLook = { eye: 0, core: 0, dormant: 1, sparkT: 2, sputter: 0, z: 0 };
   glight!: Light;
@@ -193,6 +197,7 @@ export class Game {
     this.particles = [];
     this.toast = null;
     this.fizzT = 0;
+    this.shudder = null;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
     this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeAnim = null;
@@ -338,8 +343,9 @@ export class Game {
       say(this.debugSpeed ? "DEBUG: SUPER SPEED ON" : "DEBUG: SUPER SPEED OFF");
     } else if (n === 4) {
       // Building tests: every build knowledge flag (incl. masonry for the brazier),
-      // the basket, and enough materials to build one of everything several times.
-      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); setFlag(w, FLAGS.golemBasket);
+      // the basket worn on the back (the one in the pack if there is one, else a
+      // new one), and enough materials to build one of everything several times.
+      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); ensureWorn(w, pl, "basket");
       addItems(w, pl, "wood", 40); addItems(w, pl, "stone", 40);
       say("DEBUG: BUILD + MASONRY + BASKET + MATERIALS");
     } else if (n === 5) {
@@ -509,6 +515,13 @@ export class Game {
       case "taskTick": {
         const a = e.task;
         if (a.kind === "attach") { if (Math.random() < 0.5) this.sparkBurst(2); }
+        else if (a.kind === "slam") {
+          // both arms heave up (a low grind), then swing down (a whoosh) just before the blow lands
+          const k0 = (a.t - e.dt) / a.dur, k1 = a.t / a.dur, down = SLAM_HIT * 0.88;
+          if (k0 <= 0.02 && k1 > 0.02) this.sfx.slamWindup();
+          if (k0 < down && k1 >= down) this.sfx.slamSwing();
+          if (!this.hasArm && k1 < SLAM_HIT && Math.random() < 0.12) this.sparkBurst(1);
+        }
         else if (a.kind === "dismantle" && a.target) {
           if (Math.floor(a.t / 0.3) !== Math.floor((a.t - e.dt) / 0.3)) this.sfx.clink();
           if (Math.random() < 0.3) this.spawn({ x: a.target.x + (Math.random() - 0.5) * 10, y: a.target.y, z: 4 + Math.random() * 8, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.5, kind: "dust", col: "#8a8478", g: 30 });
@@ -544,6 +557,12 @@ export class Game {
         this.shake(0.15, 1);
         this.sparkBurst(14);
         break;
+      case "gearOn": case "gearOff":
+        // Gear is light: a soft wicker creak and a quiet line (nothing like the iron arm's clank, sparks and shake).
+        if (e.actor !== this.world.playerId) break;
+        if (e.t === "gearOn") { this.sfx.strap(); this.say(`${ITEM_NAMES[e.item]} ON YOUR BACK`); }
+        else { this.sfx.unstrap(); this.say(`${ITEM_NAMES[e.item]} TAKEN OFF`); }
+        break;
       case "containerOpened":
         this.sfx.open();
         for (let i = 0; i < 8; i++) this.spawn({ x: e.x + (Math.random() - 0.5) * 12, y: e.y, z: 6, vx: (Math.random() - 0.5) * 20, vz: 10, life: 1, kind: "dust", col: "#7a7468", g: 10 });
@@ -557,6 +576,31 @@ export class Game {
           this.spawn({ x: cx + (Math.random() - 0.5) * 16, y: cy + (Math.random() - 0.5) * 20, z: 4 + Math.random() * 18, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 60, vz: 20 + Math.random() * 60, life: 1.6 + Math.random(), kind: "debris", col: ["#8a8392", "#6a6372", "#4b4552"][(Math.random() * 3) | 0], g: 160, size: Math.random() < 0.4 ? 2 : 1 });
         for (let i = 0; i < 40; i++)
           this.spawn({ x: cx + (Math.random() - 0.5) * 24, y: cy + (Math.random() - 0.5) * 24, z: Math.random() * 20, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 30, vz: Math.random() * 10, life: 2 + Math.random() * 2, kind: "smoke", col: "#7a7470", g: -2, size: 2 });
+        break;
+      }
+      case "slam": {
+        // Both fists hit the ground: a deep thud, a ring of dust where they land, a small shake.
+        // Whatever was hit adds its own feedback (wallBroken / withstood).
+        this.sfx.slam();
+        this.shake(0.18, 1.2);
+        for (let i = 0; i < 16; i++) {
+          const ang = Math.random() * Math.PI * 2, v = 14 + Math.random() * 24;
+          this.spawn({ x: e.x + Math.cos(ang) * 3, y: e.y + Math.sin(ang) * 2, z: 1, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v * 0.5, vz: 6 + Math.random() * 10, life: 0.6 + Math.random() * 0.5, kind: "dust", col: Math.random() < 0.5 ? "#8a8478" : "#a09a8c", g: 20 });
+        }
+        if (!this.hasArm) this.sparkBurst(5); // the broken stub struck too
+        break;
+      }
+      case "withstood": {
+        // The debris takes the blow and holds: a heavy impact, a smaller shake than a break, chips and
+        // dust off its face, and the debris itself jolts and flashes. Nothing in the world changes.
+        this.sfx.impact();
+        this.shake(0.3, 2);
+        this.crackFlash = 1;
+        if (e.tx !== undefined && e.ty !== undefined) this.shudder = { tx: e.tx, ty: e.ty, t: 0.45 };
+        for (let i = 0; i < 14; i++)
+          this.spawn({ x: e.x + (Math.random() - 0.5) * 16, y: e.y + 2, z: 4 + Math.random() * 20, vx: (Math.random() - 0.5) * 60, vy: Math.random() * 24, vz: 10 + Math.random() * 30, life: 0.9 + Math.random() * 0.6, kind: "debris", col: ["#8a8392", "#6a6372", "#4b4552"][(Math.random() * 3) | 0], g: 140 });
+        for (let i = 0; i < 16; i++)
+          this.spawn({ x: e.x + (Math.random() - 0.5) * 20, y: e.y + 3, z: Math.random() * 14, vx: (Math.random() - 0.5) * 24, vy: Math.random() * 10, vz: 2 + Math.random() * 6, life: 1 + Math.random(), kind: "dust", col: "#8a8478", g: 6, size: Math.random() < 0.4 ? 2 : 1 });
         break;
       }
       case "corePlaced": this.sfx.place(); this.sfx.tone(660, 1, "sine", 0.06); break;
@@ -650,7 +694,8 @@ export class Game {
     if (this.has("arrowright", "d")) ix += 1;
     if (this.has("arrowup", "w")) iy -= 1;
     if (this.has("arrowdown", "s")) iy += 1;
-    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", " ", "enter"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
+    // E / Enter interact, Space attacks (the two-arm slam): separate actions, both usable next to anything.
+    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
     this.drainEvents();
     // golem damage sparks
     lk.sparkT -= dt;
@@ -801,6 +846,7 @@ export class Game {
     this.shakeT = Math.max(0, this.shakeT - dt);
     if (this.shakeT <= 0) this.shakeMag = 0;
     this.crackFlash = Math.max(0, this.crackFlash - dt);
+    if (this.shudder && (this.shudder.t -= dt) <= 0) this.shudder = null;
     // golem light
     const gl = this.glight;
     gl.x = pl.x; gl.y = pl.y - 6;
@@ -1034,7 +1080,9 @@ export class Game {
         if (t === T.RUBBLE) { const s = rubbleSprite(Math.floor(hash2(tx, ty, 5) * 3), false); list.push({ y, f: () => spr(s, x, y) }); }
         else if (t === T.CRACKED) {
           const s = rubbleSprite(0, true);
-          list.push({ y, f: () => { spr(s, x, y); if (this.crackFlash > 0) { ec.globalAlpha = this.crackFlash; ec.drawImage(s.e, Math.round(x - s.ax - camX), Math.round(y - s.ay - camY)); ec.globalAlpha = 1; } } });
+          // a slam that didn't break it: the debris jolts side to side as the shudder dies away
+          const sh = this.shudder, jx = sh && sh.tx === tx && ty >= sh.ty && ty <= sh.ty + 2 ? Math.round(Math.sin(this.t * 80) * 2 * Math.min(1, sh.t / 0.3)) : 0;
+          list.push({ y, f: () => { spr(s, x + jx, y); if (this.crackFlash > 0) { ec.globalAlpha = this.crackFlash; ec.drawImage(s.e, Math.round(x + jx - s.ax - camX), Math.round(y - s.ay - camY)); ec.globalAlpha = 1; } } });
         }
         else if (t === T.PILLAR) { const s = pillarSprite(area.tvar[ty * AW + tx] === 1); list.push({ y, f: () => spr(s, x, y) }); }
         else if (t === T.LOCKED) { const s = doorSprite(); list.push({ y, f: () => spr(s, x, y) }); }
@@ -1213,7 +1261,7 @@ export class Game {
     sc.fillRect(sx - sw, sy - 1, sw * 2, 2);
     sc.fillRect(sx - sw + 2, sy - 2, sw * 2 - 4, 4);
     const a = pl.task;
-    let raise = 0, reach = 0;
+    let raise = 0, reach = 0, slam: number | undefined, dip: number | undefined;
     if (a) {
       const k = a.t / a.dur;
       if (a.kind === "reach" || a.kind === "push" || a.kind === "dismantle") reach = Math.sin(Math.min(1, k) * Math.PI);
@@ -1222,11 +1270,12 @@ export class Game {
       if (a.kind === "attach") reach = 0.3;
       if (a.kind === "punch") { const k2 = a.t / a.dur; raise = k2 < 0.35 ? k2 / 0.35 : k2 < 0.5 ? lerp(1, -1, (k2 - 0.35) / 0.15) : lerp(-1, 0, clamp((k2 - 0.5) / 0.4, 0, 1)); }
       if (a.kind === "channel") reach = 0.2;
+      if (a.kind === "slam") ({ lift: slam, dip } = slamPose(k));
     }
     const pose: GolemPose = {
       facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
       eye: clamp(lk.eye + this.eyeBoost, 0, 1.6), core: lk.core, raise, reach, t: this.t,
-      eyeFixed: hasFlag(this.world, FLAGS.golemEye),
+      eyeFixed: hasFlag(this.world, FLAGS.golemEye), back: pl.gear.back, slam, dip,
     };
     const ox = pl.x - camX + (a?.kind === "push" ? Math.round(Math.sin(a.t * 40)) : 0), oy = pl.y - camY - lk.z;
     drawGolem(new Pen(sc, false), ox, oy, pose);

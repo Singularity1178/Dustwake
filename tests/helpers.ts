@@ -49,6 +49,16 @@ export function useOn(w: World, it: Interactable) {
   return r;
 }
 
+/** Press attack (Space), optionally after standing at `it`, and let the slam play out. */
+export function slamAt(w: World, it?: Interactable) {
+  if (it) standAt(w, it);
+  const r = frame(w, { ix: 0, iy: 0, use: false, attack: true });
+  let guard = 0;
+  while (player(w).task && guard++ < 1000) frame(w);
+  frames(w, 5);
+  return r;
+}
+
 export const propItem = (w: World, propId: string) => find(w, (i) => i.propId === propId);
 export const newWorld = (seed = 12345) => createWorld(seed);
 

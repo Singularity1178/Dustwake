@@ -9,10 +9,12 @@ import { tickTask, runScheduled, beginTask } from "./tasks";
 import { reconcileCapacity } from "./inventory";
 import { boxFree as boxFreeAt, actorBoxes } from "./collision";
 import { RULES } from "../content/interactions";
-import { findTarget, interact, npcInteractables, type Interactable, type InteractUi } from "./interact";
+import { findTarget, interact, npcInteractables, startSlam, type Interactable, type InteractUi } from "./interact";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
+  /** Attack (Space on the play screen): the two-arm ground slam. Independent of `use` (E). */
+  attack?: boolean;
   /** Movement speed multiplier (debug/testing). Defaults to 1. */
   speed?: number;
 }
@@ -27,6 +29,8 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const target = pl.task ? null : findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
+  // The attack is separate from interacting: available whenever the golem could act, target or not.
+  if (!pl.task && !ui && input.attack) startSlam(w, pl, area);
   // Tutorial beat (one-shot): standing on the freshly charged circle starts the
   // first jump through the rune network. Afterwards runes are used with E.
   const r = area.ritual;

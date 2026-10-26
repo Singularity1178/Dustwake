@@ -38,8 +38,12 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  * v7: the CRAFTING BENCH recipe builds the dungeon's own `workbench` prop (one
  *     kind, one sprite, one station) instead of a separate `craftbench` kind.
  *     Built `craftbench` props become `workbench` (ids and recipe id stay).
+ * v8: actors gain `gear` (items worn by slot). The basket is no longer
+ *     installed on pickup (world flag `golem.basket`): it is gear worn in the
+ *     actor's back slot. A save with the basket installed (or still being
+ *     attached) migrates to the golem wearing it, with the same capacity.
  */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -61,7 +65,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 7;
+  version: 8;
   seed: number;
   rng: number;
   time: number;
@@ -175,6 +179,27 @@ export const MIGRATIONS: Record<number, Migration> = {
       areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, {
         ...d, propsAdded: (d.propsAdded ?? []).map((p: any) => (p.kind === "craftbench" ? { ...p, kind: "workbench" } : p)),
       }])),
+    };
+  },
+  7: (s) => {
+    // The basket was installed on pickup: the world flag `golem.basket`. It is
+    // now gear in the actor's own back slot, so the golem that had it installed
+    // wears it (same 48-slot tier). An attach still in progress ends worn too:
+    // the basket had already left the ground. Everyone else gets empty gear.
+    const flags: string[] = s.flags ?? [];
+    const installed = flags.includes("golem.basket");
+    const attaching = (t: any) => t?.effect?.op === "equip" && t.effect.item === "basket";
+    return {
+      ...s, version: 8,
+      flags: flags.filter((f) => f !== "golem.basket"),
+      actors: (s.actors ?? []).map((a: any) => {
+        const queue = a.queue ?? [];
+        const wearIt = attaching(a.task) || queue.some(attaching) || (installed && a.id === s.playerId);
+        return {
+          ...a, gear: { ...(a.gear ?? {}), ...(wearIt ? { back: "basket" } : {}) },
+          task: attaching(a.task) ? null : a.task, queue: queue.filter((t: any) => !attaching(t)),
+        };
+      }),
     };
   },
 };

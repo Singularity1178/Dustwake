@@ -13,6 +13,10 @@ export type ItemId =
 
 export type ItemTag = "tool" | "part" | "key" | "relic" | "glyph" | "document" | "power" | "material";
 
+/** Body slots an actor wears gear in (Actor.gear). Only the back so far. */
+export type GearSlot = "back";
+export const GEAR_SLOTS: readonly GearSlot[] = ["back"];
+
 export interface ItemDef {
   name: string;
   tags: readonly ItemTag[];
@@ -25,8 +29,14 @@ export interface ItemDef {
   droppable?: boolean;
   /** Rune glyph index, for glyph items. */
   glyph?: number;
-  /** Picking it up installs it on the golem instead of storing it. */
+  /** Picking it up installs it on the golem instead of storing it (the iron arm: a `golem.*` flag, never a slot). */
   equip?: { flag: string; task: { kind: "attach"; dur: number } };
+  /**
+   * Gear: picked up into the pack like any item, then worn in a gear slot on
+   * the body (Actor.gear) from the pack, and taken off again there. While worn
+   * it is not in the pack. Capacity tiers can require it (content/inventory.ts).
+   */
+  wear?: { slot: GearSlot };
   /** Item glows (gets a small light) while displayed on a prop. */
   glow?: { color: string; rad: number; int: number; flick: number };
   /** Drawn as a separate icon when resting on a prop (false: part of the prop sprite). */
@@ -56,8 +66,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   coin: { name: "OLD COIN", tags: ["relic"] },
   wood: { name: "WOOD", tags: ["material"], stack: 20 },
   stone: { name: "STONE", tags: ["material"], stack: 20 },
-  // Installed like the iron arm: it becomes part of the golem (flag), never a slot.
-  basket: { name: "WOVEN BASKET", tags: ["part"], droppable: false, equip: { flag: FLAGS.golemBasket, task: { kind: "attach", dur: 1.2 } } },
+  // Gear for the back slot: an ordinary pack item until it is worn (sim/gear.ts); worn, it grows the pack.
+  basket: { name: "WOVEN BASKET", tags: ["part"], wear: { slot: "back" } },
   book_build: {
     name: "BUILDER'S PRIMER", tags: ["document"], opens: "book", opensOnPickup: true,
     book: {

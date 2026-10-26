@@ -184,7 +184,7 @@ test("floor footprints: wide props need every tile of their box clear", () => {
 
 // ------------------------------------------------------------------ saves
 test("every new buildable builds through the task path and round-trips through save/load", () => {
-  const w = newWorld(); kit(w, 60, 60); setFlag(w, FLAGS.knowMasonry); setFlag(w, FLAGS.golemBasket);
+  const w = newWorld(); kit(w, 60, 60); setFlag(w, FLAGS.knowMasonry); w.actors.find((a) => a.id === w.playerId)!.gear.back = "basket";
   const { a, pl } = inClearing(w);
   frame(w);
   const spots: [string, number, number][] = [["craftbench", 18, 48], ["table", 22, 48], ["chair", 18, 52], ["barricade", 22, 52], ["brazier", 20, 52], ["torch_post", 21, 49]];

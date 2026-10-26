@@ -2,16 +2,22 @@
 // reaches its fire point it applies one Effect to the world. Tasks and effects
 // are plain data (no closures) so in-progress work can be saved, queued and
 // performed by any actor — today only the golem, later NPCs and animals.
-import type { ItemId } from "./items";
+import type { GearSlot, ItemId } from "./items";
 
-export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle";
+export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle" | "slam";
+
+/** Fraction of a slam where the blow lands: the effect fires here, and the art's impact frame (golem.ts: slamPose) is pinned to it. */
+export const SLAM_HIT = 0.5;
 
 /** When a task's effect fires, as a function of its duration. */
 export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   reach: { fire: (d) => d * 0.55 },
   push: { fire: (d) => d * 0.55 },
   attach: { fire: () => 0.9 },
+  /** The old one-arm overhead smash. No rule starts it any more (the slam breaks walls); kept so saved work in progress still plays out. */
   smash: { fire: () => 0.62 },
+  /** The attack: a two-arm ground slam. Both fists land at SLAM_HIT of its duration. */
+  slam: { fire: (d) => d * SLAM_HIT },
   carve: { fire: (d) => d - 0.2 },
   /** Harvesting with fists: the blow lands just past half way. */
   punch: { fire: (d) => d * 0.5 },
@@ -37,12 +43,20 @@ export type Effect =
   | { op: "equip"; item: ItemId }
   | { op: "unlockTile"; consume?: ItemId }
   | { op: "breakTile" }
+  /** A slam lands: emits `slam` at the strike point, then applies `then` to the target if it is still there (re-validated). */
+  | { op: "slam"; then?: Effect }
+  /** A blow the target withstands (cracked debris without the iron arm): the world doesn't change; emits `withstood`. */
+  | { op: "withstand"; text?: string }
   | { op: "placeCore"; consume: ItemId }
   | { op: "carveGap" }
   | { op: "takeGlyph" }
   | { op: "checkRune" }
   /** Drop n units from an inventory slot onto the ground in front of the actor. */
   | { op: "drop"; slot: number; n: number }
+  /** Put on the gear in inventory slot `slot` (the basket onto the back); what was worn there swaps into the pack. */
+  | { op: "wear"; slot: number }
+  /** Take off the gear worn in `gear`, into the pack. Refused (nothing changes) unless everything still fits. */
+  | { op: "takeOff"; gear: GearSlot }
   /** Travel through the rune at target.propId to its linked rune. */
   | { op: "travel" }
   /** One blow against a harvestable prop (target.propId). */

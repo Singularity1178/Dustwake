@@ -6,7 +6,7 @@ import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
 import { runeAt } from "../content/runes";
 import { isGlyph } from "../content/items";
-import { RULES, type Rule } from "../content/interactions";
+import { RULES, SLAM_RULES, SLAM_TASK, type Rule } from "../content/interactions";
 import { RITUAL_SPOTS, socketPositions } from "../content/ritual";
 import type { Target } from "../content/tasks";
 import { emit, hasFlag, type Actor, type World } from "../world/world";
@@ -14,7 +14,7 @@ import { FLAGS } from "../content/flags";
 import { npcDef } from "../content/npcs";
 import { meets } from "./requirements";
 import type { Area } from "../world/area";
-import { beginTask, faceTo } from "./tasks";
+import { beginTask, faceTo, strikePoint } from "./tasks";
 
 export interface Interactable extends Target {
   r: number;
@@ -94,11 +94,17 @@ export const allInteractables = (w: World, area: Area) => [...interactables(area
 
 /** Closest interactable in front of the actor, within its reach radius (`extra`: NPC interactables). */
 export function findTarget(area: Area, a: Actor, extra: readonly Interactable[] = []): Interactable | null {
+  return findTargetWhere(area, a, () => true, extra);
+}
+
+/** findTarget among only the interactables `accept` allows (the slam looks at slammable ones). */
+export function findTargetWhere(area: Area, a: Actor, accept: (it: Interactable) => boolean, extra: readonly Interactable[] = []): Interactable | null {
   const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
   const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
   const px = a.x + fx * 6, py = a.y - 3 + fy * 6;
   let best: Interactable | null = null, bd = 1;
   for (const it of [...interactables(area), ...extra]) {
+    if (!accept(it)) continue;
     const d = Math.hypot(it.x - px, it.y - py) / it.r;
     if (d < bd) { bd = d; best = it; }
   }
@@ -133,4 +139,24 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
   beginTask(a, rule.task, target);
   if (rule.task.kind === "channel") emit(w, { t: "teleport", actor: a.id, first, x: it.x, y: it.y });
   return null;
+}
+
+/**
+ * Start the attack: the two-arm ground slam, separate from interacting. It
+ * needs only what interacting needs (no task in progress), so it works
+ * anywhere, facing anything, with or without the iron arm. Like an
+ * interaction, the outcome is chosen now: the slammable interactable in front
+ * (SLAM_RULES, same reach as findTarget) and its first rule whose requirement
+ * is met. The slam effect re-checks the target when the blow lands. With
+ * nothing to hit, the slam still plays in full and only strikes the ground.
+ */
+export function startSlam(w: World, a: Actor, area: Area): boolean {
+  if (a.task) return false;
+  const it = findTargetWhere(area, a, (i) => !!SLAM_RULES[i.kind]);
+  const rule = it ? SLAM_RULES[it.kind].find((r) => meets(w, a, r.when)) : undefined;
+  const at = strikePoint(a);
+  let target: Target = { kind: "ground", x: at.x, y: at.y };
+  if (it && rule) { const { r: _r, itemZ: _z, hasItem: _h, ...t } = it; target = t; }
+  beginTask(a, { ...SLAM_TASK, effect: rule ? { op: "slam", then: rule.then } : { op: "slam" } }, target);
+  return true;
 }

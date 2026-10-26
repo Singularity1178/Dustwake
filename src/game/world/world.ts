@@ -2,7 +2,7 @@
 // canvas. Presentation reads it and drains `events`.
 import { SeededRng } from "../core/rng";
 import type { Facing } from "../golem";
-import type { ItemId } from "../content/items";
+import type { GearSlot, ItemId } from "../content/items";
 import type { Effect, Task, Cue } from "../content/tasks";
 import { Area } from "./area";
 import type { NpcSpawn } from "../map";
@@ -10,6 +10,8 @@ import { AREAS } from "./areas";
 
 /** One inventory slot: a stack of one item kind, or empty. */
 export type Slot = { item: ItemId; n: number } | null;
+/** Gear worn on the body, by slot (Actor.gear). */
+export type Gear = Partial<Record<GearSlot, ItemId>>;
 
 /** Anything that exists in the world and can perform work: the golem today; NPCs and animals later. */
 export interface Actor {
@@ -25,6 +27,8 @@ export interface Actor {
   queue: Task[];
   /** Ordered slots. Length tracks derived capacity (sim/inventory.ts). Actor-owned so any actor can carry things. */
   inventory: Slot[];
+  /** Gear worn on the body, by slot (the basket on the back; sim/gear.ts). Actor-owned like the pack; worn items are not in it. */
+  gear: Gear;
   /** kind "npc" only: the NpcDef id (content/npcs.ts) that gives this actor its name, dialogue, sprite and body. */
   npc?: string;
 }
@@ -42,6 +46,13 @@ export type SimEvent =
   | { t: "taskTick"; actor: string; task: Task; dt: number }
   | { t: "cue"; cue: Cue; x: number; y: number }
   | { t: "equipped"; actor: string; item: ItemId }
+  /** `actor` put gear on (the basket onto its back) / took it off into its pack. */
+  | { t: "gearOn"; actor: string; item: ItemId; slot: GearSlot }
+  | { t: "gearOff"; actor: string; item: ItemId; slot: GearSlot }
+  /** `actor`'s slam landed at (x, y). `hit`: on something slammable (its own event follows: wallBroken / withstood). */
+  | { t: "slam"; actor: string; x: number; y: number; hit: boolean }
+  /** A blow landed on something that held (cracked debris without the iron arm). The world is unchanged. */
+  | { t: "withstood"; actor: string; x: number; y: number; tx?: number; ty?: number }
   | { t: "containerOpened"; x: number; y: number }
   | { t: "doorUnlocked"; x: number; y: number }
   | { t: "wallBroken"; x: number; y: number }
@@ -96,7 +107,7 @@ export function createWorld(seed: number): World {
 }
 
 export function makeActor(id: string, kind: string, area: string, x: number, y: number): Actor {
-  return { id, kind, area, x, y, vx: 0, vy: 0, facing: "down", phase: 0, moving: false, steps: 0, task: null, queue: [], inventory: [] };
+  return { id, kind, area, x, y, vx: 0, vy: 0, facing: "down", phase: 0, moving: false, steps: 0, task: null, queue: [], inventory: [], gear: {} };
 }
 
 /** An NPC actor from an area's spawn row. Its inventory starts empty (it is still per actor). */
