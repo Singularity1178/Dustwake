@@ -1523,7 +1523,7 @@ export class Game {
     const fy = py + Math.floor((ph - 116) / 2);
     frame(px + 8, fy, 80, 116, "#0e0c10");
     const fig = makeCanvas(40, 40);
-    const pose: GolemPose = { facing: "down", phase: 0, moving: false, hasArm, dormant: 0, eye: 1, core: 0.8 + 0.2 * Math.sin(this.t * 3), raise: 0, reach: 0, t: this.t };
+    const pose: GolemPose = { facing: "down", phase: 0, moving: false, hasArm, dormant: 0, eye: 1, core: 0.8 + 0.2 * Math.sin(this.t * 3), raise: 0, reach: 0, t: this.t, eyeFixed: hasFlag(this.world, FLAGS.golemEye) };
     drawGolem(new Pen(fig.ctx, false), 20, 34, pose);
     ctx.drawImage(fig.c, px + 8, fy + 14, 80, 80);
     if (!hasArm && Math.sin(this.t * 4) > -0.2) {
@@ -1680,7 +1680,7 @@ export class Game {
     ctx.fillStyle = `rgba(160,112,255,${glow * Math.max(0, 1 - t / 8)})`;
     for (let a = 0; a < Math.PI * 2; a += 0.05) ctx.fillRect(Math.round(cx + Math.cos(a) * 14), Math.round(cy + Math.sin(a) * 4), 1, 1);
     // golem looking at sunrise
-    const pose: GolemPose = { facing: "up", phase: 0, moving: false, hasArm: this.hasArm, dormant: 0, eye: 1, core: 1, raise: 0, reach: 0, t: this.t };
+    const pose: GolemPose = { facing: "up", phase: 0, moving: false, hasArm: this.hasArm, dormant: 0, eye: 1, core: 1, raise: 0, reach: 0, t: this.t, eyeFixed: hasFlag(this.world, FLAGS.golemEye) };
     drawGolem(new Pen(ctx, false), cx, cy, pose);
     // light motes
     for (const p of this.particles) { ctx.fillStyle = p.col; ctx.globalAlpha = clamp(p.life, 0, 1) * 0.7; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
