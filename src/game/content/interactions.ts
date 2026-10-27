@@ -63,11 +63,12 @@ export const RULES: Record<string, Rule[]> = {
 export const SLAM_TASK: TaskSpec = { kind: "slam", dur: 1.1 };
 
 /**
- * What the attack does to the interactable in front of the golem, by kind
- * (sim/interact.ts: startSlam): the first rule whose requirement is met gives
- * the effect applied when the blow lands. Kinds without rules, and empty
- * ground, just take the blow: the slam plays in full and nothing changes.
- * Interacting (E) is separate: RULES above.
+ * What the attack does to a slammable thing, by kind. When the blow lands
+ * (sim/tasks.ts, op "slam"), everything of these kinds within SLAM_RADIUS of
+ * the fists is hit, and for each the first rule whose requirement is met gives
+ * the effect applied to it. Kinds without rules, and empty ground, just take
+ * the blow: the slam plays in full and nothing changes. Interacting (E) is
+ * separate: RULES above.
  */
 export const SLAM_RULES: Record<string, { when?: Requirement; then: Effect }[]> = {
   cracked: [

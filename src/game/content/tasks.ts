@@ -9,6 +9,16 @@ export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch"
 /** Fraction of a slam where the blow lands: the effect fires here, and the art's impact frame (golem.ts: slamPose) is pinned to it. */
 export const SLAM_HIT = 0.5;
 
+/**
+ * How far a slam's blow reaches, px, measured from where the fists meet the
+ * ground (sim/tasks.ts: strikePoint), not from the golem's centre. Sized to the
+ * dust ring the impact throws up (game.ts, case "slam"): that dust drifts a
+ * median ~18 px and three quarters of it stops within ~24 px, so the blow
+ * reaches about as far as the dust visibly does: little over a tile (TS = 16).
+ * A glancing near miss still counts, but nothing standing a few tiles away does.
+ */
+export const SLAM_RADIUS = 20;
+
 /** When a task's effect fires, as a function of its duration. */
 export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   reach: { fire: (d) => d * 0.55 },
@@ -46,8 +56,12 @@ export type Effect =
   | { op: "equip"; item: ItemId }
   | { op: "unlockTile"; consume?: ItemId }
   | { op: "breakTile" }
-  /** A slam lands: emits `slam` at the strike point, then applies `then` to the target if it is still there (re-validated). */
-  | { op: "slam"; then?: Effect }
+  /**
+   * A slam lands: emits `slam` at the strike point (between the fists), then
+   * applies the SLAM_RULES outcome to everything slammable within SLAM_RADIUS of
+   * it. Targets are found when the blow lands, so nothing needs re-validating.
+   */
+  | { op: "slam" }
   /** A blow the target withstands (cracked debris without the iron arm): the world doesn't change; emits `withstood`. */
   | { op: "withstand"; text?: string }
   | { op: "placeCore"; consume: ItemId }

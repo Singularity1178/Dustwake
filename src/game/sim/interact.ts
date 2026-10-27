@@ -6,7 +6,7 @@ import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
 import { runeAt } from "../content/runes";
 import { isGlyph } from "../content/items";
-import { RULES, SLAM_RULES, SLAM_TASK, type Rule } from "../content/interactions";
+import { RULES, SLAM_TASK, type Rule } from "../content/interactions";
 import { RITUAL_SPOTS, socketPositions } from "../content/ritual";
 import type { Target } from "../content/tasks";
 import { emit, hasFlag, type Actor, type World } from "../world/world";
@@ -118,11 +118,6 @@ export function findTarget(area: Area, a: Actor, extra: readonly Interactable[] 
   return findTargetIn([...interactables(area), ...extra], a);
 }
 
-/** findTarget among only the interactables `accept` allows (the slam looks at slammable ones). */
-export function findTargetWhere(area: Area, a: Actor, accept: (it: Interactable) => boolean, extra: readonly Interactable[] = []): Interactable | null {
-  return findTargetIn([...interactables(area), ...extra], a, accept);
-}
-
 /** The buildable prop in front of the actor, used only while scan mode is on. */
 export const findScanTarget = (area: Area, a: Actor) => findTargetIn(scanTargets(area), a);
 
@@ -176,19 +171,15 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
 /**
  * Start the attack: the two-arm ground slam, separate from interacting. It
  * needs only what interacting needs (no task in progress), so it works
- * anywhere, facing anything, with or without the iron arm. Like an
- * interaction, the outcome is chosen now: the slammable interactable in front
- * (SLAM_RULES, same reach as findTarget) and its first rule whose requirement
- * is met. The slam effect re-checks the target when the blow lands. With
- * nothing to hit, the slam still plays in full and only strikes the ground.
+ * anywhere, facing anything, with or without the iron arm. Nothing is aimed or
+ * chosen here: the blow is an area one around where the fists land (the task's
+ * target is just that ground), and what it reaches is looked up when it lands
+ * (sim/tasks.ts, op "slam"). With nothing in range, the slam still plays in
+ * full and only strikes the ground.
  */
-export function startSlam(w: World, a: Actor, area: Area): boolean {
+export function startSlam(a: Actor): boolean {
   if (a.task || !capable(a, "attack")) return false;
-  const it = findTargetWhere(area, a, (i) => !!SLAM_RULES[i.kind]);
-  const rule = it ? SLAM_RULES[it.kind].find((r) => meets(w, a, r.when)) : undefined;
   const at = strikePoint(a);
-  let target: Target = { kind: "ground", x: at.x, y: at.y };
-  if (it && rule) { const { r: _r, itemZ: _z, hasItem: _h, ...t } = it; target = t; }
-  beginTask(a, { ...SLAM_TASK, effect: rule ? { op: "slam", then: rule.then } : { op: "slam" } }, target);
+  beginTask(a, { ...SLAM_TASK, effect: { op: "slam" } }, { kind: "ground", x: at.x, y: at.y });
   return true;
 }

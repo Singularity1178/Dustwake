@@ -5,7 +5,9 @@ import { TS, T, TILE_INTERACT } from "../content/tiles";
 import { ITEMS, glyphItem, isDroppable } from "../content/items";
 import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
-import { TASK_KINDS, type Effect, type TaskSpec, type Target } from "../content/tasks";
+import { TASK_KINDS, SLAM_RADIUS, type Effect, type TaskSpec, type Target } from "../content/tasks";
+import { SLAM_RULES } from "../content/interactions";
+import { meets } from "./requirements";
 import { emit, setFlag, setActorFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
@@ -59,6 +61,34 @@ export function strikePoint(a: Actor) {
   const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
   const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
   return { x: a.x + fx * 10, y: a.y + (fy > 0 ? 3 : fy < 0 ? -7 : 0) };
+}
+
+/**
+ * The slammable tiles a blow at (x, y) reaches: any tile with SLAM_RULES that
+ * has some part of it within `radius` of the blow (so a wall the fists land in,
+ * or just beside, is hit, but the golem's own position is irrelevant). Runs of
+ * tiles that act as one thing (anchorTopOfRun, like the cracked wall) count
+ * once, as the same anchored target an interaction would carry. Nearest first.
+ */
+export function slamReach(area: Area, x: number, y: number, radius: number): Target[] {
+  const found = new Map<string, { target: Target; d2: number }>();
+  const tx0 = Math.floor((x - radius) / TS), tx1 = Math.floor((x + radius) / TS);
+  const ty0 = Math.floor((y - radius) / TS), ty1 = Math.floor((y + radius) / TS);
+  for (let ty = ty0; ty <= ty1; ty++)
+    for (let tx = tx0; tx <= tx1; tx++) {
+      const tile = area.tile(tx, ty), def = TILE_INTERACT[tile];
+      if (!def || !SLAM_RULES[def.kind]) continue;
+      // Distance from the blow to the nearest point of this tile's square.
+      const dx = Math.max(tx * TS - x, 0, x - (tx + 1) * TS), dy = Math.max(ty * TS - y, 0, y - (ty + 1) * TS);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > radius * radius) continue;
+      let ay = ty;
+      if (def.anchorTopOfRun) while (area.tile(tx, ay - 1) === tile) ay--;
+      const key = `${tx},${ay}`, prev = found.get(key);
+      if (!prev) found.set(key, { target: { kind: def.kind, x: tx * TS + def.dx, y: ay * TS + def.dy, tx, ty: ay }, d2 });
+      else if (d2 < prev.d2) prev.d2 = d2;
+    }
+  return [...found.values()].sort((p, q) => p.d2 - q.d2).map((f) => f.target);
 }
 
 export function faceTo(a: Actor, x: number, y: number) {
@@ -224,13 +254,15 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       break;
     }
     case "slam": {
-      // The blow lands: both fists into the ground in front of the actor. The
-      // target chosen when the slam started is re-checked: it may be gone.
-      const p = strikePoint(a), t = target;
-      const prop = t?.propId ? area.prop(t.propId) : undefined;
-      const there = !!e.then && !!t && (t.tx !== undefined && t.ty !== undefined ? TILE_INTERACT[area.tile(t.tx, t.ty)]?.kind === t.kind : !!prop && !prop.taken);
-      emit(w, { t: "slam", actor: a.id, x: p.x, y: p.y, hit: there });
-      if (there) applyEffect(w, a, e.then!, t);
+      // The blow lands: both fists into the ground in front of the actor, and
+      // everything slammable within SLAM_RADIUS of the fists (not of the actor)
+      // takes it. Targets are looked up now, in the world as it is at impact.
+      const p = strikePoint(a);
+      const hits = slamReach(area, p.x, p.y, SLAM_RADIUS)
+        .map((t) => ({ t, rule: SLAM_RULES[t.kind].find((r) => meets(w, a, r.when)) }))
+        .filter((h) => h.rule);
+      emit(w, { t: "slam", actor: a.id, x: p.x, y: p.y, hit: hits.length > 0 });
+      for (const h of hits) applyEffect(w, a, h.rule!.then, h.t);
       break;
     }
     case "withstand":

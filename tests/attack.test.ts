@@ -8,9 +8,9 @@ import { serialize, deserialize } from "../src/game/world/save";
 import { hasItem } from "../src/game/sim/inventory";
 import { findTarget, interactables } from "../src/game/sim/interact";
 import { SLAM_TASK } from "../src/game/content/interactions";
-import { SLAM_HIT } from "../src/game/content/tasks";
+import { SLAM_HIT, SLAM_RADIUS } from "../src/game/content/tasks";
 import { FLAGS } from "../src/game/content/flags";
-import { T } from "../src/game/content/tiles";
+import { T, TS } from "../src/game/content/tiles";
 import { DT, events, find, frame, frames, newWorld, standAt, useOn, slamAt } from "./helpers";
 
 const ATTACK = { ix: 0, iy: 0, use: false, attack: true };
@@ -110,6 +110,58 @@ test("with the iron arm the slam breaks cracked debris, the moment the fists lan
   assert.equal(area.tile(47, 11), T.FLOOR);
   assert.equal(area.decals.length, decals0 + 26, "the usual debris");
   assert.ok(!interactables(area).some((i) => i.kind === "cracked"));
+});
+
+/** Put the golem at (x, y) facing `facing`, slam, and report what the blow did. */
+const slamFrom = (w: World, x: number, y: number, facing: "left" | "right" | "up" | "down") => {
+  const pl = player(w);
+  pl.x = x; pl.y = y; pl.vx = 0; pl.vy = 0; pl.facing = facing;
+  events(w);
+  frame(w, ATTACK);
+  let g = 0;
+  while (pl.task && g++ < 300) frame(w);
+  return events(w);
+};
+
+test("the slam hits in a radius around the fists, not around the golem's centre", () => {
+  // The cracked wall is tiles (47, 10-11): pixels x 752..768, y 160..192. Facing right, the fists land 10 px ahead.
+  const left = 47 * TS, mid = 11 * TS;
+  const cases: { name: string; x: number; facing: "left" | "right"; breaks: boolean }[] = [
+    // The golem itself is 28 px from the wall, outside the radius, but its fists land 18 px from it: hit.
+    { name: "fists reach it from beyond the golem's own radius", x: left - 28, facing: "right", breaks: true },
+    // Only 24 px from the fists to the wall: just out of reach.
+    { name: "fists land just out of reach", x: left - 34, facing: "right", breaks: false },
+    // The golem is 12 px from the wall, well inside the radius, but facing away its fists land 22 px from it: no hit.
+    { name: "facing away, the golem's own proximity doesn't count", x: left - 12, facing: "left", breaks: false },
+    // Fists driven straight into the wall.
+    { name: "fists in the wall", x: left - 8, facing: "right", breaks: true },
+  ];
+  for (const c of cases) {
+    const w = newWorld(), area = currentArea(w);
+    setFlag(w, FLAGS.golemArm);
+    const ev = slamFrom(w, c.x, mid, c.facing);
+    const slam = ev.find((e) => e.t === "slam");
+    assert.ok(slam && slam.t === "slam", `${c.name}: the slam landed`);
+    assert.equal(slam.x, c.x + (c.facing === "right" ? 10 : -10), `${c.name}: centred on the fists`);
+    assert.equal(slam.hit, c.breaks, c.name);
+    assert.equal(ev.some((e) => e.t === "wallBroken"), c.breaks, c.name);
+    assert.equal(area.tile(47, 10), c.breaks ? T.FLOOR : T.CRACKED, c.name);
+  }
+});
+
+test("the slam's reach is a small area, about the dust it throws up (a tile or so), whichever way the golem faces", () => {
+  assert.ok(SLAM_RADIUS >= TS && SLAM_RADIUS <= 2 * TS, `radius ${SLAM_RADIUS}px`);
+  const top = 10 * TS - 1, bottom = 12 * TS;
+  const w = newWorld();
+  setFlag(w, FLAGS.golemArm);
+  // Above the wall facing down: the fists land 3 px below the golem; level with the wall's top edge they are in it.
+  assert.ok(slamFrom(w, 47 * TS + 8, top - 4, "down").some((e) => e.t === "wallBroken"), "from above");
+  const w2 = newWorld();
+  setFlag(w2, FLAGS.golemArm);
+  // Below the wall facing up (fists 7 px up): in reach from just under its foot, not from 4 tiles away.
+  assert.ok(!slamFrom(w2, 47 * TS + 8, bottom + 4 * TS, "up").some((e) => e.t === "wallBroken"), "far below");
+  assert.equal(currentArea(w2).tile(47, 11), T.CRACKED);
+  assert.ok(slamFrom(w2, 47 * TS + 8, bottom + 10, "up").some((e) => e.t === "wallBroken"), "just below");
 });
 
 test("without the arm the debris takes the hit and holds: nothing changes, and it still breaks later", () => {

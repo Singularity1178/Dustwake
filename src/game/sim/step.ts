@@ -46,7 +46,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
   // The attack is separate from interacting: available whenever the golem could act, target or not.
-  if (!pl.task && !ui && input.attack) startSlam(w, pl, area);
+  if (!pl.task && !ui && input.attack) startSlam(pl);
   // Tutorial beat (one-shot): standing on the freshly charged circle starts the
   // first jump through the rune network. Afterwards runes are used with E.
   const r = area.ritual;
