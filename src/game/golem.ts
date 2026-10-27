@@ -19,6 +19,12 @@ export interface GolemPose {
   /** Gear worn on the back, by item id (Actor.gear.back): "basket" is drawn strapped on, from every facing. */
   back?: string;
   /**
+   * Runes worn, one entry per rune slot in order (sim/gear.ts: runeMarks): a 3x3
+   * sigil (`pat`, # = lit) glowing in its colour on the body, or null for an
+   * empty slot. Absent: nothing drawn (the legacy poses).
+   */
+  runes?: ({ col: string; pat: readonly string[] } | null)[];
+  /**
    * The two-arm ground slam (the attack), -1..1 for both arms at once: 1 both
    * overhead, 0 at rest, -1 both fists driven into the ground in front. Absent:
    * the arms follow raise / reach as before. Without the iron arm the broken
@@ -75,6 +81,19 @@ function basketSide(p: Pen, by: number) {
 function strapSide(p: Pen, by: number) {
   p.r(-4, -17 + by, 1, 2, BK.strap);
   p.r(3, -15 + by, 1, 7, BK.strap); p.p(3, -11 + by, BK.buckle);
+}
+
+// ---- runes worn (GolemPose.runes). Each rune is a 3x3 glowing sigil at a fixed
+// place on the body, by rune slot: both pauldrons and the lower torso facing
+// front or back; on the pauldron, the arm and the torso from the side. They are
+// painted last (over straps, arms and cracks) and offset by the body bob.
+const RUNE_AT_FB: [number, number][] = [[-8, -16], [4, -16], [-6, -9], [3, -9]];
+const RUNE_AT_SIDE: [number, number][] = [[-3, -16], [-1, -11], [-4, -8], [1, -8]];
+function drawRuneMarks(p: Pen, g: GolemPose, by: number, at: [number, number][]) {
+  g.runes?.forEach((m, i) => {
+    if (!m || !at[i]) return;
+    for (let j = 0; j < 3; j++) for (let k = 0; k < 3; k++) if (m.pat[j]?.[k] === "#") p.gp(at[i][0] + k, at[i][1] + j + by, m.col);
+  });
 }
 
 // ---- the two-arm ground slam (GolemPose.slam). Both arms rise overhead
@@ -243,6 +262,7 @@ export function drawGolem(p: Pen, x: number, y: number, g: GolemPose) {
     if (!back && g.raise > 0.3 && g.hasArm) {
       // dust on raised fist
     }
+    drawRuneMarks(p, g, by, RUNE_AT_FB);
     return;
   }
 
@@ -294,4 +314,5 @@ export function drawGolem(p: Pen, x: number, y: number, g: GolemPose) {
   if (g.slam === undefined) arm(nearIntact, true); else slamArmSide(p, g, by, nearIntact, true);
   // pauldron
   p.o(-4, -17 + by, 7, 4, C.l, C.o); p.r(-3, -16 + by, 5, 1, C.h);
+  drawRuneMarks(p, g, by, RUNE_AT_SIDE);
 }

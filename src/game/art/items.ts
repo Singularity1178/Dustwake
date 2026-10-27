@@ -85,6 +85,33 @@ export const ITEM_ART: Record<ItemId, ItemArt> = {
     p.o(2, 4, 12, 10, "#2a4a5a", "#08141a"); p.r(3, 5, 10, 1, "#3a6a7a"); p.r(2, 12, 12, 2, "#d8ccb0"); p.r(3, 12, 10, 1, "#b8ac90");
     p.r(7, 6, 2, 5, "#a8c8d0"); p.r(5, 8, 6, 1, "#a8c8d0"); // mending cross
   },
+  // Processed materials.
+  planks: (p) => {
+    // three sawn boards, stacked and offset
+    for (const [x, y, w] of [[1, 9, 13], [3, 6, 12], [2, 3, 12]] as [number, number, number][]) {
+      p.o(x, y, w, 4, "#b08a5a", WD.o); p.r(x + 1, y + 1, w - 2, 1, "#c8a470");
+      p.p(x + 3, y + 2, WD.m); p.p(x + 8, y + 2, WD.m); p.r(x + w - 3, y + 1, 1, 2, "#8a6a40");
+    }
+  },
+  cut_stone: (p) => {
+    // two squared blocks with chisel marks
+    p.o(1, 8, 8, 6, S.l, S.o); p.r(2, 9, 6, 1, S.h); p.r(2, 12, 6, 1, S.d); p.r(8, 9, 1, 4, S.d);
+    p.o(7, 4, 8, 7, S.m, S.o); p.r(8, 5, 6, 1, S.h); p.r(8, 9, 6, 1, S.d); p.p(10, 7, S.d); p.p(12, 7, S.d);
+    p.p(3, 10, S.m); p.p(5, 11, S.m);
+  },
+  // Runes: a squared tablet with a glowing sigil (the same 3x3 sigil the golem wears: ItemDef.worn.mark).
+  rune_swift: (p) => {
+    p.o(3, 1, 10, 14, "#4a4552", S.o); p.r(4, 2, 8, 2, "#6a6372"); p.r(4, 12, 8, 2, "#2e2a33");
+    // two chevrons, ">>"
+    for (const x of [5, 9]) { p.g(x, 5, 2, 1, "#5cf0c8"); p.g(x + 1, 6, 2, 1, "#5cf0c8"); p.g(x + 1, 7, 2, 1, "#5cf0c8"); p.g(x, 8, 2, 1, "#5cf0c8"); p.g(x + 1, 9, 1, 1, "#5cf0c8"); }
+    p.g(4, 10, 8, 1, "#2a9a80");
+  },
+  rune_glow: (p) => {
+    p.o(3, 1, 10, 14, "#4a4552", S.o); p.r(4, 2, 8, 2, "#6a6372"); p.r(4, 12, 8, 2, "#2e2a33");
+    // a sun: a bright core with four rays
+    p.g(7, 5, 2, 6, "#ffffff"); p.g(5, 7, 6, 2, "#ffffff"); p.g(6, 6, 4, 4, "#fff8d8");
+    p.g(7, 4, 2, 1, "#c8d8ff"); p.g(7, 11, 2, 1, "#c8d8ff"); p.g(4, 7, 1, 2, "#c8d8ff"); p.g(11, 7, 1, 2, "#c8d8ff");
+  },
   basket: (p) => {
     p.r(4, 2, 8, 1, WD.d); p.r(3, 3, 1, 4, WD.d); p.r(12, 3, 1, 4, WD.d);
     p.o(2, 6, 12, 9, "#a8844a", WD.o);

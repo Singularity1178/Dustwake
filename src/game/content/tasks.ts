@@ -4,7 +4,7 @@
 // performed by any actor — today only the golem, later NPCs and animals.
 import type { GearSlot, ItemId } from "./items";
 
-export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle" | "slam";
+export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle" | "slam" | "craft";
 
 /** Fraction of a slam where the blow lands: the effect fires here, and the art's impact frame (golem.ts: slamPose) is pinned to it. */
 export const SLAM_HIT = 0.5;
@@ -27,6 +27,8 @@ export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   talk: { fire: (d) => d },
   /** Taking a prop apart: it comes loose near the end. */
   dismantle: { fire: (d) => d * 0.85 },
+  /** Working at a bench: the product is made near the end. */
+  craft: { fire: (d) => d * 0.85 },
 };
 
 /** Presentation-only cues an effect can request (sound/particles). */
@@ -53,10 +55,12 @@ export type Effect =
   | { op: "checkRune" }
   /** Drop n units from an inventory slot onto the ground in front of the actor. */
   | { op: "drop"; slot: number; n: number }
-  /** Put on the gear in inventory slot `slot` (the basket onto the back); what was worn there swaps into the pack. */
-  | { op: "wear"; slot: number }
+  /** Put on the gear in inventory slot `slot` (the basket onto the back, a rune into a rune slot, or into `into` if given); what was worn there swaps into the pack. */
+  | { op: "wear"; slot: number; into?: GearSlot }
   /** Take off the gear worn in `gear`, into the pack. Refused (nothing changes) unless everything still fits. */
   | { op: "takeOff"; gear: GearSlot }
+  /** Make crafting recipe `recipe` (content/crafting.ts) at the station target.propId: re-validates, consumes the inputs, gives the output. */
+  | { op: "craft"; recipe: string }
   /** Travel through the rune at target.propId to its linked rune. */
   | { op: "travel" }
   /** One blow against a harvestable prop (target.propId). */

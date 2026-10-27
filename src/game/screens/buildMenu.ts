@@ -16,7 +16,7 @@ import { FLAGS } from "../content/flags";
 import { catalogEntries, queryCatalog, entryReason, SORT_KEYS, SORT_NAMES, TAB_ALL, TAB_FAV, type CatalogEntry, type SortKey } from "../sim/catalog";
 import {
   placement, siteFor, suggestTile, recipeAnchor, footprint, canBuild, actorTile, frontTile, BLOCK_TEXT,
-  deconTargetAt, deconstructCheck, isDeconstructable, propTile, salvageOf, DECON_TEXT,
+  deconTargetAt, deconstructCheck, deconMessage, isDeconstructable, propTile, salvageOf, DECON_TEXT,
 } from "../sim/build";
 import { orderBuild, orderDeconstruct } from "../sim/commands";
 import { propSprite } from "../art/props";
@@ -415,7 +415,7 @@ export class BuildUi {
     const hints = `E TAKE APART  ARROWS MOVE  T REPEAT:${this.repeat ? "ON" : "OFF"}  B MENU  X BUILD  ESC DONE`;
     if (chk.ok) this.bar(`TAKE APART ${propLabel(chk.prop)}`, `REFUND ${costText(chk.refund)}`, UI.ok, hints);
     else if (target && chk.reason === "reach") this.bar(`TAKE APART ${propLabel(target)}`, `${DECON_TEXT.reach} - REFUND ${costText(salvageOf(target) ?? [])}`, UI.bad, hints);
-    else this.bar(target ? propLabel(target) : "TAKE APART", DECON_TEXT[chk.ok ? "none" : chk.reason], target ? UI.bad : UI.mid, hints);
+    else this.bar(target ? propLabel(target) : "TAKE APART", chk.ok ? DECON_TEXT.none : deconMessage(chk), target ? UI.bad : UI.mid, hints);
     g.renderNote(170);
   }
 }

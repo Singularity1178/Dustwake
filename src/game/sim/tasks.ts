@@ -15,6 +15,7 @@ import { applyBuild, applyDeconstruct } from "./build";
 import { actorBoxes } from "./collision";
 import { applyDialogueEffect } from "./dialogue";
 import { applyWear, applyTakeOff, gearRefusal } from "./gear";
+import { applyCraft } from "./crafting";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
@@ -205,7 +206,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       break;
     }
     case "wear": {
-      const r = applyWear(w, a, e.slot);
+      const r = applyWear(w, a, e.slot, e.into);
       if (!r.ok && r.reason !== "empty") emit(w, { t: "message", text: gearRefusal(r) });
       break;
     }
@@ -255,6 +256,9 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       break;
     case "deconstruct":
       applyDeconstruct(w, a, area, target?.propId);
+      break;
+    case "craft":
+      applyCraft(w, a, area, e.recipe, target?.propId);
       break;
     case "useStation": {
       const p = target?.propId ? area.prop(target.propId) : undefined;

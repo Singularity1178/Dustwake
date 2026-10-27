@@ -28,10 +28,15 @@ test("every PROP_ART sprite is pixel-identical", () => {
   assert.equal(traceHash(), GOLDEN.props);
 });
 
+// The icons that existed before crafted materials, runes and slot silhouettes, in their original registry order.
+// Items added since have their own golden below (tests/gearArt.test.ts); this one must never move.
+const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "schematic", "crown", "goblet", "coin", "glyph0", "glyph1", "glyph2", "glyph3", "wood", "stone", "book_build", "book_repair", "basket"];
+
 test("every ITEM_ART icon is pixel-identical", () => {
   resetTrace();
-  for (const id of Object.keys(ITEM_ART) as ItemId[]) itemIcon(id);
+  for (const id of LEGACY_ITEMS) itemIcon(id);
   assert.equal(traceHash(), GOLDEN.items);
+  assert.ok(LEGACY_ITEMS.every((id) => id in ITEM_ART));
 });
 
 test("tile sprites (rubble, cracked wall, pillars, door, bars) are pixel-identical", () => {

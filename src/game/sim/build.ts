@@ -5,8 +5,10 @@
 import { RECIPES, BUILD_REACH, AUTHORED_SALVAGE, placeRule, recipeForProp, type Cost, type Recipe } from "../content/build";
 import { TS, T, isSolidT } from "../content/tiles";
 import { propDef } from "../content/props";
+import { ITEM_NAMES, isCritical } from "../content/items";
 import { emit, type Actor, type World } from "../world/world";
 import type { Area, PropInst } from "../world/area";
+import type { ItemId } from "../content/items";
 import { meets } from "./requirements";
 import { countItem, removeItems, giveItem, dropSpot, spawnLoose } from "./inventory";
 import { actorBox, actorBoxes, propBlocks } from "./collision";
@@ -162,28 +164,34 @@ export function applyBuild(w: World, a: Actor, area: Area, recipe: string, tx: n
   const r = RECIPES[recipe];
   for (const c of r.cost) removeItems(a, c.item, c.n);
   const at = recipeAnchor(recipe, tx, ty);
-  const p = area.addProp(r.prop, at.x, at.y, { recipe, ...(r.v ? { v: r.v } : {}), ...(r.lit ? { lit: true } : {}) });
+  const p = area.addProp(r.prop, at.x, at.y, { recipe, refund: r.cost.map((c) => ({ ...c })), ...(r.v ? { v: r.v } : {}), ...(r.lit ? { lit: true } : {}) });
   emit(w, { t: "built", actor: a.id, prop: p.id, x: p.x, y: p.y });
 }
 
 // ---------------------------------------------------------------- deconstruction
-export type DeconBlock = "none" | "fixed" | "reach";
-export type Deconstruct = { ok: true; prop: PropInst; refund: Cost[] } | { ok: false; reason: DeconBlock; prop?: PropInst };
+export type DeconBlock = "none" | "fixed" | "reach" | "holds";
+export type Deconstruct = { ok: true; prop: PropInst; refund: Cost[] } | { ok: false; reason: DeconBlock; prop?: PropInst; /** holds: what still rests on / is kept in the prop. */ item?: ItemId };
 
 export const DECON_TEXT: Record<DeconBlock, string> = {
   none: "NOTHING TO TAKE APART HERE",
   fixed: "THAT CAN'T BE TAKEN APART",
   reach: "TOO FAR AWAY",
+  holds: "TAKE WHAT IS ON IT FIRST",
 };
+/** The refusal in words (a prop that still holds something names it). */
+export const deconMessage = (chk: Extract<Deconstruct, { ok: false }>) =>
+  chk.reason === "holds" && chk.item ? `TAKE THE ${ITEM_NAMES[chk.item]} FIRST` : DECON_TEXT[chk.reason];
 
 /**
- * What taking a prop apart gives back, or null if it can't be. Built props
- * refund the full cost of the recipe that built them (older saves didn't record
- * it: fall back to the recipe for the kind). Authored props only if their kind
- * opts in through AUTHORED_SALVAGE (a recipe's full cost, or an explicit refund).
+ * What taking a prop apart gives back, or null if it can't be. A built prop
+ * refunds what it cost when it was built (`refund`; older saves didn't record
+ * it: the cost of its recipe, else the recipe for its kind). An authored prop
+ * only if its kind has a row in AUTHORED_SALVAGE (every kind a recipe builds is
+ * one): the full cost of the recipe that makes it, crafted materials included.
  */
 export function salvageOf(p: PropInst): Cost[] | null {
   if (p.dyn) {
+    if (p.refund) return p.refund.map((c) => ({ ...c }));
     const id = p.recipe && RECIPES[p.recipe] ? p.recipe : recipeForProp(p.kind);
     return id ? RECIPES[id].cost.map((c) => ({ ...c })) : null;
   }
@@ -213,12 +221,20 @@ export function deconTargetAt(area: Area, tx: number, ty: number): PropInst | nu
   return boxed.find(isDeconstructable) ?? boxed[0] ?? null;
 }
 
-/** Can actor `a` take apart prop `propId` right now? */
+/**
+ * Can actor `a` take apart prop `propId` right now? Refused while something
+ * progress-critical (`isCritical`) still rests on it or is kept in it: the
+ * dungeon workbench holds the rune chisel and the library table holds the
+ * Builder's Primer, which the tutorial and all building knowledge depend on.
+ * Take the item first, then the prop can go. Anything else resting on a prop
+ * is spilled onto the ground when it is taken apart.
+ */
 export function deconstructCheck(_w: World, a: Actor, area: Area, propId: string | undefined): Deconstruct {
   const p = propId ? area.prop(propId) : undefined;
   if (!p) return { ok: false, reason: "none" };
   const refund = salvageOf(p);
   if (!refund) return { ok: false, reason: "fixed", prop: p };
+  if (p.item && !p.taken && isCritical(p.item)) return { ok: false, reason: "holds", prop: p, item: p.item };
   const t = propTile(p);
   if (!inReach(a, t.tx, t.ty)) return { ok: false, reason: "reach", prop: p };
   return { ok: true, prop: p, refund };
@@ -226,13 +242,13 @@ export function deconstructCheck(_w: World, a: Actor, area: Area, propId: string
 
 /**
  * The `deconstruct` effect. Re-validates, removes the prop (its light and
- * interactables follow via area.revision), spills anything resting on or in
- * it onto the ground, then refunds the full recipe cost through giveItem, so a
+ * interactables follow via area.revision), spills anything non-critical resting
+ * on or in it onto the ground, then refunds the full cost through giveItem, so a
  * full pack drops the overflow on the ground like any pickup.
  */
 export function applyDeconstruct(w: World, a: Actor, area: Area, propId: string | undefined) {
   const chk = deconstructCheck(w, a, area, propId);
-  if (!chk.ok) { emit(w, { t: "message", text: DECON_TEXT[chk.reason] }); return; }
+  if (!chk.ok) { emit(w, { t: "message", text: deconMessage(chk) }); return; }
   const p = chk.prop;
   const held = p.item && !p.taken ? p.item : undefined;
   area.removeProp(p.id);

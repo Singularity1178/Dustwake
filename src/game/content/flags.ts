@@ -19,6 +19,15 @@ export const FLAGS = {
   knowRepair: "know.repair",
   /** Stonework (the brazier recipe). No book teaches it yet; Ctrl+4 grants it. */
   knowMasonry: "know.masonry",
+  /**
+   * Gear slot unlocks (content/gear.ts: GEAR_SLOT_DEFS[].unlock). A slot with no
+   * unlock requirement is always usable; the ones below are locked until their
+   * flag is set. Unlocking a slot later is setting its flag, nothing more.
+   */
+  slotArmLeft: "golem.slot.armL",
+  slotRune1: "golem.slot.rune1",
+  slotRune2: "golem.slot.rune2",
+  slotRune3: "golem.slot.rune3",
   tutorialInsight: "tutorial.insight",
   /** Set when the golem first travels through the rune network (end of tutorial). */
   tutorialDone: "tutorial.done",

@@ -7,6 +7,7 @@ import { emit, hasFlag, player, areaOf, type Actor, type World } from "../world/
 import type { Area } from "../world/area";
 import { tickTask, runScheduled, beginTask } from "./tasks";
 import { reconcileCapacity } from "./inventory";
+import { reconcileGear, speedMultiplier } from "./gear";
 import { boxFree as boxFreeAt, actorBoxes } from "./collision";
 import { RULES } from "../content/interactions";
 import { findTarget, interact, npcInteractables, startSlam, type Interactable, type InteractUi } from "./interact";
@@ -25,7 +26,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const pl = player(w);
   const area = areaOf(w, pl);
   tickTask(w, pl, dt);
-  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, (hasFlag(w, FLAGS.golemArm) ? 30 : 24) * (input.speed ?? 1));
+  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, (hasFlag(w, FLAGS.golemArm) ? 30 : 24) * (input.speed ?? 1) * speedMultiplier(w, pl));
   const target = pl.task ? null : findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
@@ -59,6 +60,7 @@ export function stepWorld(w: World, dt: number) {
   w.time += dt;
   runScheduled(w);
   for (const a of w.actors) {
+    reconcileGear(w, a);
     reconcileCapacity(w, a);
     if (a.id !== w.playerId) tickTask(w, a, dt);
   }

@@ -28,7 +28,10 @@ import { newWorld, frame, frames, events, useOn, propItem } from "./helpers";
 
 // ------------------------------------------------------------------ fixtures
 const finish = (w: World) => { let g = 0; while (player(w).task && g++ < 600) frame(w); };
-const kit = (w: World, wood = 30, stone = 30) => { const pl = player(w); setFlag(w, FLAGS.knowBuild); addItems(w, pl, "wood", wood); addItems(w, pl, "stone", stone); };
+const kit = (w: World, wood = 30, stone = 30, planks = 30, cut = 30) => {
+  const pl = player(w); setFlag(w, FLAGS.knowBuild);
+  addItems(w, pl, "wood", wood); addItems(w, pl, "stone", stone); addItems(w, pl, "planks", planks); addItems(w, pl, "cut_stone", cut);
+};
 
 /** In the dungeon's translocation room, below a free plain wall face on row 2. */
 function atWallFace(w: World) {
@@ -70,13 +73,13 @@ test("catalog data: every recipe has a prop kind with art, a known category, and
   }
   for (const r of CRAFT_RECIPES) assert.ok(ok(r.name) && r.desc.every((l) => ok(l) && l.length <= 30), `craft ${r.id}`);
   // Specified costs and the shared wall-torch prop.
-  assert.deepEqual(RECIPES.wall_torch.cost, [{ item: "stone", n: 2 }, { item: "wood", n: 1 }]);
+  assert.deepEqual(RECIPES.wall_torch.cost, [{ item: "cut_stone", n: 1 }, { item: "wood", n: 1 }]);
   assert.deepEqual(RECIPES.torch_post.cost, [{ item: "wood", n: 2 }, { item: "stone", n: 1 }]);
   assert.equal(RECIPES.wall_torch.prop, "torch");
   assert.equal(RECIPES.wall_torch.place, "wall");
   assert.ok(PROPS.torch.wallMounted);
-  // Only the dungeon's wall torch opts in among authored props.
-  assert.deepEqual(Object.keys(AUTHORED_SALVAGE), ["torch"]);
+  // Every kind a recipe builds opts in among authored props (derived from the catalog).
+  assert.deepEqual(Object.keys(AUTHORED_SALVAGE).sort(), Object.values(RECIPES).map((r) => r.prop).sort());
   // The crafting bench IS the dungeon's workbench: same prop kind, same sprite, one station. No second kind.
   assert.equal(RECIPES.craftbench.prop, "workbench");
   assert.equal(PROPS.workbench.station, "crafting");
@@ -124,7 +127,7 @@ test("the placement ghost snaps a wall torch to the nearest free wall face", () 
 });
 
 test("a built wall torch is the authored torch prop: lit, same kind, light reconciled, mounted at the wall anchor", () => {
-  const w = newWorld(); kit(w, 1, 2);
+  const w = newWorld(); kit(w, 1, 0, 0, 1);
   const { a, pl, tx, ty } = atWallFace(w);
   const view = new AreaView(a);
   assert.ok(orderBuild(w, pl, "wall_torch", tx, ty));
@@ -132,7 +135,7 @@ test("a built wall torch is the authored torch prop: lit, same kind, light recon
   const p = a.props.find((q) => q.dyn && q.kind === "torch")!;
   assert.ok(p && p.lit && p.recipe === "wall_torch");
   assert.deepEqual([p.x, p.y], [tx * TS + 8, ty * TS + 16], "same anchor the dungeon builder uses");
-  assert.equal(countItem(pl, "wood"), 0); assert.equal(countItem(pl, "stone"), 0);
+  assert.equal(countItem(pl, "wood"), 0); assert.equal(countItem(pl, "cut_stone"), 0);
   view.flush();
   assert.ok(view.lights.has("prop:" + p.id));
   // the face is now taken
@@ -156,7 +159,7 @@ test("cost and knowledge gating for the new recipes (and the catalog's locked en
   addItems(w, pl, "wood", 1);
   assert.deepEqual(placement(w, pl, a, "craftbench", tx, ty), { ok: true });
   // the brazier needs masonry on top of know.build: listed, but locked
-  addItems(w, pl, "stone", 6);
+  addItems(w, pl, "stone", 6); addItems(w, pl, "cut_stone", 4);
   assert.equal(entryFor(w, pl, "brazier")!.status, "unknown");
   assert.equal(entryReason(entryFor(w, pl, "brazier")!), "UNKNOWN RECIPE - NOT YET LEARNED");
   assert.deepEqual(placement(w, pl, a, "brazier", tx, ty), { ok: false, reason: "unknown" });
@@ -184,7 +187,7 @@ test("floor footprints: wide props need every tile of their box clear", () => {
 
 // ------------------------------------------------------------------ saves
 test("every new buildable builds through the task path and round-trips through save/load", () => {
-  const w = newWorld(); kit(w, 60, 60); setFlag(w, FLAGS.knowMasonry); w.actors.find((a) => a.id === w.playerId)!.gear.back = "basket";
+  const w = newWorld(); w.actors.find((a) => a.id === w.playerId)!.gear.back = "basket"; kit(w, 60, 60); setFlag(w, FLAGS.knowMasonry);
   const { a, pl } = inClearing(w);
   frame(w);
   const spots: [string, number, number][] = [["craftbench", 18, 48], ["table", 22, 48], ["chair", 18, 52], ["barricade", 22, 52], ["brazier", 20, 52], ["torch_post", 21, 49]];
@@ -255,12 +258,12 @@ test("the built crafting bench is a workbench: interactable, and opens its UI th
   useOn(w, it);
   const ev = events(w).find((e) => e.t === "openStation");
   assert.deepEqual(ev, { t: "openStation", actor: pl.id, prop: bench.id, station: "crafting" });
-  // the shell: entries list the placeholder, and the CRAFT command changes nothing
-  const before = JSON.stringify(pl.inventory);
+  // the bench lists the real plans and CRAFT starts work at this very bench
   const list = craftEntries(w, pl, "crafting");
-  assert.ok(list.length >= 1 && list[0].recipe.placeholder && list[0].status === "placeholder");
-  assert.equal(orderCraft(w, pl, "crafting", list[0].recipe.id), false);
-  assert.equal(JSON.stringify(pl.inventory), before);
+  assert.equal(list.length, CRAFT_RECIPES.length);
+  assert.equal(list.find((e) => e.recipe.id === "planks")!.status, "ok");
+  assert.equal(orderCraft(w, pl, "crafting", "planks", bench.id), true);
+  assert.equal(pl.task!.kind, "craft");
 });
 
 test("the dungeon's workbench gives up its chisel first, then works as a crafting bench", () => {
@@ -278,8 +281,8 @@ test("the dungeon's workbench gives up its chisel first, then works as a craftin
   events(w);
   useOn(w, it);
   assert.deepEqual(events(w).find((e) => e.t === "openStation"), { t: "openStation", actor: pl.id, prop: id, station: "crafting" });
-  // it is still the authored prop: it cannot be taken apart
-  assert.equal(salvageOf(a.prop(id)!), null);
+  // and, like every buildable, it can now be taken apart for the crafting bench's cost (tests/salvage.test.ts)
+  assert.deepEqual(salvageOf(a.prop(id)!), RECIPES.craftbench.cost);
 });
 
 test("without the knowledge to build, a workbench still opens but nothing is viewable or craftable", () => {
@@ -296,7 +299,7 @@ test("without the knowledge to build, a workbench still opens but nothing is vie
   assert.ok(events(w).some((e) => e.t === "openStation"));
   // and CRAFT, even for a real plan id, only says why
   events(w);
-  assert.equal(orderCraft(w, pl, "crafting", "placeholder"), false);
+  assert.equal(orderCraft(w, pl, "crafting", "planks"), false);
   assert.deepEqual(events(w), [{ t: "message", text: CRAFT_LOCKED_TEXT }]);
   // learning to build unlocks the plans
   setFlag(w, FLAGS.knowBuild);
@@ -384,7 +387,7 @@ test("deconstructing the dungeon's authored wall torch: full wall-torch refund, 
   assert.equal(deconTargetAt(a, 7, 2)?.id, id);
   assert.ok(orderDeconstruct(w, pl, id)); finish(w);
   assert.equal(a.prop(id), undefined);
-  assert.equal(countItem(pl, "stone"), 2); assert.equal(countItem(pl, "wood"), 1);
+  assert.equal(countItem(pl, "cut_stone"), 1); assert.equal(countItem(pl, "wood"), 1);
   view.flush();
   assert.ok(!view.lights.has("area" + li), "the owned light goes with its prop");
   // no tutorial logic hangs off torches: everything else interactable is unchanged
@@ -411,14 +414,15 @@ test("refund overflow lands on the ground when the pack is full; nothing is dele
   assert.ok(orderDeconstruct(w, pl, "torch@7,2")); finish(w);
   const ev = events(w);
   const ground = a.loose.filter((l) => l.dyn && !l.taken);
-  assert.deepEqual(ground.map((l) => [l.item, l.n ?? 1]).sort(), [["stone", 2], ["wood", 1]]);
+  assert.deepEqual(ground.map((l) => [l.item, l.n ?? 1]).sort(), [["cut_stone", 1], ["wood", 1]]);
   assert.equal(ev.filter((e) => e.t === "itemDropped" && e.reason === "full").length, 2);
 });
 
 test("deconstruction is refused on authored props that haven't opted in, and re-validates when it fires", () => {
   const w = newWorld(); frame(w);
   const a = currentArea(w), pl = player(w);
-  for (const id of ["brazier@33,12", "banner@27,1", "chains@55,27", "table@11,29", "workbench@13.5,37"]) {
+  // the chains on the gaol wall are not buildable: no recipe, no row, no salvage
+  for (const id of ["chains@55,27", "bookshelf@5,20", "statue@32,3"]) {
     const p = a.prop(id);
     assert.ok(p, id);
     pl.x = p!.x; pl.y = p!.y + 20;
@@ -437,7 +441,7 @@ test("deconstruction is refused on authored props that haven't opted in, and re-
   pl.x = 30 * TS; pl.y = 30 * TS;
   finish(w);
   assert.ok(a.prop("torch@7,2"), "re-validated: too far away when it fired");
-  assert.equal(countItem(pl, "stone"), 0);
+  assert.equal(countItem(pl, "cut_stone"), 0);
 });
 
 test("contents spill on deconstruction; any actor can deconstruct through its task queue", () => {
@@ -452,7 +456,7 @@ test("contents spill on deconstruction; any actor can deconstruct through its ta
   enqueueTask(helper, { kind: "dismantle", dur: 0.9, effect: { op: "deconstruct" } }, { kind: "deconstruct", x: table.x, y: table.y, propId: table.id });
   frames(w, 90);
   assert.equal(a.prop(table.id), undefined);
-  assert.equal(countItem(helper, "wood"), 4, "the helper gets the refund");
+  assert.equal(countItem(helper, "planks"), RECIPES.table.cost[0].n, "the helper gets the refund");
   assert.ok(a.loose.some((l) => l.item === "coin" && !l.taken), "what rested on it spills to the ground");
   assert.ok(allInteractables(w, a).some((i) => i.kind === "item"));
   // direct call on a missing prop is a polite no-op
@@ -517,12 +521,12 @@ test("catalog filters: tabs, favorites and can-build-only compose", () => {
 
 test("the real catalog lists all recipes for a builder and reflects carried materials", () => {
   const w = newWorld(); const pl = player(w); frame(w);
-  setFlag(w, FLAGS.knowBuild); addItems(w, pl, "wood", 2);
+  setFlag(w, FLAGS.knowBuild); addItems(w, pl, "planks", 2); addItems(w, pl, "wood", 3);
   const list = catalogEntries(w, pl);
   assert.equal(list.length, Object.keys(RECIPES).length);
   const chair = list.find((e) => e.id === "chair")!;
   assert.equal(chair.status, "ok");
-  assert.deepEqual(chair.lines, [{ item: "wood", need: 2, have: 2 }]);
-  assert.equal(list.find((e) => e.id === "wall_torch")!.status, "cost");
-  assert.deepEqual(queryCatalog(list, Q({ affordableOnly: true })).map((e) => e.id).sort(), ["barricade", "chair"].filter((id) => RECIPES[id].cost.every((c) => c.item === "wood" && c.n <= 2)).sort());
+  assert.deepEqual(chair.lines, [{ item: "planks", need: 2, have: 2 }]);
+  assert.equal(list.find((e) => e.id === "wall_torch")!.status, "cost", "needs cut stone, which isn't carried");
+  assert.deepEqual(queryCatalog(list, Q({ affordableOnly: true })).map((e) => e.id).sort(), ["barricade", "chair"]);
 });

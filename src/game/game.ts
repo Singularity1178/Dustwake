@@ -4,7 +4,9 @@
 import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/items";
 import { hasItem, addItems } from "./sim/inventory";
-import { ensureWorn } from "./sim/gear";
+import { ensureWorn, golemGlow, runeMarks } from "./sim/gear";
+import { toggleGearKit } from "./sim/debug";
+import { GOLEM_LIGHT } from "./content/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
 import { PackUi } from "./screens/pack";
@@ -21,7 +23,7 @@ import { itemIcon, glyphPattern } from "./art/items";
 import { makeCanvas, Pen, Sprite, hash2, clamp, lerp, makeSprite } from "./util";
 import { drawGolem, GolemPose, slamPose } from "./golem";
 import { SLAM_HIT } from "./content/tasks";
-import { Light, makeLight, computeVis, Lighting } from "./light";
+import { Light, makeLight, computeVis, applyGlow, Lighting } from "./light";
 import { Sfx } from "./audio";
 import { buildCircle, CircleArt, CR } from "./circle";
 import { SurfaceRuneArt } from "./surfaceRune";
@@ -184,7 +186,7 @@ export class Game {
     // The schematic is of the dungeon, wherever the golem is.
     this.schemUi.reset(world);
     const pl = player(world);
-    this.glight = makeLight(pl.x, pl.y - 6, 108, [1, 0.78, 0.5], 0, 0.05, "golem");
+    this.glight = makeLight(pl.x, pl.y - 6, GOLEM_LIGHT.rad, GOLEM_LIGHT.col, 0, 0.05, "golem");
     this.dripT = area.drips.map(() => Math.random() * 4);
     this.look = { eye: 0, core: 0, dormant: 1, sparkT: 1.5, sputter: 0, z: 0 };
     // Zoom is not saved: a world with a mended eye starts at the default zoomed-out view.
@@ -312,7 +314,7 @@ export class Game {
   keyUp(k: string) { this.keys.delete(k.toLowerCase()); }
   pointer() { this.pressed.add("click"); }
 
-  /** Debug keybinds (Ctrl+1/2/3), wired up in App.tsx. */
+  /** Debug keybinds (Ctrl+1..6), wired up in App.tsx. */
   debugKey(n: number) {
     const w = this.world, pl = this.pl;
     const say = (text: string) => { this.debugMsg = { text, t: 0 }; };
@@ -346,8 +348,14 @@ export class Game {
       // the basket worn on the back (the one in the pack if there is one, else a
       // new one), and enough materials to build one of everything several times.
       setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); ensureWorn(w, pl, "basket");
-      addItems(w, pl, "wood", 40); addItems(w, pl, "stone", 40);
+      for (const id of ["wood", "stone", "planks", "cut_stone"] as ItemId[]) addItems(w, pl, id, 40);
       say("DEBUG: BUILD + MASONRY + BASKET + MATERIALS");
+    } else if (n === 6) {
+      // Gear and crafting tests (sim/debug.ts): ON grants the crafted and raw materials, the chisel and both runes,
+      // wears the basket and unlocks every locked gear slot; OFF locks them again (what they hold returns to the pack).
+      const on = toggleGearKit(w, pl);
+      this.sfx.tone(on ? 560 : 380, 0.1, "triangle", 0.05);
+      say(on ? "DEBUG: GEAR KIT ON - ALL SLOTS UNLOCKED" : "DEBUG: GEAR KIT OFF - SLOTS LOCKED AGAIN");
     } else if (n === 5) {
       // Toggle the mended eye (golem.eye) and the zoom it unlocks.
       if (hasFlag(w, FLAGS.golemEye)) { w.flags.delete(FLAGS.golemEye); this.zoomTo(1, 0.4); say("DEBUG: EYE REPAIR OFF"); }
@@ -526,6 +534,12 @@ export class Game {
           if (Math.floor(a.t / 0.3) !== Math.floor((a.t - e.dt) / 0.3)) this.sfx.clink();
           if (Math.random() < 0.3) this.spawn({ x: a.target.x + (Math.random() - 0.5) * 10, y: a.target.y, z: 4 + Math.random() * 8, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.5, kind: "dust", col: "#8a8478", g: 30 });
         }
+        else if (a.kind === "craft") {
+          if (Math.floor(a.t / 0.25) !== Math.floor((a.t - e.dt) / 0.25)) {
+            this.sfx.clink();
+            if (a.target) for (let i = 0; i < 2; i++) this.spawn({ x: a.target.x + (Math.random() - 0.5) * 14, y: a.target.y - 6, z: 8, vx: (Math.random() - 0.5) * 30, vz: 12 + Math.random() * 14, life: 0.4, kind: "spark", col: "#e8d8a0", emit: true, g: 120 });
+          }
+        }
         else if (a.kind === "carve") {
           const c = this.area.ritualPos;
           const k = Math.floor(a.t / 0.22), kp = Math.floor((a.t - e.dt) / 0.22);
@@ -560,8 +574,12 @@ export class Game {
       case "gearOn": case "gearOff":
         // Gear is light: a soft wicker creak and a quiet line (nothing like the iron arm's clank, sparks and shake).
         if (e.actor !== this.world.playerId) break;
-        if (e.t === "gearOn") { this.sfx.strap(); this.say(`${ITEM_NAMES[e.item]} ON YOUR BACK`); }
-        else { this.sfx.unstrap(); this.say(`${ITEM_NAMES[e.item]} TAKEN OFF`); }
+        if (ITEMS[e.item].worn) this.sfx.tone(e.t === "gearOn" ? 700 : 420, 0.14, "triangle", 0.05); // a rune: a soft chime
+        else if (e.t === "gearOn") this.sfx.strap(); else this.sfx.unstrap();
+        this.say(e.t === "gearOn" ? (e.slot === "back" ? `${ITEM_NAMES[e.item]} ON YOUR BACK` : `${ITEM_NAMES[e.item]} EQUIPPED`) : `${ITEM_NAMES[e.item]} TAKEN OFF`);
+        break;
+      case "crafted":
+        if (e.actor === this.world.playerId) { this.sfx.place(); this.say(`MADE ${e.n} ${ITEM_NAMES[e.item]}`); }
         break;
       case "containerOpened":
         this.sfx.open();
@@ -688,6 +706,8 @@ export class Game {
       if (this.hit("v")) { this.buildUi.quickPlace(); return this.worldFrame(dt); }
       // Repeat placement / deconstruction: reopen the tool once the ordered work is done.
       if (this.buildUi.pending) { this.buildUi.resumeAfterWork(); if (!this.screens.is("play")) return this.worldFrame(dt); }
+      // After crafting at a bench, the bench's plans come back once the work is done.
+      if (this.craftUi.pending) { this.craftUi.resume(); if (!this.screens.is("play")) return this.worldFrame(dt); }
     }
     let ix = 0, iy = 0;
     if (this.has("arrowleft", "a")) ix -= 1;
@@ -850,6 +870,8 @@ export class Game {
     // golem light
     const gl = this.glight;
     gl.x = pl.x; gl.y = pl.y - 6;
+    // The glow is the sim's (sim/gear.ts: golemGlow: the standard glow, or what a worn rune of glow makes of it); the light system applies it.
+    applyGlow(gl, golemGlow(this.world, pl));
     if (Math.abs(gl.x - gl.vx) > 2 || Math.abs(gl.y - gl.vy) > 2) computeVis(gl, area);
     const base = this.screens.is("tele") ? gl.int : 1.0;
     gl.cur = base * this.look.core * (0.95 + 0.05 * Math.sin(this.t * 13) * Math.sin(this.t * 3.1)) + this.eyeBoost * 0.3;
@@ -1267,6 +1289,7 @@ export class Game {
       if (a.kind === "reach" || a.kind === "push" || a.kind === "dismantle") reach = Math.sin(Math.min(1, k) * Math.PI);
       if (a.kind === "smash") raise = a.t < 0.5 ? a.t / 0.5 : a.t < 0.62 ? lerp(1, -1, (a.t - 0.5) / 0.12) : lerp(-1, 0, clamp((a.t - 0.62) / 0.5, 0, 1));
       if (a.kind === "carve") reach = 0.4 + 0.6 * Math.abs(Math.sin(a.t * 14));
+      if (a.kind === "craft") reach = 0.3 + 0.7 * Math.abs(Math.sin(a.t * 9));
       if (a.kind === "attach") reach = 0.3;
       if (a.kind === "punch") { const k2 = a.t / a.dur; raise = k2 < 0.35 ? k2 / 0.35 : k2 < 0.5 ? lerp(1, -1, (k2 - 0.35) / 0.15) : lerp(-1, 0, clamp((k2 - 0.5) / 0.4, 0, 1)); }
       if (a.kind === "channel") reach = 0.2;
@@ -1275,7 +1298,7 @@ export class Game {
     const pose: GolemPose = {
       facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
       eye: clamp(lk.eye + this.eyeBoost, 0, 1.6), core: lk.core, raise, reach, t: this.t,
-      eyeFixed: hasFlag(this.world, FLAGS.golemEye), back: pl.gear.back, slam, dip,
+      eyeFixed: hasFlag(this.world, FLAGS.golemEye), back: pl.gear.back, runes: runeMarks(this.world, pl), slam, dip,
     };
     const ox = pl.x - camX + (a?.kind === "push" ? Math.round(Math.sin(a.t * 40)) : 0), oy = pl.y - camY - lk.z;
     drawGolem(new Pen(sc, false), ox, oy, pose);

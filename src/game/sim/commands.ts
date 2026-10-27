@@ -5,7 +5,7 @@ import { ITEMS, isDroppable, type GearSlot, type ItemId } from "../content/items
 import { RECIPES, DECONSTRUCT_DUR } from "../content/build";
 import { emit, areaOf, type Actor, type World } from "../world/world";
 import { applyEffect, beginTask } from "./tasks";
-import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, DECON_TEXT } from "./build";
+import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, deconMessage } from "./build";
 import { dropSpot } from "./inventory";
 import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
@@ -27,17 +27,18 @@ export function dropFromSlot(w: World, a: Actor, slot: number, n = 1): DropResul
   return "ok";
 }
 
-export type GearResult = "ok" | "empty" | "notWearable" | "noRoom";
+export type GearResult = "ok" | "empty" | "notWearable" | "noSlot" | "noRoom";
 
 /**
  * Put on the gear in a pack slot (pack open, world paused), applied at once
- * like dropping: the basket goes onto the golem's back and the pack grows.
+ * like dropping: the basket goes onto the golem's back and the pack grows, a
+ * rune goes into a rune slot. With no usable slot for it, it is refused.
  * NPCs can queue the same `{op: "wear"}` effect as a task.
  */
-export function wearFromSlot(w: World, a: Actor, slot: number): GearResult {
-  const chk = wearCheck(w, a, slot);
+export function wearFromSlot(w: World, a: Actor, slot: number, into?: GearSlot): GearResult {
+  const chk = wearCheck(w, a, slot, into);
   if (!chk.ok) { if (chk.reason !== "empty") emit(w, { t: "message", text: gearRefusal(chk) }); return chk.reason; }
-  applyEffect(w, a, { op: "wear", slot });
+  applyEffect(w, a, { op: "wear", slot, into });
   return "ok";
 }
 
@@ -69,7 +70,7 @@ export function orderBuild(w: World, a: Actor, recipe: string, tx: number, ty: n
  */
 export function orderDeconstruct(w: World, a: Actor, propId: string): boolean {
   const chk = deconstructCheck(w, a, areaOf(w, a), propId);
-  if (!chk.ok) { emit(w, { t: "message", text: DECON_TEXT[chk.reason] }); return false; }
+  if (!chk.ok) { emit(w, { t: "message", text: deconMessage(chk) }); return false; }
   const p = chk.prop;
   faceTo(a, p.x, p.y - 4);
   beginTask(a, { kind: "dismantle", dur: DECONSTRUCT_DUR, effect: { op: "deconstruct" } }, { kind: "deconstruct", x: p.x, y: p.y, propId: p.id });

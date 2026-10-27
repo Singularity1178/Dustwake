@@ -69,6 +69,8 @@ export type SimEvent =
   | { t: "built"; actor: string; prop: string; x: number; y: number }
   /** A prop was taken apart (its refund went through giveItem). */
   | { t: "deconstructed"; actor: string; prop: string; kind: string; x: number; y: number }
+  /** `actor` finished crafting `n` of `item` at a bench (recipe id from content/crafting.ts). */
+  | { t: "crafted"; actor: string; recipe: string; item: ItemId; n: number }
   /** `actor` used a work station; presentation opens the station's UI (player only). */
   | { t: "openStation"; actor: string; prop: string; station: string }
   | { t: "learned"; flag: string }

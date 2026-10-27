@@ -52,9 +52,9 @@ export default function App() {
     // "/" and "'" open Firefox quick-find and Backspace may navigate: the build menu's search field uses them.
     const block = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "tab", "/", "'", "backspace"]);
     const kd = (e: KeyboardEvent) => {
-      // Debug keybinds: Ctrl+1 arm, Ctrl+2 runes + core + tools, Ctrl+3 super speed, Ctrl+4 build kit, Ctrl+5 eye repair + zoom.
+      // Debug keybinds: Ctrl+1 arm, Ctrl+2 runes + core + tools, Ctrl+3 super speed, Ctrl+4 build kit, Ctrl+5 eye repair + zoom, Ctrl+6 gear kit (toggle).
       if (e.ctrlKey && !e.altKey && !e.shiftKey) {
-        const n = ({ Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5, Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4, Numpad5: 5 } as Record<string, number>)[e.code];
+        const n = ({ Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5, Digit6: 6, Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4, Numpad5: 5, Numpad6: 6 } as Record<string, number>)[e.code];
         if (n) {
           e.preventDefault();
           if (!e.repeat) game.debugKey(n);

@@ -28,8 +28,14 @@ export interface PropDef {
   container?: boolean;
   /** Starts open (e.g. a chest looted long ago). Uses the prop's alternate "open" sprite. */
   open?: boolean;
-  /** Built props: the recipe that built it (its cost is the deconstruction refund). */
+  /** Built props: the recipe that built it. */
   recipe?: string;
+  /**
+   * Built props: what it cost when it was built, which is what taking it apart
+   * gives back, so a later rebalance of the recipe never changes the refund of a
+   * prop that already stands (saves migrated from before this field get it too).
+   */
+  refund?: { item: ItemId; n: number }[];
 }
 export interface DecalDef { kind: string; x: number; y: number; v: number; w?: number; h?: number }
 export interface LightDef {

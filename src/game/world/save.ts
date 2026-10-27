@@ -42,8 +42,15 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  *     installed on pickup (world flag `golem.basket`): it is gear worn in the
  *     actor's back slot. A save with the basket installed (or still being
  *     attached) migrates to the golem wearing it, with the same capacity.
+ * v9: crafted materials (planks, cut stone) and a rebalanced build catalog that
+ *     uses them, plus the full set of gear slots (a gear map only gains keys, so
+ *     gear itself needs no change). Built props record what they `refund`; props
+ *     built before that are stamped with the cost they were built for, so the
+ *     rebalance can't be farmed by building cheap and taking apart for more.
+ *     Build work still pending for a recipe whose cost changed is dropped: a
+ *     build only takes its materials when it fires, so nothing was consumed.
  */
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
 
@@ -65,7 +72,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 8;
+  version: 9;
   seed: number;
   rng: number;
   time: number;
@@ -202,7 +209,38 @@ export const MIGRATIONS: Record<number, Migration> = {
       }),
     };
   },
+  8: (s) => {
+    // Props built under the old costs refund what they cost then (never more).
+    const stamp = (p: any) => {
+      if (p.refund) return p;
+      const id = p.recipe && V8_COSTS[p.recipe] ? p.recipe : p.recipe ? undefined : V8_RECIPE_OF_KIND[p.kind];
+      return id && V8_COSTS[id] ? { ...p, refund: V8_COSTS[id].map((c) => ({ ...c })) } : p;
+    };
+    // Pending build work for a recipe that now costs crafted materials: nothing
+    // had been consumed yet (building takes its cost when the effect fires), so
+    // dropping it loses nothing. The golem just doesn't start it; order it again.
+    const stale = (t: any) => t?.effect?.op === "build" && t.effect.recipe in V8_COSTS;
+    return {
+      ...s, version: 9,
+      actors: (s.actors ?? []).map((a: any) => ({ ...a, task: stale(a.task) ? null : a.task, queue: (a.queue ?? []).filter((t: any) => !stale(t)) })),
+      areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, { ...d, propsAdded: (d.propsAdded ?? []).map(stamp) }])),
+    };
+  },
 };
+
+/**
+ * The recipes whose cost changed in v9, as they cost in v8 (frozen here on
+ * purpose: a migration must not read content that keeps changing), and the
+ * recipe each prop kind was built from (saves before v6 didn't record it).
+ */
+const V8_COSTS: Record<string, { item: string; n: number }[]> = {
+  wall_torch: [{ item: "stone", n: 2 }, { item: "wood", n: 1 }],
+  brazier: [{ item: "stone", n: 4 }, { item: "wood", n: 2 }],
+  table: [{ item: "wood", n: 4 }],
+  chair: [{ item: "wood", n: 2 }],
+  wall_banner: [{ item: "wood", n: 1 }, { item: "stone", n: 1 }],
+};
+const V8_RECIPE_OF_KIND: Record<string, string> = { torch: "wall_torch", brazier: "brazier", table: "table", chair: "chair", banner: "wall_banner" };
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 

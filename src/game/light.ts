@@ -1,4 +1,5 @@
 import { TS, isOpaqueT } from "./content/tiles";
+import type { GolemLight } from "./content/gear";
 
 /** Anything with a tile grid and its dimensions (an Area). */
 export interface TileGrid { grid: Uint8Array; w: number; h: number }
@@ -14,10 +15,26 @@ export interface Light {
   vis: Float32Array;
   ox: number; oy: number; n: number;
   vx: number; vy: number;
+  /** Strength multiplier on top of `cur` (the golem's glow: a rune of glow burns brighter). Absent: 1. */
+  glow?: number;
 }
 
 export function makeLight(x: number, y: number, rad: number, col: [number, number, number], int: number, flick: number, id?: string): Light {
   return { x, y, rad, r: col[0], g: col[1], b: col[2], int, flick, id, on: true, cur: int, seed: Math.random() * 100, vis: new Float32Array(0), ox: 0, oy: 0, n: 0, vx: -999, vy: -999 };
+}
+
+/**
+ * Give a light the golem's current glow (sim/gear.ts: golemGlow: its standard
+ * glow, or what a worn rune of glow makes of it): radius, colour and strength.
+ * A change of reach invalidates the traced visibility (`vx`), so the next trace
+ * covers the new radius. Returns true if the radius or colour changed.
+ */
+export function applyGlow(L: Light, g: GolemLight): boolean {
+  const changed = L.rad !== g.rad || L.r !== g.col[0] || L.g !== g.col[1] || L.b !== g.col[2];
+  L.rad = g.rad; L.r = g.col[0]; L.g = g.col[1]; L.b = g.col[2];
+  L.glow = g.int;
+  if (changed) L.vx = -999;
+  return changed;
 }
 
 export function computeVis(L: Light, area: TileGrid) {
@@ -79,7 +96,8 @@ export class Lighting {
       const y0 = Math.max(0, Math.floor(L.y - rad - camY)), y1 = Math.min(H - 1, Math.ceil(L.y + rad - camY));
       if (x0 > x1 || y0 > y1) continue;
       const n = L.n, vis = L.vis, ox = L.ox, oy = L.oy;
-      const lr = L.r * L.cur, lg = L.g * L.cur, lb = L.b * L.cur;
+      const k = L.cur * (L.glow ?? 1);
+      const lr = L.r * k, lg = L.g * k, lb = L.b * k;
       for (let sy = y0; sy <= y1; sy++) {
         const wy = sy + camY;
         const dy = wy - L.y;
