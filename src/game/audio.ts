@@ -105,6 +105,20 @@ export class Sfx {
     this.tone(880, 0.4, "sine", 0.05, 1320, 1.4);
   }
 
+  // ---- inner monologue: cold, quiet machine sounds, nothing like the guardian's voice
+  /** A thought begins: a faint falling double blip. */
+  thoughtStart() { this.tone(1760, 0.03, "sine", 0.018); this.tone(1320, 0.04, "sine", 0.014, undefined, 0.05); }
+  /** One typed character of a thought: a tiny high tick (lower and softer for the "void" tone). */
+  thoughtTick(low = false) { this.tone((low ? 520 : 1250) + Math.random() * 180, 0.018, "square", low ? 0.006 : 0.008); }
+  /** Diagnostics running: a short random data chirp. */
+  chirp() { this.tone(900 + Math.random() * 900, 0.025, "square", 0.01, 600 + Math.random() * 1400); }
+  /** Diagnostics finished: two settling tones. */
+  diagDone() { this.tone(988, 0.12, "triangle", 0.04); this.tone(659, 0.3, "triangle", 0.035, undefined, 0.11); }
+  /** An empty, low swell under a line that is about an absence. */
+  hollow() { this.tone(82, 2.2, "sine", 0.06, 73); this.tone(123, 2.0, "triangle", 0.012, 110, 0.15); }
+  /** Control handed to the player at the end of a cutscene: a soft, open "ready" tone. */
+  online() { this.tone(392, 0.5, "sine", 0.035); this.tone(587, 0.7, "sine", 0.03, undefined, 0.08); }
+
   /** Dialogue typewriter: one soft, low blip per character (a weary voice: low and a little uneven). */
   blip() { this.tone(300 + Math.random() * 50, 0.045, "triangle", 0.03, 260); }
   /** The golem's eye is mended: an electrical crackle that resolves into a clear rising chime. */

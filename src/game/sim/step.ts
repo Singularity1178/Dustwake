@@ -15,6 +15,7 @@ import { actorDef } from "../content/actors";
 import { actorSpeed } from "./actorStats";
 import { cancelJob, tickJob } from "./jobs";
 import { toggleScan } from "./analysis";
+import { reactToEvents } from "./monologue";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -36,6 +37,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   tickTask(w, pl, dt);
   if (pl.job && pl.job.status !== "done" && (pl.job.status !== "paused" || pl.job.reason === "power")) {
     tickJob(w, pl, dt);
+    reactToEvents(w);
     return { target: null, ui: null };
   }
   move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, actorSpeed(w, pl) * (input.speed ?? 1));
@@ -58,6 +60,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
       emit(w, { t: "teleport", actor: pl.id, first: true, x: c.x, y: c.y });
     }
   }
+  reactToEvents(w);
   return { target, ui };
 }
 
@@ -80,6 +83,8 @@ export function stepWorld(w: World, dt: number) {
   for (const area of w.areas.values()) {
     area.advanceRitual(dt);
   }
+  // Inner-monologue event triggers see everything this step emitted (sim/monologue.ts).
+  reactToEvents(w);
 }
 
 // ---------------------------------------------------------------- locomotion

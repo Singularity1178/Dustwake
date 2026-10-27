@@ -80,6 +80,8 @@ export type Effect =
   | { op: "useStation" }
   /** Gain a knowledge flag (reading a book). */
   | { op: "learn"; flag: string }
+  /** The actor thinks inner-monologue line `line` (content/monologue.ts), if its rules allow. Conditions see the target. */
+  | { op: "think"; line: string }
   // ---- NPCs and dialogue (sim/dialogue.ts). The NPC is named by its actor id.
   /** Talk to the NPC actor at target.actorId: opens its first available dialogue segment, else its idle line. */
   | { op: "talk" }

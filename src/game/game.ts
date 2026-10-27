@@ -13,10 +13,13 @@ import { PackUi } from "./screens/pack";
 import { BookUi } from "./screens/book";
 import { SchematicUi } from "./screens/schematic";
 import { DialogueUi } from "./screens/dialogue";
+import { IntroCutscene } from "./screens/intro";
+import { MonologueLog, drawMonologue } from "./ui/monologue";
+import { reactToEvents } from "./sim/monologue";
 import { renderTitle, renderEnd } from "./screens/cards";
 import { propDef } from "./content/props";
 import { GLYPHS } from "./content/glyphs";
-import { FLAGS } from "./content/flags";
+import { FLAGS, learnedText } from "./content/flags";
 import { propSprite } from "./art/props";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite } from "./art/tiles";
 import { itemIcon, glyphPattern } from "./art/items";
@@ -164,6 +167,12 @@ export class Game {
   schemUi!: SchematicUi;
   /** Dialogue box overlay (screens/dialogue.ts). */
   dialogueUi!: DialogueUi;
+  /** The opening cutscene (screens/intro.ts, script in content/cutscenes.ts). */
+  introUi!: IntroCutscene;
+  /** The golem's inner monologue as shown (ui/monologue.ts); the sim emits `thought` events into it. */
+  monologue = new MonologueLog();
+  /** Cutscene letterbox: current amount 0..1 and where it is easing to. */
+  bars = { v: 0, to: 0 };
   /** Printable characters typed this frame (raw case) and "\b" for Backspace: text fields read these. */
   typed: string[] = [];
 
@@ -206,6 +215,8 @@ export class Game {
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
     this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeAnim = null;
+    this.monologue.reset();
+    this.bars = { v: 0, to: 0 };
   }
 
   /** Present a saved world, resuming straight into play. */
@@ -399,18 +410,15 @@ export class Game {
     this.bookUi = new BookUi(this);
     this.schemUi = new SchematicUi(this);
     this.dialogueUi = new DialogueUi(this);
+    this.introUi = new IntroCutscene(this);
     this.S = {
       title: scr("title", true, (dt) => {
         if (g.hit("l") && g.loadGame()) { g.sfx.init(); return; }
-        if (g.pressed.size) { g.sfx.init(); g.screens.set(g.S.intro); }
+        if (g.pressed.size) { g.sfx.init(); g.introUi.start(); }
         if (Math.random() < 0.3) g.spawn({ x: Math.random() * W, y: H + 2, vy: -10 - Math.random() * 12, vx: (Math.random() - 0.5) * 4, life: 6, kind: "ember", col: Math.random() < 0.5 ? "#ff8a3a" : "#c84a10", emit: true });
         g.updateParticles(dt);
       }, () => renderTitle(g.ctx, g.t, g.particles)),
-      intro: scr("intro", true, (dt) => { g.updateIntro(dt); g.worldFrame(dt); }, () => {
-        g.renderWorldScene();
-        const t = g.S.intro.t;
-        if (t < 1.5) { g.ctx.fillStyle = `rgba(0,0,0,${1 - t / 1.5})`; g.ctx.fillRect(0, 0, W, H); }
-      }),
+      intro: this.introUi.screen,
       play: scr("play", true, (dt) => g.updatePlay(dt), () => g.renderWorldScene()),
       tele: scr("tele", true, (dt) => {
         if (g.updateTele(dt)) return;
@@ -429,7 +437,7 @@ export class Game {
       dialogue: this.dialogueUi.screen,
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
-        if (et > 5 && g.hit("r")) { g.reset(); g.screens.set(g.S.intro); }
+        if (et > 5 && g.hit("r")) { g.reset(); g.introUi.start(); }
         else if ((et > 5 && g.pressed.size) || et > 14) { g.particles = []; g.screens.set(g.S.arrive); }
         if (Math.random() < 0.2) g.spawn({ x: Math.random() * W, y: H * 0.4 + Math.random() * 60, vy: -3, vx: 4, life: 5, kind: "mote", col: "#ffd8a0", emit: true });
         g.updateParticles(dt);
@@ -454,7 +462,7 @@ export class Game {
   }
 
   /** One frame of world simulation plus its presentation. */
-  private worldFrame(dt: number) {
+  worldFrame(dt: number) {
     stepWorld(this.world, dt);
     this.drainEvents();
     this.syncView();
@@ -463,6 +471,8 @@ export class Game {
   }
 
   drainEvents() {
+    // Monologue triggers must see events from paused-world commands (a book, the pack) before they are drained.
+    reactToEvents(this.world);
     const evs = this.world.events;
     if (!evs.length) return;
     this.world.events = [];
@@ -521,7 +531,10 @@ export class Game {
       case "message": this.say(e.text); break;
       case "learned":
         this.sfx.insight(); this.eyeBoost = 1.5;
-        this.say("YOU LEARNED " + ({ [FLAGS.knowBuild]: "THE ART OF BUILDING", [FLAGS.knowRepair]: "THE ART OF MENDING", [FLAGS.knowMasonry]: "THE MASON'S CRAFT" }[e.flag] ?? e.flag));
+        this.say(learnedText(e.flag));
+        break;
+      case "thought":
+        this.monologue.push(e.line);
         break;
       case "harvestHit": {
         const tree = e.kind === "tree" || e.kind === "log";
@@ -711,18 +724,6 @@ export class Game {
         break;
       }
     }
-  }
-
-  updateIntro(dt: number) {
-    const t = this.S.intro.t, lk = this.look;
-    if (t > 0.8 && t - dt <= 0.8) { this.sparkBurst(8); this.sfx.spark(); }
-    if (t > 1.2 && t - dt <= 1.2) this.sfx.boot();
-    if (t > 1.6 && t - dt <= 1.6) { this.sparkBurst(6); this.sfx.spark(); }
-    lk.core = t < 1.2 ? 0 : t < 2.6 ? (Math.random() < (t - 1.2) / 1.4 ? (t - 1.2) / 1.4 : 0.1) : 1;
-    lk.eye = t < 2.9 ? 0 : t < 3.5 ? (Math.sin(t * 40) > 0 ? 1 : 0.2) : 1;
-    lk.dormant = t < 3.6 ? 1 : clamp(1 - (t - 3.6) / 1.4, 0, 1);
-    if (t > 4.2 && t - dt <= 4.2) this.sfx.thud();
-    if (t > 5.2) this.screens.set(this.S.play);
   }
 
   updatePlay(dt: number) {
@@ -948,6 +949,7 @@ export class Game {
     // short-hop arrival
     if (this.arriveFade > 0) { this.arriveFade = Math.max(0, this.arriveFade - dt * 1.4); this.look.z = Math.max(0, this.look.z - dt * 24); }
     if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
+    this.stepMonologue(dt);
     // drifting leaves on the night wind
     if (area.base.outdoor && Math.random() < dt * 1.5)
       this.spawn({ x: this.cam.x - 20 + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 30 + Math.random() * 40, vx: 8 + Math.random() * 8, vy: (Math.random() - 0.3) * 3, vz: -4 - Math.random() * 3, life: 7, kind: "mote", col: ["#7a5630", "#946a34", "#5a7a34", "#a07c40"][(Math.random() * 4) | 0], emit: false, g: 0 });
@@ -1019,6 +1021,29 @@ export class Game {
 
   // ---------------------------------------------------------------- UiHost
   say(text: string) { this.note = { text, t: 0 }; }
+
+  // ---------------------------------------------------------------- CutsceneHost (screens/intro.ts)
+  letterbox(on: boolean) { this.bars.to = on ? 1 : 0; if (on) this.bars.v = 1; }
+  startPlay() { this.screens.set(this.S.play); }
+  renderScene() { this.renderWorldScene(); }
+
+  /** Type the monologue and ease the letterbox (presentation clock, scenes and animating overlays). */
+  private stepMonologue(dt: number) {
+    const s = this.monologue.update(dt);
+    if (s.started) this.sfx.thoughtStart();
+    for (let i = 0; i < s.typed; i++) this.sfx.thoughtTick(s.tone === "void");
+    const b = this.bars;
+    if (b.v !== b.to) b.v = b.to > b.v ? Math.min(b.to, b.v + dt * 4) : Math.max(b.to, b.v - dt * 2.2);
+  }
+
+  /** Cutscene letterbox bars (they slide away when the player gets control). */
+  private renderBars() {
+    const b = this.bars.v;
+    if (b <= 0) return;
+    const e = b * b * (3 - 2 * b), h = Math.round(14 * e);
+    this.ctx.fillStyle = "#000";
+    this.ctx.fillRect(0, 0, W, h); this.ctx.fillRect(0, H - h, W, h);
+  }
   /** Open an item's reading screen (pack E, UiHost.read). */
   read(id: ItemId) {
     const opens = ITEMS[id].opens;
@@ -1398,6 +1423,10 @@ export class Game {
       ctx.fillRect(x - 2, y - 1, 5, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1);
     }
     if (this.arriveFade > 0) { ctx.fillStyle = `rgba(235,240,255,${this.arriveFade})`; ctx.fillRect(0, 0, W, H); }
+    this.renderBars();
+    // below the letterbox while it is up; it rises with the bars as control is handed over
+    const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
+    drawMonologue(ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
     if (this.screens.is("play")) this.renderNote();
     // debug message
     if (this.debugMsg) {

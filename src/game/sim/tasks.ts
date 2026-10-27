@@ -23,6 +23,7 @@ import { applyAnalysis } from "./analysis";
 import { packRef, storageRef, transferItems } from "./storage";
 import { actorMessage } from "./messages";
 import { lineOfSight } from "./navigation";
+import { think } from "./monologue";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
@@ -291,6 +292,8 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
     case "learn":
       if (!hasFlag(w, e.flag)) { setFlag(w, e.flag); emit(w, { t: "learned", flag: e.flag }); }
       break;
+    case "think":
+      return think(w, a, e.line, { target });
     case "talk": case "npcAwake": case "repairEye": case "npcGive": case "segmentDone":
       applyDialogueEffect(w, a, e, target);
       break;

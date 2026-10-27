@@ -38,7 +38,7 @@
 | `L` | Load the saved game (also on the title screen, to continue) |
 | `R` | Wake again (restart) |
 
-Click or press any key on the title screen to begin.
+Click or press any key on the title screen to begin. The opening plays by itself: the golem wakes, runs its diagnostics and reports. You have control once the black bars slide away (about 12 seconds in).
 
 Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, the basket worn on the golem's back (the one in the pack if it has one), 40 each of wood, stone, planks and cut stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom, `Ctrl+6` toggle the gear kit: build + masonry knowledge, the basket worn, the rune chisel, wood, stone, planks and cut stone topped up to 40, both runes (Swift, Glow; one of each, never a second), and every locked gear slot unlocked (the left arm and the other three rune slots); press again to lock them (what they hold goes back to the pack).
 
@@ -47,6 +47,10 @@ Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + too
 Open with `?debug` and call `window.dustwake.foundations()` in the browser console. A lesser golem gathers six wood in a separate yard, travels through the rune network and deposits it into a 32-slot storage chest. Save/load works while it walks or works. `window.dustwake.order(actorId, order)` uses the walk-up order command; job shapes are in `src/game/sim/jobs.ts`.
 
 This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. Worker/storage screens, recruitment and the finished vision rendering are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
+
+## Inner monologue
+
+The golem sometimes thinks a short line. These show as a small diagnostic log in the top-left corner: no box, and nothing pauses. Lines and their triggers are data in `src/game/content/monologue.ts`. A row needs `text` and, optionally, an event trigger (`on`), a requirement (`when`) and named conditions (`if`, defined in `src/game/sim/monologue.ts`). Lines fire once unless the row sets `once: false` (with an optional `cooldown`). Scripts fire lines with `think(...)`, and interaction rules with the `{ op: "think", line }` effect. What has been thought is saved (save v11). The opening's beats, including its thoughts, are data in `src/game/content/cutscenes.ts`. See `docs/ARCHITECTURE.md`, "Inner monologue and the opening".
 
 ## Running locally
 
@@ -82,17 +86,20 @@ src/
     core/            seeded RNG, hashing (pure)
     content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
                      inventory tiers, gear slots, rune network, harvest yields, build + craft recipes,
-                     NPC definitions, dialogue scripts + beats (data)
+                     NPC definitions, dialogue scripts + beats, inner-monologue lines,
+                     cutscene scripts (data)
     map.ts           tutorial dungeon area builder
     surface.ts       surface area builder (ruins above the buried dungeon)
     world/           Area, World, area registry, save/load (simulated + saved state)
     sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting,
-                     runes, building, collision, ritual puzzle, dialogue engine, stepping, UI commands,
-                     debug kits (no DOM)
+                     runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
+                     stepping, UI commands, debug kits (no DOM)
     view/            area view: baked background + light registry; zoom model
     ui/              screen stack, shared overlay kit + UiHost (frames, text field),
-                     text wrapping, dialogue box geometry/layout (no DOM)
+                     text wrapping, dialogue box geometry/layout, monologue log,
+                     cutscene timeline (no DOM)
     game.ts          host: input, screen stack, camera, particles, audio, event reactions,
+                     monologue log + cutscene letterbox,
                      world rendering, render loop
     art/             procedural pixel art, by what it draws:
       palette.ts       shared colour ramps
@@ -111,7 +118,8 @@ src/
     circle.ts        rune circle art
     util.ts          canvas helpers
     screens/         screens split out of game.ts, behind ui/kit.ts UiHost: build menu + tools,
-                     crafting, pack, book, schematic, dialogue; title/end cards (cards.ts)
+                     crafting, pack, book, schematic, dialogue; the opening cutscene (intro.ts,
+                     behind CutsceneHost); title/end cards (cards.ts)
 tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
                      crafting and dialogue screens to PNG at 320x180 without a browser;
                      tests/support/golemSnapshot.ts renders the golem's poses to PNG)

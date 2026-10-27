@@ -94,7 +94,15 @@ export type SimEvent =
   | { t: "jobChanged"; actor: string; status: string; reason?: string }
   | { t: "manageActor"; actor: string; target: string }
   | { t: "openStorage"; actor: string; prop: string }
-  | { t: "analyzed"; actor: string; prop: string; flag: string };
+  | { t: "analyzed"; actor: string; prop: string; flag: string }
+  /** `actor` thought line `line` (content/monologue.ts). Presentation shows it; nothing else reacts. */
+  | { t: "thought"; actor: string; line: string };
+
+/**
+ * Inner-monologue state (saved, sim/monologue.ts). `said`: one-shot lines already
+ * thought, in order. `ready`: sim time at which a recurring line may fire again.
+ */
+export interface MonologueState { said: string[]; ready: Record<string, number> }
 
 export interface World {
   seed: number;
@@ -108,13 +116,15 @@ export interface World {
   actors: Actor[];
   playerId: string;
   scheduled: Scheduled[];
+  /** The player golem's inner monologue (saved). */
+  monologue: MonologueState;
   events: SimEvent[];
 }
 
 export function createWorld(seed: number): World {
   const w: World = {
     seed, rng: new SeededRng(seed), time: 0, playTime: 0, flags: new Set(),
-    areas: new Map(), actors: [], playerId: "golem", scheduled: [], events: [],
+    areas: new Map(), actors: [], playerId: "golem", scheduled: [], monologue: { said: [], ready: {} }, events: [],
   };
   const dungeon = getArea(w, "dungeon");
   // The player first; the dungeon's NPCs were spawned by getArea.

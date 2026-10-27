@@ -16,7 +16,7 @@ import type { DecalDef, LooseItem, PropDef } from "../map";
 import type { ItemId } from "../content/items";
 import { Area, type RitualState } from "./area";
 import { AREAS } from "./areas";
-import { makeNpc, type Actor, type Scheduled, type Slot, type World } from "./world";
+import { makeNpc, type Actor, type MonologueState, type Scheduled, type Slot, type World } from "./world";
 import { GUARDIAN_FLAGS } from "../content/dialogue";
 
 /**
@@ -51,8 +51,10 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  *     build only takes its materials when it fires, so nothing was consumed.
   * v10: actor definitions/upgrades, body power, scan mode, durable jobs;
   *      prop inventories, analysis grandfathering and relic discovery credit.
+  * v11: the inner monologue (`monologue`: one-shot lines already thought and
+  *      recurring lines' cooldowns). Older saves start with nothing thought.
   */
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[] };
 
@@ -74,7 +76,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 10;
+  version: 11;
   seed: number;
   rng: number;
   time: number;
@@ -83,6 +85,7 @@ export interface SaveData {
   playerId: string;
   actors: Actor[];
   scheduled: Scheduled[];
+  monologue: MonologueState;
   areas: Record<string, AreaSave>;
 }
 
@@ -251,6 +254,9 @@ export const MIGRATIONS: Record<number, Migration> = {
       })),
     };
   },
+  // Nothing has been thought yet. The opening's lines are not marked: a loaded
+  // save never replays the opening, and only it fires them.
+  10: (s) => ({ ...s, version: 11, monologue: s.monologue ?? { said: [], ready: {} } }),
 };
 
 /**
@@ -274,7 +280,7 @@ export function serialize(w: World): SaveData {
   for (const [id, a] of w.areas) areas[id] = diffArea(a);
   return clone({
     version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime,
-    flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, areas,
+    flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, monologue: w.monologue, areas,
   } as SaveData);
 }
 
@@ -284,7 +290,8 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
   rng.state = s.rng >>> 0;
   const w: World = {
     seed: s.seed, rng, time: s.time, playTime: s.playTime, flags: new Set(s.flags),
-    areas: new Map(), actors: clone(s.actors), playerId: s.playerId, scheduled: clone(s.scheduled), events: [],
+    areas: new Map(), actors: clone(s.actors), playerId: s.playerId, scheduled: clone(s.scheduled),
+    monologue: { said: [...(s.monologue?.said ?? [])], ready: { ...(s.monologue?.ready ?? {}) } }, events: [],
   };
   for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d));
   return w;

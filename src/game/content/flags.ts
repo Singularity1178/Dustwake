@@ -35,6 +35,14 @@ export const FLAGS = {
 
 export type Flag = string;
 
+/** The note shown once when a knowledge flag is learned (the `learned` event). Unlisted flags show their name. */
+export const LEARNED_TEXT: Record<string, string> = {
+  [FLAGS.knowBuild]: "YOU LEARNED TO BUILD.",
+  [FLAGS.knowRepair]: "YOU LEARNED THE ART OF MENDING",
+  [FLAGS.knowMasonry]: "YOU LEARNED THE MASON'S CRAFT",
+};
+export const learnedText = (flag: string) => LEARNED_TEXT[flag] ?? `YOU LEARNED ${flag}`;
+
 /** A flag namespaced by an NPC actor's id: npcFlag("npc.guardian", "met") -> "npc.guardian.met". */
 export const npcFlag = (actorId: string, key: string) => `${actorId}.${key}`;
 /** Runtime state every NPC has: present = awake, absent = dormant. Reversible by design. */
