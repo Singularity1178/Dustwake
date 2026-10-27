@@ -18,6 +18,7 @@ import { MonologueLog, drawMonologue } from "./ui/monologue";
 import { reactToEvents } from "./sim/monologue";
 import { renderTitle, renderEnd } from "./screens/cards";
 import { propDef } from "./content/props";
+import { VISION_CATEGORIES } from "./content/vision";
 import { GLYPHS } from "./content/glyphs";
 import { FLAGS, learnedText } from "./content/flags";
 import { propSprite } from "./art/props";
@@ -44,7 +45,8 @@ import { npcDef } from "./content/npcs";
 import { actorDef } from "./content/actors";
 import { drawActor } from "./view/actors";
 import { eventAudience } from "./view/audience";
-import { drawVision } from "./view/vision";
+import { VisionView, type VisionCue, type VisionArt } from "./view/vision";
+import type { Target } from "./content/tasks";
 import { isAwake, npcActor } from "./sim/dialogue";
 import { saveToStorage, loadFromStorage } from "./view/persistence";
 import type { Actor } from "./world/world";
@@ -109,6 +111,9 @@ export class Game {
   emit = makeCanvas(W, H);
   lighting = new Lighting(W, H);
   npcLooks = new Map<string, NpcLook>();
+  /** The golem's vision mode overlay (presentation of the sim's scan mode). */
+  vision = new VisionView();
+  private lastAnalyzed = { prop: "", t: -1 };
   sfx = new Sfx();
   circle: CircleArt = buildCircle();
   shaft: Sprite;
@@ -206,6 +211,7 @@ export class Game {
     this.setZoom(hasFlag(world, FLAGS.golemEye) ? ZOOM_DEFAULT : 1);
     this.cam.x = pl.x - this.vw / 2; this.cam.y = pl.y - this.vh / 2 - 10;
     this.npcLooks.clear();
+    this.vision.reset(pl.mode === "scan");
     this.dialogueUi.reset();
     this.packUi.reset();
     this.particles = [];
@@ -529,6 +535,11 @@ export class Game {
         break;
       case "packFull": this.say("YOUR PACK IS FULL"); this.sfx.tone(180, 0.1, "square", 0.04); break;
       case "message": this.say(e.text); break;
+      case "analyzed":
+        // one chime per prop, however many plans it held
+        if (this.lastAnalyzed.prop !== e.prop || this.t - this.lastAnalyzed.t > 0.2) this.sfx.analyzed();
+        this.lastAnalyzed = { prop: e.prop, t: this.t };
+        break;
       case "learned":
         this.sfx.insight(); this.eyeBoost = 1.5;
         this.say(learnedText(e.flag));
@@ -579,6 +590,12 @@ export class Game {
         else if (a.kind === "dismantle" && a.target) {
           if (Math.floor(a.t / 0.3) !== Math.floor((a.t - e.dt) / 0.3)) this.sfx.clink();
           if (Math.random() < 0.3) this.spawn({ x: a.target.x + (Math.random() - 0.5) * 10, y: a.target.y, z: 4 + Math.random() * 8, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.5, kind: "dust", col: "#8a8478", g: 30 });
+        }
+        else if (a.kind === "scan" && e.actor === pl.id) {
+          // the eye reads the pattern: a rising run of data chirps up to the fire point
+          const fire = a.dur * 0.85, k0 = (a.t - e.dt) / fire, k1 = a.t / fire;
+          if (k0 <= 0 && k1 > 0) this.sfx.scanStart();
+          if (k1 < 1 && Math.floor(k1 * 9) !== Math.floor(k0 * 9)) this.sfx.scanTick(k1);
         }
         else if (a.kind === "craft") {
           if (Math.floor(a.t / 0.25) !== Math.floor((a.t - e.dt) / 0.25)) {
@@ -994,7 +1011,46 @@ export class Game {
     if (this.debugMsg) { this.debugMsg.t += dt; if (this.debugMsg.t > 2) this.debugMsg = null; }
     // toast
     if (this.toast) { this.toast.t += dt; if (this.toast.t > 3) this.toast = null; }
+    // vision mode: follows the sim's mode; the lock-on reticle sits on whatever E would act on
+    const focus = this.screens.is("play") && this.target ? visionId(this.target) : null;
+    for (const c of this.vision.update(dt, this.world, pl, gl, focus, this.visionArt())) this.onVisionCue(c);
     this.updateParticles(dt);
+  }
+
+  private visionArtCache: VisionArt | null = null;
+  private visionArt(): VisionArt {
+    const a = (this.visionArtCache ??= { t: 0, npcLook: (x) => this.npcLook(x), circle: { lines: [this.circle.glow, this.circle.glowGap], r: CR }, self: () => (this.hideGolem ? null : this.selfPose) });
+    a.t = this.t;
+    return a;
+  }
+
+  /** Where the golem's eye is (world px), for the scanner's glint and the data stream home. */
+  private eyeSpot(): { x: number; y: number; w: number; show: boolean } | null {
+    if (this.hideGolem) return null;
+    const pl = this.pl, lk = this.look, f = pl.facing;
+    const y = Math.round(pl.y - lk.z) - 18 + Math.round(lk.dormant * 4) + Math.round(lk.dormant * 3);
+    const x = Math.round(pl.x) + (f === "right" ? 2 : f === "left" ? -4 : -2);
+    return { x, y, w: f === "down" ? 4 : 2, show: f !== "up" };
+  }
+
+  /** Sound and particles for the vision overlay's moments. */
+  private onVisionCue(c: VisionCue) {
+    switch (c.t) {
+      case "on": this.sfx.visionOn(); break;
+      case "off": this.sfx.visionOff(); break;
+      case "ping": if (c.n < 10) this.sfx.visionPing(c.category, c.pending, c.n); break;
+      case "lock": {
+        // the reading locks in: motes of the category's colour burst off the silhouette and drift up
+        const col = VISION_CATEGORIES[c.target.category].color;
+        for (let i = 0; i < 18; i++) {
+          const edge = Math.random() < 0.5, px = c.x + (edge ? (Math.random() < 0.5 ? 0 : c.w) : Math.random() * c.w), py = c.y + (edge ? Math.random() * c.h : (Math.random() < 0.5 ? 0 : c.h));
+          const zx = c.target.y - py;
+          this.spawn({ x: px, y: c.target.y, z: zx, vx: (px - (c.x + c.w / 2)) * (1.5 + Math.random() * 2), vz: 6 + Math.random() * 16, life: 0.5 + Math.random() * 0.5, kind: "rune", col: Math.random() < 0.35 ? "#ffffff" : col, emit: true, g: -6 });
+        }
+        this.eyeBoost = Math.max(this.eyeBoost, 0.6);
+        break;
+      }
+    }
   }
 
   updateParticles(dt: number) {
@@ -1219,7 +1275,8 @@ export class Game {
     this.lighting.accumulate(active, camX, camY);
     this.lighting.compose(sImg.data, eImg.data, this.outImg.data, area.base.ambient ?? [0.05, 0.045, 0.065]);
     this.wctx.putImageData(this.outImg, 0, 0);
-    drawVision(this.wctx, this.world, this.pl, camX, camY, W, H);
+    const eye = this.eyeSpot();
+    this.vision.draw(this.wctx, this.pl, camX, camY, W, H, this.t, eye && { x: eye.x + eye.w / 2 - 1, y: eye.y, w: eye.w, show: eye.show });
   }
 
   /**
@@ -1356,13 +1413,16 @@ export class Game {
     }
     const pose: GolemPose = {
       facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
-      eye: clamp(lk.eye + this.eyeBoost, 0, 1.6), core: lk.core, raise, reach, t: this.t,
+      eye: clamp(lk.eye + this.eyeBoost + this.vision.k * 0.35, 0, 1.6), core: lk.core, raise, reach, t: this.t,
       eyeFixed: hasFlag(this.world, FLAGS.golemEye), back: pl.gear.back, runes: runeMarks(this.world, pl), slam, dip,
     };
     const ox = pl.x - camX + (a?.kind === "push" ? Math.round(Math.sin(a.t * 40)) : 0), oy = pl.y - camY - lk.z;
     drawGolem(new Pen(sc, false), ox, oy, pose);
     drawGolem(new Pen(this.emit.ctx, true), ox, oy, pose);
+    this.selfPose = { pose, x: ox + camX, y: oy + camY };
   }
+  /** The pose the golem was last drawn in (world px): vision mode outlines it so it never gets lost under highlights. */
+  private selfPose: { pose: GolemPose; x: number; y: number } | null = null;
 
   // ---------------------------------------------------------------- NPCs
   /** Presentation state for an NPC actor, created from its sim state (so a loaded world looks right at once). */
@@ -1427,7 +1487,7 @@ export class Game {
     // below the letterbox while it is up; it rises with the bars as control is handed over
     const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
     drawMonologue(ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
-    if (this.screens.is("play")) this.renderNote();
+    if (this.screens.is("play")) { this.renderNote(); this.vision.drawHud(ctx, W); }
     // debug message
     if (this.debugMsg) {
       ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
@@ -1456,3 +1516,8 @@ export class Game {
   }
 }
 
+
+/** The vision target id of an interaction target (sim/analysis.ts: visionTargets ids). */
+function visionId(t: Target): string | null {
+  return t.propId ?? t.looseId ?? t.actorId ?? (t.tx !== undefined && t.ty !== undefined ? `tile:${t.tx},${t.ty}` : null);
+}

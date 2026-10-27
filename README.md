@@ -29,7 +29,7 @@
 | `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `E` craft, `Esc` close): planks from wood, cut stone from stone, and runes carved from cut stone (the rune chisel must be in your pack; it is not used up). The golem works at the bench, then the plans come back. It opens greyed out, with no plans shown, until you know how to build |
 | `E` on a teleport rune | Travel to its linked rune |
 | `E` on a tree or rock | Harvest wood / stone with your fists |
-| `Z` | Toggle the preliminary scan mode (category markers; use a buildable to analyze its pattern) |
+| `Z` | Toggle vision (scan) mode: a scanner sweep from the golem's eye highlights what it can see within its light's radius, each category with its own hologram (gold: important, cyan: interactable, violet: someone, green: buildable). A pulsing diamond marks something still to analyze; a dim, still outline with a check mark means it's already analyzed. `E` on a buildable analyzes its pattern. The top-right readout counts both within sight |
 | `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
 | Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended) |
@@ -46,7 +46,7 @@ Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + too
 
 Open with `?debug` and call `window.dustwake.foundations()` in the browser console. A lesser golem gathers six wood in a separate yard, travels through the rune network and deposits it into a 32-slot storage chest. Save/load works while it walks or works. `window.dustwake.order(actorId, order)` uses the walk-up order command; job shapes are in `src/game/sim/jobs.ts`.
 
-This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. Worker/storage screens, recruitment and the finished vision rendering are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
+This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. Worker/storage screens and recruitment are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
 
 ## Inner monologue
 

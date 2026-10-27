@@ -46,7 +46,39 @@ export function classifyHighlight(facts: { item?: ItemId; rune?: boolean; actor?
   return null;
 }
 
-export interface VisionTarget { id: string; x: number; y: number; height: number; category: Highlight }
+/**
+ * What analysis still holds for a prop: `pending` while any of its plans is
+ * unread, `done` once every one is, undefined for anything analysis can't read.
+ * The same flags `applyAnalysis` grants, so it flips the moment a scan fires.
+ */
+export type AnalysisState = "pending" | "done";
+export function analysisState(w: World, p: PropInst): AnalysisState | undefined {
+  const rows = buildRows(p.kind);
+  if (!rows.length) return undefined;
+  return rows.every(([id, r]) => w.flags.has(analysisFlag(r.analysis ?? id))) ? "done" : "pending";
+}
+
+export interface VisionTarget {
+  id: string; x: number; y: number; height: number; category: Highlight;
+  /** Absent: nothing to analyze. */
+  analysis?: AnalysisState;
+  /** Where it came from, so presentation can find its art without re-deriving it. */
+  source: "prop" | "loose" | "actor" | "tile";
+}
+
+/** Interactive tiles only move when the layout does: scanning the whole grid every frame would cost O(w*h). */
+const tileTargetCache = new WeakMap<Area, { rev: number; list: VisionTarget[] }>();
+function tileTargets(area: Area): VisionTarget[] {
+  const c = tileTargetCache.get(area);
+  if (c && c.rev === area.revision) return c.list;
+  const list: VisionTarget[] = [];
+  for (let y = 0; y < area.h; y++) for (let x = 0; x < area.w; x++) if (TILE_INTERACT[area.tile(x, y)]) {
+    list.push({ id: `tile:${x},${y}`, x: x * TS + 8, y: y * TS + 16, height: 16, category: "interactable", source: "tile" });
+  }
+  tileTargetCache.set(area, { rev: area.revision, list });
+  return list;
+}
+
 /** Presentation consumes this read-only projection, never decides interaction semantics. */
 export function visionTargets(w: World, area: Area): VisionTarget[] {
   const out: VisionTarget[] = [];
@@ -56,12 +88,10 @@ export function visionTargets(w: World, area: Area): VisionTarget[] {
       item: !p.taken && !p.open ? p.item : undefined, rune: d.rune, buildable: buildRows(p.kind).length > 0,
       interactable: !!(d.station || d.storage || d.examine || (!p.taken && (p.item || HARVEST[p.kind])) || (p.container && !p.open)),
     });
-    if (category) out.push({ id: p.id, x: p.x, y: p.y, height: p.itemZ ?? 14, category });
+    if (category) out.push({ id: p.id, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
   }
-  for (const l of area.loose) if (!l.taken) out.push({ id: l.id, x: l.x, y: l.y, height: 8, category: classifyHighlight({ item: l.item, interactable: true })! });
-  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId) out.push({ id: a.id, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc" });
-  for (let y = 0; y < area.h; y++) for (let x = 0; x < area.w; x++) if (TILE_INTERACT[area.tile(x, y)]) {
-    out.push({ id: `tile:${x},${y}`, x: x * TS + 8, y: y * TS + 16, height: 16, category: "interactable" });
-  }
+  for (const l of area.loose) if (!l.taken) out.push({ id: l.id, x: l.x, y: l.y, height: 8, category: classifyHighlight({ item: l.item, interactable: true })!, source: "loose" });
+  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId) out.push({ id: a.id, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc", source: "actor" });
+  for (const t of tileTargets(area)) out.push(t);
   return out;
 }

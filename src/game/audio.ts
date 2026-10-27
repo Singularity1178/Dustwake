@@ -119,6 +119,37 @@ export class Sfx {
   /** Control handed to the player at the end of a cutscene: a soft, open "ready" tone. */
   online() { this.tone(392, 0.5, "sine", 0.035); this.tone(587, 0.7, "sine", 0.03, undefined, 0.08); }
 
+  // ---- vision mode: heard hundreds of times a session, so short, soft and never shrill
+  /** The eye switches to its scanner: a low iris thump, a rising sweep and an airy whoosh, ending on a tiny lock blip. */
+  visionOn() {
+    this.tone(120, 0.08, "sine", 0.05, 70);
+    this.tone(440, 0.16, "sine", 0.03, 1320);
+    this.noise(0.2, 0.018, "bandpass", 1500, 1.5, 0, 6000);
+    this.tone(1320, 0.06, "triangle", 0.012, undefined, 0.13);
+  }
+  /** Back to plain sight: the sweep falling away. */
+  visionOff() {
+    this.tone(1100, 0.12, "sine", 0.024, 360);
+    this.noise(0.1, 0.012, "bandpass", 3000, 1.5, 0, 800);
+  }
+  /** The sweep finds something: one quiet sonar tick, pitched by category; something still to analyze answers with a second, higher tick. */
+  visionPing(category: string, pending: boolean, n: number) {
+    const f = ({ important: 1568, buildable: 1319, interactable: 1175, npc: 988 } as Record<string, number>)[category] ?? 1175;
+    const vol = 0.012 * Math.max(0.45, 1 - n * 0.07);
+    this.tone(f, 0.06, "sine", vol);
+    if (pending) this.tone(f * 1.5, 0.07, "sine", vol * 0.75, undefined, 0.045);
+  }
+  /** Analysis begins: a soft rising read tone. */
+  scanStart() { this.tone(330, 0.25, "triangle", 0.018, 660); this.noise(0.3, 0.012, "bandpass", 900, 4, 0, 2400); }
+  /** Analysis in progress: a tiny data tick, climbing with progress k (0..1). */
+  scanTick(k: number) { this.tone(700 + 900 * k, 0.025, "square", 0.006); }
+  /** Analysis complete: a bright three-note arpeggio with a shimmer on top. */
+  analyzed() {
+    [784, 1175, 1568].forEach((f, i) => this.tone(f, 0.4, "sine", 0.035, undefined, i * 0.055));
+    this.tone(2349, 0.6, "triangle", 0.01, undefined, 0.16);
+    this.noise(0.25, 0.015, "highpass", 6000, 1, 0.12);
+  }
+
   /** Dialogue typewriter: one soft, low blip per character (a weary voice: low and a little uneven). */
   blip() { this.tone(300 + Math.random() * 50, 0.045, "triangle", 0.03, 260); }
   /** The golem's eye is mended: an electrical crackle that resolves into a clear rising chime. */
