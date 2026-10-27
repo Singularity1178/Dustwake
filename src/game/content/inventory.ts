@@ -11,11 +11,15 @@
 // and taking it off is refused unless everything still fits afterwards.
 import type { Requirement } from "./interactions";
 import { FLAGS } from "./flags";
+import type { ItemId } from "./items";
+
+/** Shared by actor packs and prop inventories. */
+export type Slot = { item: ItemId; n: number } | null;
 
 export interface CapacityTier { requires?: Requirement; slots: number }
 
 export const CAPACITY_TIERS: CapacityTier[] = [
   { slots: 8 },
-  { requires: { flags: [FLAGS.golemArm] }, slots: 16 },
+  { requires: { actorFlags: [FLAGS.golemArm] }, slots: 16 },
   { requires: { worn: ["basket"] }, slots: 48 },
 ];

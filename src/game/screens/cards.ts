@@ -1,9 +1,8 @@
 // Full-screen cards drawn on the UI layer: the title screen and the duskfall
 // end card after the first rune jump. Pure drawing from the state passed in;
 // the host keeps their update logic (screen changes, ember/mote spawning).
-import { RELICS } from "../content/items";
 import { FLAGS } from "../content/flags";
-import { hasItem } from "../sim/inventory";
+import { relicCount } from "../sim/discovery";
 import { hasFlag, type World, type Actor } from "../world/world";
 import { drawGolem, type GolemPose } from "../golem";
 import { drawText, drawTextS } from "../font";
@@ -115,7 +114,7 @@ export function renderEnd(ctx: CanvasRenderingContext2D, t: number, et: number, 
     ctx.globalAlpha = clamp((et - 4.5) / 1, 0, 1);
     const s = Math.floor(world.playTime);
     const mm = String(Math.floor(s / 60)).padStart(2, "0"), ss = String(s % 60).padStart(2, "0");
-    const rel = RELICS.filter((r) => hasItem(pl, r)).length;
+    const rel = relicCount(world, pl);
     drawTextS(ctx, `TIME ${mm}:${ss}`, W / 2, 44, "#d8c8b0", 1, "center", "#2a1a2a");
     drawTextS(ctx, `RELICS ${rel}/3`, W / 2, 52, "#d8c8b0", 1, "center", "#2a1a2a");
     ctx.globalAlpha = 1;

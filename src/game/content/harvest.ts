@@ -1,7 +1,6 @@
-// Harvestable props (data). Each blow of the golem's fists deals 1 damage,
-// which is stored on the prop (Area.damageProp) so it saves and any actor's
-// blows accumulate. Every blow yields `perHit`; the blow that depletes it
-// also yields `final`.
+// Harvestable props (data). Damage is cumulative work, saved on the prop.
+// `perHit` retains its legacy name but pays per whole unit of work, not per
+// animation. Actor harvest power scales work; `final` is paid once on depletion.
 //
 // Depletion is permanent in v1: a tree becomes a stump, a rock is broken up.
 // The hook for regrowth is `regrow` (seconds of world time): when set, the

@@ -78,7 +78,7 @@ export class AreaView {
 
   /** Apply pending world changes. Returns true if tiles changed (callers refresh moving lights). */
   flush(): boolean {
-    if (this.area.revision !== this.syncedRev) this.syncLights();
+    if (this.area.interactionRevision !== this.syncedRev) this.syncLights();
     const r = this.pending;
     if (!r) return false;
     this.pending = null;
@@ -111,7 +111,7 @@ export class AreaView {
   }
 
   private syncLights() {
-    this.syncedRev = this.area.revision;
+    this.syncedRev = this.area.interactionRevision;
     const want = this.wantedLights();
     const keys = new Set([...want.map((w) => w.key), ...this.dynamic]);
     for (const k of [...this.lights.keys()]) if (!keys.has(k)) this.lights.delete(k);

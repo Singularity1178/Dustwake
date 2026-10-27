@@ -6,9 +6,11 @@ import { makeSprite, Sprite, Pen, Rng } from "../util";
 import { spriteCache, type PropArt } from "./common";
 import { SURFACE_PROP_ART } from "./propsSurface";
 import { DUNGEON_PROP_ART } from "./propsDungeon";
+import { propDef } from "../content/props";
 export type { PropArt } from "./common";
 
 export function propSprite(kind: string, v: number, alt: boolean): Sprite | null {
+  kind = propDef(kind).art ?? kind;
   const key = `${kind}|${v}|${alt}`;
   const c = spriteCache.get(key);
   if (c) return c;

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
 installFakeCanvas();
-import { player, currentArea, getArea, setFlag, enterArea, makeActor, type World } from "../src/game/world/world";
+import { clearFlag, player, currentArea, getArea, setFlag, enterArea, makeActor, type World } from "../src/game/world/world";
 import { serialize, deserialize, SAVE_VERSION } from "../src/game/world/save";
 import { capacity, addItems, giveItem, countItem, hasItem, reconcileCapacity } from "../src/game/sim/inventory";
 import { dropFromSlot, orderBuild, readItem, wearFromSlot } from "../src/game/sim/commands";
@@ -46,7 +46,7 @@ test("capacity is derived from tiers: 8 / 16 with the arm / 48 wearing the baske
   const w = newWorld(), pl = player(w);
   assert.equal(capacity(w, pl), 8);
   setFlag(w, FLAGS.golemArm); assert.equal(capacity(w, pl), 16);
-  w.flags.delete(FLAGS.golemArm); pl.gear.back = "basket"; assert.equal(capacity(w, pl), 48, "highest satisfied tier wins");
+  clearFlag(w, FLAGS.golemArm); pl.gear.back = "basket"; assert.equal(capacity(w, pl), 48, "highest satisfied tier wins");
 });
 
 test("stacking: materials stack to their max, tools take a slot each", () => {
@@ -84,7 +84,7 @@ test("capacity growth reveals slots without moving items; a shrink never loses i
   assert.equal(pl.inventory.length, 48);
   assert.equal(JSON.stringify(pl.inventory.slice(0, 16)), before, "growth keeps slots in place");
   const wood = total(w, "wood"), stone = total(w, "stone");
-  delete pl.gear.back; w.flags.delete(FLAGS.golemArm); // a forced shrink (debug keys): the fallback still never loses items
+  delete pl.gear.back; clearFlag(w, FLAGS.golemArm); // a forced shrink (debug keys): the fallback still never loses items
   stepWorld(w, 1 / 60);
   assert.equal(pl.inventory.length, 8);
   assert.equal(total(w, "wood"), wood); assert.equal(total(w, "stone"), stone);
@@ -175,7 +175,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 9);
+  assert.equal(SAVE_VERSION, 10);
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");

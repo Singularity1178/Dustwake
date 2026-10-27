@@ -15,6 +15,8 @@ import { npcDef } from "../content/npcs";
 import { meets } from "./requirements";
 import type { Area } from "../world/area";
 import { beginTask, faceTo, strikePoint } from "./tasks";
+import { actorDef, capable } from "../content/actors";
+import { buildRows, scanSpec } from "./analysis";
 
 export interface Interactable extends Target {
   r: number;
@@ -28,9 +30,9 @@ const cache = new WeakMap<Area, { rev: number; list: Interactable[] }>();
 
 export function interactables(area: Area): Interactable[] {
   const c = cache.get(area);
-  if (c && c.rev === area.revision) return c.list;
+  if (c && c.rev === area.interactionRevision) return c.list;
   const list = deriveInteractables(area);
-  cache.set(area, { rev: area.revision, list });
+  cache.set(area, { rev: area.interactionRevision, list });
   return list;
 }
 
@@ -45,6 +47,7 @@ function deriveInteractables(area: Area): Interactable[] {
       continue;
     }
     if (HARVEST[p.kind] && !p.taken) { I.push({ kind: "harvest", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
+    if (def.storage) { I.push({ kind: "storage", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
     // A station is used once nothing rests on it: the dungeon workbench hands over its chisel first (the tutorial
     // needs that), then works as a bench. Built benches carry no item, so they are stations straight away.
     if (def.station && !(p.item && !p.container && !p.taken)) { I.push({ kind: "station", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
@@ -72,6 +75,24 @@ function deriveInteractables(area: Area): Interactable[] {
   return I;
 }
 
+const scanCache = new WeakMap<Area, { rev: number; list: Interactable[] }>();
+/**
+ * Buildable props as scan targets. They are deliberately not normal
+ * interactables: E on furniture does nothing unless vision/scan mode is on.
+ * Cached on the same revision as interactables because props/taken state move.
+ */
+export function scanTargets(area: Area): Interactable[] {
+  const c = scanCache.get(area);
+  if (c && c.rev === area.interactionRevision) return c.list;
+  const list: Interactable[] = [];
+  for (const p of area.props) {
+    if (p.taken || !buildRows(p.kind).length) continue;
+    list.push({ kind: "buildable", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id });
+  }
+  scanCache.set(area, { rev: area.interactionRevision, list });
+  return list;
+}
+
 /**
  * Interactables derived from the NPC actors standing in an area (actors live on
  * the World, not the Area, so these are not part of the area's cached list).
@@ -81,10 +102,10 @@ function deriveInteractables(area: Area): Interactable[] {
 export function npcInteractables(w: World, area: Area): Interactable[] {
   const out: Interactable[] = [];
   for (const a of w.actors) {
-    if (a.kind !== "npc" || a.area !== area.id) continue;
-    const d = npcDef(a.npc);
-    if (!d) continue;
-    out.push({ kind: "npc", x: a.x, y: a.y + 2, r: d.reach, itemZ: d.height - 12, actorId: a.id, npc: a.npc });
+    if (a.id === w.playerId || a.area !== area.id) continue;
+    const d = actorDef(a).body;
+    const kind = capable(a, "worker") ? "worker" : npcDef(a.npc) ? "npc" : null;
+    if (kind) out.push({ kind, x: a.x, y: a.y + 2, r: d.reach, itemZ: d.height - 12, actorId: a.id, npc: a.npc });
   }
   return out;
 }
@@ -94,16 +115,24 @@ export const allInteractables = (w: World, area: Area) => [...interactables(area
 
 /** Closest interactable in front of the actor, within its reach radius (`extra`: NPC interactables). */
 export function findTarget(area: Area, a: Actor, extra: readonly Interactable[] = []): Interactable | null {
-  return findTargetWhere(area, a, () => true, extra);
+  return findTargetIn([...interactables(area), ...extra], a);
 }
 
 /** findTarget among only the interactables `accept` allows (the slam looks at slammable ones). */
 export function findTargetWhere(area: Area, a: Actor, accept: (it: Interactable) => boolean, extra: readonly Interactable[] = []): Interactable | null {
+  return findTargetIn([...interactables(area), ...extra], a, accept);
+}
+
+/** The buildable prop in front of the actor, used only while scan mode is on. */
+export const findScanTarget = (area: Area, a: Actor) => findTargetIn(scanTargets(area), a);
+
+/** findTarget's geometry over any list (scan targets use their own list). */
+export function findTargetIn(list: readonly Interactable[], a: Actor, accept: (it: Interactable) => boolean = () => true): Interactable | null {
   const fx = a.facing === "left" ? -1 : a.facing === "right" ? 1 : 0;
   const fy = a.facing === "up" ? -1 : a.facing === "down" ? 1 : 0;
   const px = a.x + fx * 6, py = a.y - 3 + fy * 6;
   let best: Interactable | null = null, bd = 1;
-  for (const it of [...interactables(area), ...extra]) {
+  for (const it of list) {
     if (!accept(it)) continue;
     const d = Math.hypot(it.x - px, it.y - py) / it.r;
     if (d < bd) { bd = d; best = it; }
@@ -120,7 +149,10 @@ export type InteractUi = { ui: "selectGlyph"; socket: number };
 
 /** Start the work implied by interacting with `it`. Returns a UI request if a choice is needed first. */
 export function interact(w: World, a: Actor, area: Area, it: Interactable): InteractUi | null {
+  if (a.task || a.area !== area.id) return null;
   faceTo(a, it.x, it.y - 4);
+  const scan = scanSpec(a, it.propId ? area.prop(it.propId) : undefined);
+  if (scan) { beginTask(a, scan, it); return null; }
   let rules = RULES[it.kind];
   if (it.kind === "socket") {
     const filled = (area.ritual?.sockets[it.socket!] ?? -1) >= 0;
@@ -151,7 +183,7 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
  * nothing to hit, the slam still plays in full and only strikes the ground.
  */
 export function startSlam(w: World, a: Actor, area: Area): boolean {
-  if (a.task) return false;
+  if (a.task || !capable(a, "attack")) return false;
   const it = findTargetWhere(area, a, (i) => !!SLAM_RULES[i.kind]);
   const rule = it ? SLAM_RULES[it.kind].find((r) => meets(w, a, r.when)) : undefined;
   const at = strikePoint(a);

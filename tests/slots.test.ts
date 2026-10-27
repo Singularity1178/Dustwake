@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
 installFakeCanvas();
-import { player, currentArea, setFlag, type World } from "../src/game/world/world";
+import { clearFlag, player, currentArea, setFlag, type World } from "../src/game/world/world";
 import { serialize, deserialize } from "../src/game/world/save";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
 import { wearFromSlot, takeOffGear } from "../src/game/sim/commands";
@@ -112,7 +112,7 @@ test("relocking a slot returns what it held to the pack; nothing is deleted and 
   wearFromSlot(w, pl, slotOf(w, "rune_glow")); wearFromSlot(w, pl, slotOf(w, "rune_swift"));
   assert.deepEqual([pl.gear.rune0, pl.gear.rune1], ["rune_glow", "rune_swift"]);
   assert.equal(speedMultiplier(w, pl), 1 + ITEMS.rune_swift.worn!.speed!);
-  w.flags.delete(FLAGS.slotRune1);
+  clearFlag(w, FLAGS.slotRune1);
   assert.equal(speedMultiplier(w, pl), 1, "a locked slot's item has no effect even before it is put away");
   events(w);
   frames(w, 2);

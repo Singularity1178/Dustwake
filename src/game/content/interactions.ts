@@ -10,6 +10,8 @@ import { FLAGS } from "./flags";
 export interface Requirement {
   items?: ItemId[];
   flags?: string[];
+  /** Body upgrades of the actor being checked, never another actor's flags. */
+  actorFlags?: string[];
   /** Items the actor must be wearing (Actor.gear, any slot), e.g. the basket on its back. */
   worn?: ItemId[];
 }
@@ -25,7 +27,7 @@ export const RULES: Record<string, Rule[]> = {
   ],
   // Cracked walls only break under the attack (SLAM_RULES below). E pushes (the old shudder) and says so.
   cracked: [
-    { when: { flags: [FLAGS.golemArm] }, task: { kind: "push", dur: 0.7, effect: { op: "message", text: "IT WON'T PUSH. A HEAVY BLOW WILL BREAK IT (SPACE)", cue: "push" } } },
+    { when: { actorFlags: [FLAGS.golemArm] }, task: { kind: "push", dur: 0.7, effect: { op: "message", text: "IT WON'T PUSH. A HEAVY BLOW WILL BREAK IT (SPACE)", cue: "push" } } },
     { task: { kind: "push", dur: 0.7, effect: { op: "message", text: "IT SHIFTS, BUT HOLDS. IT NEEDS A HEAVY BLOW (SPACE)", cue: "push" } } },
   ],
   center: [
@@ -50,6 +52,8 @@ export const RULES: Record<string, Rule[]> = {
   examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],
   // ---- work stations (props with a `station`, e.g. the crafting bench)
   station: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStation" } } }],
+  storage: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStorage" } } }],
+  worker: [{ task: { kind: "reach", dur: 0.3, effect: { op: "manageActor" } } }],
   // ---- NPCs: any actor of kind "npc". The target carries its actor id and NpcDef id;
   // what is said comes from that NPC's dialogue script (content/dialogue.ts).
   npc: [{ task: { kind: "talk", dur: 0.3, effect: { op: "talk" } } }],
@@ -67,7 +71,7 @@ export const SLAM_TASK: TaskSpec = { kind: "slam", dur: 1.1 };
  */
 export const SLAM_RULES: Record<string, { when?: Requirement; then: Effect }[]> = {
   cracked: [
-    { when: { flags: [FLAGS.golemArm] }, then: { op: "breakTile" } },
+    { when: { actorFlags: [FLAGS.golemArm] }, then: { op: "breakTile" } },
     // The broken stub puts no weight behind the blow: the debris takes the hit and holds.
     { then: { op: "withstand", text: "IT HOLDS. ONE GOOD ARM IS NOT ENOUGH" } },
   ],

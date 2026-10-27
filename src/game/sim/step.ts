@@ -7,15 +7,21 @@ import { emit, hasFlag, player, areaOf, type Actor, type World } from "../world/
 import type { Area } from "../world/area";
 import { tickTask, runScheduled, beginTask } from "./tasks";
 import { reconcileCapacity } from "./inventory";
-import { reconcileGear, speedMultiplier } from "./gear";
+import { reconcileGear } from "./gear";
 import { boxFree as boxFreeAt, actorBoxes } from "./collision";
 import { RULES } from "../content/interactions";
-import { findTarget, interact, npcInteractables, startSlam, type Interactable, type InteractUi } from "./interact";
+import { findTarget, findScanTarget, interact, npcInteractables, startSlam, type Interactable, type InteractUi } from "./interact";
+import { actorDef } from "../content/actors";
+import { actorSpeed } from "./actorStats";
+import { cancelJob, tickJob } from "./jobs";
+import { toggleScan } from "./analysis";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
   /** Attack (Space on the play screen): the two-arm ground slam. Independent of `use` (E). */
   attack?: boolean;
+  /** Toggle the sim's interaction mode (the host only forwards a key press). */
+  toggleScan?: boolean;
   /** Movement speed multiplier (debug/testing). Defaults to 1. */
   speed?: number;
 }
@@ -25,9 +31,16 @@ export interface PlayerStepResult { target: Interactable | null; ui: InteractUi 
 export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStepResult {
   const pl = player(w);
   const area = areaOf(w, pl);
+  if (input.toggleScan) toggleScan(pl);
+  if (pl.job && pl.job.status !== "done" && (input.ix || input.iy || input.use || input.attack)) cancelJob(w, pl);
   tickTask(w, pl, dt);
-  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, (hasFlag(w, FLAGS.golemArm) ? 30 : 24) * (input.speed ?? 1) * speedMultiplier(w, pl));
-  const target = pl.task ? null : findTarget(area, pl, npcInteractables(w, area));
+  if (pl.job && pl.job.status !== "done" && (pl.job.status !== "paused" || pl.job.reason === "power")) {
+    tickJob(w, pl, dt);
+    return { target: null, ui: null };
+  }
+  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, actorSpeed(w, pl) * (input.speed ?? 1));
+  const scan = pl.task || pl.mode !== "scan" ? null : findScanTarget(area, pl);
+  const target = pl.task ? null : scan ?? findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
   // The attack is separate from interacting: available whenever the golem could act, target or not.
@@ -59,14 +72,13 @@ export function addPlayTime(w: World, dt: number) { w.playTime += dt; }
 export function stepWorld(w: World, dt: number) {
   w.time += dt;
   runScheduled(w);
-  for (const a of w.actors) {
+  for (const a of [...w.actors].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     reconcileGear(w, a);
     reconcileCapacity(w, a);
-    if (a.id !== w.playerId) tickTask(w, a, dt);
+    if (a.id !== w.playerId) { tickTask(w, a, dt); tickJob(w, a, dt); }
   }
   for (const area of w.areas.values()) {
-    const r = area.ritual;
-    if (r?.active) r.actT += dt;
+    area.advanceRitual(dt);
   }
 }
 
@@ -84,7 +96,7 @@ export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy
   pl.moving = sp > 4;
   // Other actors' bodies (NPCs) block like props do.
   const bodies = actorBoxes(w, area.id, pl.id);
-  const boxFree = (a: Area, x: number, y: number) => boxFreeAt(a, x, y, bodies);
+  const boxFree = (a: Area, x: number, y: number) => boxFreeAt(a, x, y, bodies, actorDef(pl).body.box);
   const nx = pl.x + pl.vx * dt;
   if (boxFree(area, nx, pl.y)) pl.x = nx;
   else {

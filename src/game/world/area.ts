@@ -2,13 +2,14 @@
 // directly; presentation subscribes to its change notifications.
 //
 // Invariant: every mutation goes through a method here. Methods bump
-// `revision` (anything derived from area state — interactables, nav, lights —
-// can cache on it) and tile/decal changes also publish a dirty tile rectangle
+// `revision`, plus the dependency-specific layout/interaction/storage revision.
+// Tile/decal changes also publish a dirty tile rectangle
 // so views can re-bake background and re-trace light visibility locally.
 import type { AreaData, DecalDef, LightDef, LooseItem, PropDef } from "../map";
 import { TS, T } from "../content/tiles";
 import { propDef } from "../content/props";
-import type { ItemId } from "../content/items";
+import { maxStack, type ItemId } from "../content/items";
+import type { Slot } from "./world";
 import { SOCKET_COUNT } from "../content/ritual";
 
 export interface PropInst extends PropDef {
@@ -16,6 +17,8 @@ export interface PropInst extends PropDef {
   taken: boolean;
   /** Damage taken (harvest progress). Lives on the target so any actor's hits accumulate and it saves. */
   dmg: number;
+  /** Storage prop slots; never mutate these outside Area.setInventory. */
+  inventory?: Slot[];
   /** Created during play (built), not by the area builder. */
   dyn?: boolean;
   /** Collision box [x0, y0, x1, y1] in px, or null. Derived from the prop kind. */
@@ -56,6 +59,9 @@ export class Area {
   readonly lights: LightDef[];
   ritual: RitualState | null = null;
   revision = 0;
+  layoutRevision = 0;
+  interactionRevision = 0;
+  storageRevision = 0;
   /** Id counters for things created during play (saved, so ids are never reused). */
   looseSeq = 0;
   propSeq = 0;
@@ -80,6 +86,11 @@ export class Area {
   private instProp(p: PropDef, dyn = false): PropInst {
     const bx = propDef(p.kind).box;
     const inst: PropInst = { ...p, open: !!p.open, taken: false, dmg: 0, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
+    const storage = propDef(p.kind).storage;
+    if (storage) {
+      if ((p.inventory?.length ?? 0) > storage.slots) throw new Error("authored storage exceeds capacity");
+      inst.inventory = Array.from({ length: storage.slots }, (_, i) => p.inventory?.[i] ? { ...p.inventory[i]! } : null);
+    }
     if (dyn) inst.dyn = true;
     this.propIndex.set(p.id, inst);
     return inst;
@@ -94,10 +105,10 @@ export class Area {
   get ritualPos() { return this.base.ritual!; }
 
   initRitual(solution: number[]) {
-    this.ritual = {
+    this.setRitual({
       solution, sockets: new Array(SOCKET_COUNT).fill(-1), core: false, carved: false,
       active: false, actT: 0, wrong: new Array(SOCKET_COUNT).fill(false),
-    };
+    });
   }
 
   tile(tx: number, ty: number): number {
@@ -117,31 +128,33 @@ export class Area {
   addDecal(d: DecalDef) {
     this.decals.push(d);
     const tx = Math.floor(d.x / TS), ty = Math.floor(d.y / TS);
-    this.markDirty(tx - DIRTY_PAD, ty - DIRTY_PAD, tx + DIRTY_PAD, ty + DIRTY_PAD);
+    this.markDirty(tx - DIRTY_PAD, ty - DIRTY_PAD, tx + DIRTY_PAD, ty + DIRTY_PAD, false);
   }
   setPropState(id: string, s: Partial<Pick<PropInst, "open" | "taken" | "lit" | "dmg">> & { item?: ItemId | null }) {
     const p = this.propIndex.get(id);
     if (!p) return;
+    const layout = s.taken !== undefined && s.taken !== p.taken;
     if (s.open !== undefined) p.open = s.open;
     if (s.taken !== undefined) p.taken = s.taken;
     if (s.lit !== undefined) p.lit = s.lit;
     if (s.dmg !== undefined) p.dmg = s.dmg;
     if (s.item !== undefined) p.item = s.item ?? undefined;
-    this.touch();
+    this.touch(layout ? "layout" : "interaction");
   }
   /** Harvest progress: add damage to a prop. */
   damageProp(id: string, n: number) {
     const p = this.propIndex.get(id);
     if (!p) return;
     p.dmg += n;
-    this.touch();
+    this.touch("state");
   }
   /** Create a prop during play (building). Ids are `kind#b<n>`, never reused. */
   addProp(kind: string, x: number, y: number, o: Partial<PropDef> = {}, id?: string): PropInst {
     const pid = id ?? `${kind}#b${this.propSeq++}`;
+    if (this.propIndex.has(pid)) throw new Error(`duplicate prop id "${pid}"`);
     const inst = this.instProp({ v: 0, ...o, id: pid, kind, x, y }, true);
     this.props.push(inst);
-    this.touch();
+    this.touch("layout");
     return inst;
   }
   /**
@@ -154,7 +167,7 @@ export class Area {
     if (!p) return undefined;
     this.propIndex.delete(id);
     this.props = this.props.filter((q) => q !== p);
-    this.touch();
+    this.touch("layout");
     return p;
   }
   takeLoose(id: string) {
@@ -177,16 +190,47 @@ export class Area {
     else l.n = n;
     this.touch();
   }
-  /** Non-spatial change (props, ritual, ...): bump revision only. */
-  touch() { this.revision++; }
+  /** Atomic replacement: callers never receive a mutable storage handle. */
+  setInventory(id: string, slots: readonly Slot[]) {
+    const p = this.prop(id), cap = p && propDef(p.kind).storage?.slots;
+    if (!p || cap === undefined || slots.length > cap) throw new Error("invalid storage inventory");
+    if (slots.some((s) => s && (!Number.isSafeInteger(s.n) || s.n <= 0 || s.n > maxStack(s.item)))) throw new Error("invalid storage stack");
+    p.inventory = Array.from({ length: cap }, (_, i) => slots[i] ? { ...slots[i]! } : null);
+    this.touch("storage");
+  }
+
+  setRitual(state: RitualState | null) {
+    this.ritual = state ? { ...state, solution: [...state.solution], sockets: [...state.sockets], wrong: [...state.wrong] } : null;
+    this.touch();
+  }
+  updateRitual(state: Partial<RitualState>) {
+    if (!this.ritual) return;
+    Object.assign(this.ritual, state);
+    if (state.solution) this.ritual.solution = [...state.solution];
+    if (state.sockets) this.ritual.sockets = [...state.sockets];
+    if (state.wrong) this.ritual.wrong = [...state.wrong];
+    this.touch();
+  }
+  advanceRitual(dt: number) {
+    if (this.ritual?.active) { this.ritual.actT += dt; this.touch("state"); }
+  }
+  restoreCounters(loose: number, props: number) { this.looseSeq = loose; this.propSeq = props; }
+
+  /** Revisions describe dependencies, not merely how often state changes. */
+  touch(change: "state" | "storage" | "interaction" | "layout" = "interaction") {
+    this.revision++;
+    if (change === "storage") this.storageRevision++;
+    if (change === "layout") this.layoutRevision++;
+    if (change === "layout" || change === "interaction") this.interactionRevision++;
+  }
 
   // ---- change propagation
   onChange(fn: Listener): () => void {
     this.listeners.push(fn);
     return () => { this.listeners = this.listeners.filter((l) => l !== fn); };
   }
-  private markDirty(x0: number, y0: number, x1: number, y1: number) {
-    this.revision++;
+  private markDirty(x0: number, y0: number, x1: number, y1: number, layout = true) {
+    this.touch(layout ? "layout" : "state");
     const r = { x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(this.w - 1, x1), y1: Math.min(this.h - 1, y1) };
     for (const l of this.listeners) l(r);
   }

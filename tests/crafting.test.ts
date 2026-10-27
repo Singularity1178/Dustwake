@@ -253,7 +253,7 @@ test("v8 -> v9: pending build work for a rebalanced recipe is dropped (nothing w
   s.actors[0].task = task("table");
   s.actors[0].queue = [task("torch_post"), task("wall_banner"), task("craftbench")];
   const m: any = migrate(s);
-  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 9);
+  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 10);
   assert.equal(m.actors[0].task, null);
   assert.deepEqual(m.actors[0].queue.map((t: any) => t.effect.recipe), ["torch_post", "craftbench"]);
   // the migrated save loads, and nothing the golem carries changed

@@ -6,6 +6,7 @@ installFakeCanvas();
 import { viewSize, nextZoomStep, ZOOM_STEPS, ZOOM_DEFAULT, BASE_W, BASE_H } from "../src/game/view/zoom";
 import { NPC_ART, drawGuardian, type NpcPose } from "../src/game/npcArt";
 import { NPCS } from "../src/game/content/npcs";
+import { ACTORS } from "../src/game/content/actors";
 import { makeCanvas, Pen } from "../src/game/util";
 import { getArea } from "../src/game/world/world";
 import { AreaView } from "../src/game/view/areaView";
@@ -30,7 +31,7 @@ test("zoom levels are integer, 16:9 views; the wheel steps 1x / 1.5x / 2x", () =
 });
 
 test("the guardian sprite is registered by its NpcDef art key and renders dormant and awake states", () => {
-  for (const d of Object.values(NPCS)) assert.ok(NPC_ART[d.art], d.art);
+  for (const d of Object.values(NPCS)) assert.ok(NPC_ART[ACTORS[d.actor].art.key], d.actor);
   const draw = (pose: Partial<NpcPose>) => {
     resetTrace();
     const c = makeCanvas(64, 64);

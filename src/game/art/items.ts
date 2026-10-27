@@ -23,6 +23,12 @@ const glyphIcon = (gi: number): ItemArt => (p) => {
 
 /** Item icon registry: item id -> draw function. Adding an item = adding an entry. */
 export const ITEM_ART: Record<ItemId, ItemArt> = {
+  large_ruby: (p) => {
+    p.o(4, 3, 8, 10, "#9c2548", "#391424"); p.r(5, 4, 5, 3, "#e65b75"); p.r(6, 4, 2, 2, "#ffd1c4");
+  },
+  ruby_core: (p) => {
+    p.o(3, 2, 10, 12, "#5a4650", "#21151e"); p.g(5, 4, 6, 8, "#c53858"); p.g(6, 5, 2, 5, "#ffc3bc");
+  },
   chisel: (p) => {
     p.r(3, 11, 6, 3, "#14100c"); p.r(4, 12, 4, 1, WD.l);
     p.line(4, 12, 10, 6, WD.m); p.line(5, 12, 11, 6, WD.l);

@@ -29,6 +29,7 @@
 | `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `E` craft, `Esc` close): planks from wood, cut stone from stone, and runes carved from cut stone (the rune chisel must be in your pack; it is not used up). The golem works at the bench, then the plans come back. It opens greyed out, with no plans shown, until you know how to build |
 | `E` on a teleport rune | Travel to its linked rune |
 | `E` on a tree or rock | Harvest wood / stone with your fists |
+| `Z` | Toggle the preliminary scan mode (category markers; use a buildable to analyze its pattern) |
 | `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
 | Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended) |
@@ -40,6 +41,12 @@
 Click or press any key on the title screen to begin.
 
 Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, the basket worn on the golem's back (the one in the pack if it has one), 40 each of wood, stone, planks and cut stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom, `Ctrl+6` toggle the gear kit: build + masonry knowledge, the basket worn, the rune chisel, wood, stone, planks and cut stone topped up to 40, both runes (Swift, Glow; one of each, never a second), and every locked gear slot unlocked (the left arm and the other three rune slots); press again to lock them (what they hold goes back to the pack).
+
+## Foundation fixture
+
+Open with `?debug` and call `window.dustwake.foundations()` in the browser console. A lesser golem gathers six wood in a separate yard, travels through the rune network and deposits it into a 32-slot storage chest. Save/load works while it walks or works. `window.dustwake.order(actorId, order)` uses the walk-up order command; job shapes are in `src/game/sim/jobs.ts`.
+
+This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. Worker/storage screens, recruitment and the finished vision rendering are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
 
 ## Running locally
 

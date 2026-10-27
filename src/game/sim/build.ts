@@ -9,10 +9,12 @@ import { ITEM_NAMES, isCritical } from "../content/items";
 import { emit, type Actor, type World } from "../world/world";
 import type { Area, PropInst } from "../world/area";
 import type { ItemId } from "../content/items";
-import { meets } from "./requirements";
 import { countItem, removeItems, giveItem, dropSpot, spawnLoose } from "./inventory";
-import { actorBox, actorBoxes, propBlocks } from "./collision";
+import { actorBoxes, propBlocks } from "./collision";
 import type { Box } from "./reach";
+import { recipeKnown } from "./analysis";
+import { capable } from "../content/actors";
+import { powered } from "./actorStats";
 
 export type BuildBlock = "unknown" | "cost" | "reach" | "solid" | "occupied" | "noWall" | "wallFace";
 export type Placement = { ok: true } | { ok: false; reason: BuildBlock };
@@ -30,7 +32,7 @@ export const BLOCK_TEXT: Record<BuildBlock, string> = {
 /** Knowledge + materials, independent of where. */
 export function canBuild(w: World, a: Actor, recipe: string): Placement {
   const r = RECIPES[recipe];
-  if (!r || !meets(w, a, r.requires)) return { ok: false, reason: "unknown" };
+  if (!r || !capable(a, "build") || !powered(a) || !recipeKnown(w, a, r)) return { ok: false, reason: "unknown" };
   if (!r.cost.every((c) => countItem(a, c.item) >= c.n)) return { ok: false, reason: "cost" };
   return { ok: true };
 }
@@ -74,13 +76,6 @@ export function footprint(r: Recipe, tx: number, ty: number): Box {
 
 const overlaps = (a: Box, b: Box) => a[2] > b[0] && a[0] < b[2] && a[3] > b[1] && a[1] < b[3];
 
-/** Blocking bodies of every actor in the area (the golem has no body box, so use its feet box). */
-function bodies(w: World, area: Area): Box[] {
-  const out = actorBoxes(w, area.id);
-  for (const a of w.actors) if (a.area === area.id && !actorBox(a)) out.push([a.x - 5, a.y - 5, a.x + 5, a.y]);
-  return out;
-}
-
 /** Where-only check for a floor recipe. */
 function floorSite(w: World, area: Area, r: Recipe, tx: number, ty: number): Placement {
   if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h || isSolidT(area.grid[ty * area.w + tx])) return { ok: false, reason: "solid" };
@@ -101,7 +96,7 @@ function floorSite(w: World, area: Area, r: Recipe, tx: number, ty: number): Pla
     if (Math.hypot(c.x - (tx * TS + 8), c.y - (ty * TS + 8)) < 64) return { ok: false, reason: "occupied" };
   }
   // not on top of anyone (the builder included)
-  for (const b of bodies(w, area)) if (overlaps(b, fp)) return { ok: false, reason: "occupied" };
+  for (const b of actorBoxes(w, area.id)) if (overlaps(b, fp)) return { ok: false, reason: "occupied" };
   return { ok: true };
 }
 
@@ -232,9 +227,12 @@ export function deconTargetAt(area: Area, tx: number, ty: number): PropInst | nu
 export function deconstructCheck(_w: World, a: Actor, area: Area, propId: string | undefined): Deconstruct {
   const p = propId ? area.prop(propId) : undefined;
   if (!p) return { ok: false, reason: "none" };
+  if (!capable(a, "build") || !powered(a)) return { ok: false, reason: "fixed", prop: p };
   const refund = salvageOf(p);
   if (!refund) return { ok: false, reason: "fixed", prop: p };
   if (p.item && !p.taken && isCritical(p.item)) return { ok: false, reason: "holds", prop: p, item: p.item };
+  const critical = p.inventory?.find((s) => s && isCritical(s.item));
+  if (critical) return { ok: false, reason: "holds", prop: p, item: critical.item };
   const t = propTile(p);
   if (!inReach(a, t.tx, t.ty)) return { ok: false, reason: "reach", prop: p };
   return { ok: true, prop: p, refund };
@@ -251,7 +249,12 @@ export function applyDeconstruct(w: World, a: Actor, area: Area, propId: string 
   if (!chk.ok) { emit(w, { t: "message", text: deconMessage(chk) }); return; }
   const p = chk.prop;
   const held = p.item && !p.taken ? p.item : undefined;
+  const contents = p.inventory?.flatMap((s) => s ? [{ ...s }] : []) ?? [];
   area.removeProp(p.id);
+  for (const s of contents) {
+    const spot = dropSpot(area, a, actorBoxes(w, area.id, a.id)) ?? a;
+    spawnLoose(area, s.item, s.n, spot.x, spot.y);
+  }
   if (held) {
     const spot = dropSpot(area, a, actorBoxes(w, area.id, a.id));
     const x = spot ? spot.x : a.x, y = spot ? spot.y : a.y;

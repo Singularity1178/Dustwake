@@ -6,8 +6,8 @@
 // that calls orderCraft. That starts a craft task and closes the screen so the
 // golem can work at the bench; when the work is done the host reopens the
 // screen (`pending` / `resume`) with the cursor where it was, so a batch is
-// CRAFT, wait, CRAFT. Crafting draws from the golem's own pack: the bench has
-// no slots. Rows come from content/crafting.ts.
+// CRAFT, wait, CRAFT. Ingredients come from the pack plus nearby storage;
+// tools stay carried. Rows come from content/crafting.ts.
 //
 // Until the golem knows the craft (STATION_REQUIRES) the same layout opens
 // greyed out: no plans are listed or readable and the CRAFT button is dead.
@@ -62,7 +62,7 @@ export class CraftingUi {
 
   private refresh() {
     this.locked = craftLocked(this.g.world, this.g.pl, this.station);
-    this.list = craftEntries(this.g.world, this.g.pl, this.station);
+    this.list = craftEntries(this.g.world, this.g.pl, this.station, undefined, this.propId);
     this.cursor = clamp(this.cursor, 0, Math.max(0, this.list.length - 1));
     if (this.cursor < this.scroll) this.scroll = this.cursor;
     if (this.cursor >= this.scroll + ROWS) this.scroll = this.cursor - ROWS + 1;
@@ -105,7 +105,7 @@ export class CraftingUi {
     const bench = propSprite("workbench", 0, false);
     if (bench) { ctx.globalAlpha = locked ? 0.4 : 1; ctx.drawImage(bench.a, PX + 8, PY + 3, 16, 15); ctx.globalAlpha = 1; }
     drawText(ctx, "CRAFTING BENCH", PX + 28, PY + 8, locked ? UI.mid : UI.title);
-    drawText(ctx, "USES YOUR PACK", PX + PW - 8, PY + 8, UI.dim, 1, "right");
+    drawText(ctx, "PACK + NEARBY STORAGE", PX + PW - 8, PY + 8, UI.dim, 1, "right");
     // recipe list
     frame(ctx, LX, LY, LW, DH, "#0e0c10");
     for (let i = 0; i < ROWS; i++) {
@@ -132,7 +132,7 @@ export class CraftingUi {
       r.desc.slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, DW - 8), DX + 4, DY + 30 + i * 8, "#a89c80"));
       ctx.fillStyle = "#2a2630"; ctx.fillRect(DX + 4, DY + 55, DW - 8, 1);
       drawText(ctx, "NEEDS", DX + 4, DY + 59, UI.dim);
-      drawText(ctx, "CARRIED", DX + DW - 4, DY + 59, UI.dim, 1, "right");
+      drawText(ctx, "AVAILABLE", DX + DW - 4, DY + 59, UI.dim, 1, "right");
       e.lines.slice(0, 2).forEach((l, i) => {
         const y = DY + 67 + i * 7;
         drawText(ctx, `${l.need} ${ITEM_NAMES[l.item]}`, DX + 4, y, UI.text);

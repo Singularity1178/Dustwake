@@ -1,7 +1,7 @@
 // Progression flags. Progression is a set of namespaced string flags on the
 // World, not boolean fields on a game object. Naming convention:
-//   golem.*     — upgrades / body state of the golem (world-wide for now;
-//                 move to the actor when a second golem exists)
+//   golem.arm / golem.slot.* are actor upgrades (v10); the legacy flag API
+//                 redirects them to the player. golem.eye remains story progress.
 //   know.*      — knowledge the golem has acquired
 //   tutorial.*  — one-shot tutorial beats
 //   rune.*      — teleportation rune sites (rune.<site>.active)

@@ -42,10 +42,12 @@ export function runeAt(area: string, propId: string): RuneNode | undefined {
 }
 
 /** Where travelling from `id` leads, and through which link. */
-export function runeDestination(id: string): { node: RuneNode; link: RuneLink } | null {
+export function runeDestinations(id: string): { node: RuneNode; link: RuneLink }[] {
+  const out: { node: RuneNode; link: RuneLink }[] = [];
   for (const link of RUNE_LINKS) {
-    if (link.a === id) return { node: RUNE_NODES[link.b], link };
-    if (link.b === id && !link.oneWay) return { node: RUNE_NODES[link.a], link };
+    if (link.a === id && RUNE_NODES[link.b]) out.push({ node: RUNE_NODES[link.b], link });
+    if (link.b === id && !link.oneWay && RUNE_NODES[link.a]) out.push({ node: RUNE_NODES[link.a], link });
   }
-  return null;
+  return out;
 }
+export const runeDestination = (id: string, to?: string) => runeDestinations(id).find((d) => !to || d.node.id === to) ?? null;

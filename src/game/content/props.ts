@@ -9,6 +9,10 @@ export interface PropLightDef {
 }
 
 export interface PropKindDef {
+  /** Generic inventory, separate from a one-shot story container. */
+  storage?: { slots: number };
+  /** Reuse existing art without reusing its gameplay kind. */
+  art?: string;
   /** Collision footprint [w, h], centred on x, ending at y. */
   box?: [number, number];
   /** Sorted just in front of the wall it hangs on. */
@@ -46,6 +50,7 @@ export const PROPS: Record<string, PropKindDef> = {
   workbench: { box: [32, 10], itemDx: -6, station: "crafting" }, forge: { box: [32, 12] }, anvil: { box: [14, 6] }, cradle: { box: [28, 5] },
   slab: { box: [36, 10] }, hearth: { box: [36, 10] }, longtable: { box: [50, 10] }, bench: { box: [44, 4] },
   chest: { box: [16, 8] }, pot: { box: [10, 6] }, fountain: { box: [32, 14] }, pedestal: { box: [10, 5] },
+  storage_chest: { box: [14, 8], storage: { slots: 32 }, art: "chest" },
   sack: { box: [10, 5] }, parts: { box: [16, 5] },
   brazier: {
     box: [12, 6], alt: "lit",

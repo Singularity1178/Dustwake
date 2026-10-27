@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Game, W, H } from "./game/game";
-import { serialize, saveToStorage, loadFromStorage } from "./game/world/save";
+import { serialize } from "./game/world/save";
+import { saveToStorage, loadFromStorage } from "./game/view/persistence";
+import { foundationDemo, registerFoundations } from "./game/sim/debugFoundations";
+import { setWorkerOrder } from "./game/sim/jobs";
+import type { JobOrder } from "./game/world/jobs";
+import { player } from "./game/world/world";
 
 export default function App() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -17,11 +22,14 @@ export default function App() {
     const game = new Game(canvas, ui);
     // Developer hook (not player-facing): open with ?debug to get window.dustwake.
     if (new URLSearchParams(window.location.search).has("debug")) {
+      registerFoundations();
       (window as unknown as Record<string, unknown>).dustwake = {
         game,
         serialize: () => serialize(game.world),
         save: () => saveToStorage(game.world),
         load: () => { const w = loadFromStorage(); if (w) game.resume(w); return !!w; },
+        foundations: () => { game.resume(foundationDemo()); game.say("FOUNDATION FIXTURE: A WORKER GATHERS THROUGH THE RUNES."); },
+        order: (id: string, order: JobOrder | null) => setWorkerOrder(game.world, player(game.world), id, order),
       };
     }
     let raf = 0;
@@ -96,6 +104,8 @@ export default function App() {
       window.removeEventListener("wheel", wh);
       ui.removeEventListener("pointerdown", pd);
       game.sfx.ctx?.close();
+      game.view.dispose();
+      delete (window as unknown as Record<string, unknown>).dustwake;
     };
   }, []);
 

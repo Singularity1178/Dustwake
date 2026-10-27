@@ -8,6 +8,7 @@ import { FLAGS, npcFlag } from "../src/game/content/flags";
 import { DIALOGUE, BEATS, GUARDIAN_FLAGS } from "../src/game/content/dialogue";
 import { layoutDialogue, DIALOGUE_BOX, DIALOGUE_COLS, DIALOGUE_LINES } from "../src/game/ui/dialogueLayout";
 import { NPCS } from "../src/game/content/npcs";
+import { ACTORS } from "../src/game/content/actors";
 import { FONT_GLYPHS, textWidth } from "../src/game/font";
 import { interactables } from "../src/game/sim/interact";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
@@ -253,7 +254,7 @@ function asV4(w: World, chestOpened: boolean) {
 }
 
 test("v4 -> v5: a save without the core gets a dormant guardian who still gives it", () => {
-  assert.equal(SAVE_VERSION, 9);
+  assert.equal(SAVE_VERSION, 10);
   const w0 = newWorld(11), pl0 = player(w0);
   addItems(w0, pl0, "chisel", 1);
   pl0.x = 56 * TS; pl0.y = 7 * TS;
@@ -336,7 +337,8 @@ test("dormant is reversible: wake it again and a later data-only segment plays",
 });
 
 test("a second NPC is pure data: its own NpcDef row and script, talked to through the generic path", () => {
-  NPCS.tester = { name: "TEST SUBJECT", type: "special", dialogue: "tester", art: "guardian", box: [10, 6], reach: 18, height: 20 };
+  ACTORS.tester = { ...ACTORS.guardian, body: { box: [10, 6], reach: 18, height: 20 } };
+  NPCS.tester = { name: "TEST SUBJECT", type: "special", dialogue: "tester", actor: "tester" };
   DIALOGUE.tester = {
     idle: "IT IGNORES YOU.",
     segments: [
@@ -358,7 +360,7 @@ test("a second NPC is pure data: its own NpcDef row and script, talked to throug
     assert.equal(corePresent(w), 0, "the guardian's beats were never involved");
     assert.ok(!hasFlag(w, GUARDIAN_FLAGS.met));
   } finally {
-    delete NPCS.tester; delete DIALOGUE.tester;
+    delete NPCS.tester; delete DIALOGUE.tester; delete ACTORS.tester;
   }
 });
 

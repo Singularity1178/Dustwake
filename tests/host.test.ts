@@ -9,7 +9,7 @@ installFakeCanvas();
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 import { Game } from "../src/game/game";
-import { player, currentArea } from "../src/game/world/world";
+import { player, currentArea, makeActor } from "../src/game/world/world";
 import { addItems, countItem } from "../src/game/sim/inventory";
 import { allSlotsUnlocked } from "../src/game/sim/debug";
 import { GOLEM_LIGHT, RUNE_GLOW_LIGHT } from "../src/game/content/gear";
@@ -100,5 +100,45 @@ test("crafting through the host: E at a bench opens the plans, CRAFT works at th
   assert.equal(countItem(pl, "planks"), 3);
   assert.ok(g.screens.is("crafting"), "the plans are back for the next one");
   press(g, "escape");
+  assert.ok(g.screens.is("play"));
+});
+
+test("the scan key reaches sim state on play but cannot toggle it through a paused overlay", () => {
+  const { g, w } = play();
+  press(g, "z"); assert.equal(player(w).mode, "scan");
+  press(g, "i"); press(g, "z"); assert.equal(player(w).mode, "scan");
+  press(g, "escape"); press(g, "z"); assert.equal(player(w).mode, "normal");
+});
+
+test("worker events cannot open player screens, show pickups or mark the player's teleport complete", () => {
+  const { g, w } = play();
+  const a = makeActor("worker", "worker_golem", "surface", 100, 100); w.actors.push(a);
+  w.events.push(
+    { t: "teleport", actor: a.id, first: true, x: 100, y: 100 },
+    { t: "runeAwakened", actor: a.id, rune: "surface" },
+    { t: "travelled", actor: a.id, from: "dungeon", to: "surface", rune: "rune.surface" },
+    { t: "itemGained", actor: a.id, item: "wood", n: 1, stored: true },
+    { t: "openStation", actor: a.id, prop: "bench", station: "crafting" },
+    { t: "message", actor: a.id, text: "WORKER HAS NO MATERIALS" },
+  );
+  g.drainEvents();
+  assert.ok(g.screens.is("play")); assert.equal(g.toast, null); assert.equal(g.note, null);
+  assert.equal(g.tele.travelled, false);
+});
+
+test("nearby worker feedback stays in the world and never becomes a player note", () => {
+  const { g, w } = play();
+  const pl = player(w);
+  const a = makeActor("near", "worker_golem", pl.area, pl.x + 20, pl.y); w.actors.push(a);
+  const before = g.particles.length;
+  w.events.push(
+    { t: "harvestHit", actor: a.id, prop: "tree.fixture", kind: "tree", x: a.x, y: a.y, depleted: false },
+    { t: "cue", cue: "scrapeDust", x: a.x, y: a.y, actor: a.id },
+    { t: "message", actor: a.id, text: "WORKER IS BUSY" },
+  );
+  g.drainEvents();
+  assert.ok(g.particles.length > before, "nearby work makes local dust/debris");
+  assert.equal(g.note, null, "a nearby worker's message is not the player's note");
+  assert.equal(g.toast, null);
   assert.ok(g.screens.is("play"));
 });

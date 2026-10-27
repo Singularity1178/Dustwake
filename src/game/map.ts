@@ -3,6 +3,7 @@
 import { mulberry } from "./core/rng";
 import { TS, T, FS } from "./content/tiles";
 import type { ItemId } from "./content/items";
+import type { Slot } from "./content/inventory";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
 import { GATE_CORRIDOR, GATE_EXIT } from "./content/geography";
@@ -36,6 +37,8 @@ export interface PropDef {
    * prop that already stands (saves migrated from before this field get it too).
    */
   refund?: { item: ItemId; n: number }[];
+  /** Optional authored storage contents. Runtime copies these into its own slots. */
+  inventory?: Slot[];
 }
 export interface DecalDef { kind: string; x: number; y: number; v: number; w?: number; h?: number }
 export interface LightDef {

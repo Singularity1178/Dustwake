@@ -1,7 +1,7 @@
 // Actor inventories: an ordered array of slots ({item, n} or null). Capacity is
 // derived from world/actor state (content/inventory.ts), never stored. All
 // functions here are pure sim (no DOM) and work for any actor.
-import { CAPACITY_TIERS } from "../content/inventory";
+import { actorDef } from "../content/actors";
 import { maxStack, type ItemId } from "../content/items";
 import { TS, isSolidT } from "../content/tiles";
 import { emit, areaOf, type Actor, type Slot, type World } from "../world/world";
@@ -9,18 +9,17 @@ import type { Area } from "../world/area";
 import { meets } from "./requirements";
 import { actorBoxes } from "./collision";
 import type { Box } from "./reach";
+import { insertItems, roomIn, type InventoryOwner } from "./inventoryOps";
+import { rememberItem } from "./discovery";
+export { countItem, hasItem, heldItems, removeItems } from "./inventoryOps";
 
 /** Slot count for this actor right now: the highest satisfied tier. */
 export function capacity(w: World, a: Actor): number {
-  let n = 0;
-  for (const t of CAPACITY_TIERS) if (t.slots > n && meets(w, a, t.requires)) n = t.slots;
+  const def = actorDef(a).inventory;
+  let n = def.slots;
+  for (const t of def.tiers ?? []) if (t.slots > n && meets(w, a, t.requires)) n = t.slots;
   return n;
 }
-
-export const countItem = (a: Actor, id: ItemId) => a.inventory.reduce((s, x) => s + (x?.item === id ? x.n : 0), 0);
-export const hasItem = (a: Actor, id: ItemId) => a.inventory.some((s) => s?.item === id);
-/** Distinct item ids held, in slot order (for "does the pack contain any X" checks). */
-export const heldItems = (a: Actor) => a.inventory.flatMap((s) => (s ? [s.item] : []));
 
 /** A stack of one item (what an inventory slot holds). */
 export type Stack = { item: ItemId; n: number };
@@ -62,7 +61,7 @@ function pour(slots: Slot[], stacks: readonly Stack[]): boolean {
  * compacted (same items merged, in order of first appearance). If even that
  * can't hold everything it returns false and changes nothing.
  */
-export function repackInto(a: Actor, cap: number, extra: readonly Stack[] = []): boolean {
+export function repackInto(a: InventoryOwner, cap: number, extra: readonly Stack[] = []): boolean {
   const inv = a.inventory;
   const held: Stack[] = inv.flatMap((s) => (s ? [{ item: s.item, n: s.n }] : []));
   if (slotsNeeded([...held, ...extra]) > cap) return false;
@@ -85,9 +84,6 @@ export function repackInto(a: Actor, cap: number, extra: readonly Stack[] = []):
  * world next to the actor. Items never vanish.
  */
 export function reconcileCapacity(w: World, a: Actor) {
-  // Capacity tiers describe the golem's body (golem.* flags). NPC packs are
-  // per actor too but have no tiers yet: leave them exactly as they are.
-  if (a.kind === "npc") return;
   const cap = capacity(w, a);
   const inv = a.inventory;
   while (inv.length < cap) inv.push(null);
@@ -108,45 +104,14 @@ export function reconcileCapacity(w: World, a: Actor) {
 
 /** Store up to n units. Fills existing stacks first, then empty slots. Returns units that did not fit. */
 export function addItems(w: World, a: Actor, id: ItemId, n: number): number {
-  const cap = capacity(w, a), inv = a.inventory, max = maxStack(id);
-  while (inv.length < cap) inv.push(null);
-  for (let i = 0; i < cap && n > 0; i++) {
-    const s = inv[i];
-    if (s && s.item === id && s.n < max) { const k = Math.min(n, max - s.n); s.n += k; n -= k; }
-  }
-  for (let i = 0; i < cap && n > 0; i++) {
-    if (inv[i]) continue;
-    const k = Math.min(n, max);
-    inv[i] = { item: id, n: k };
-    n -= k;
-  }
-  return n;
+  const left = insertItems(a.inventory, capacity(w, a), id, n);
+  if (left < n) rememberItem(w, a, id);
+  return left;
 }
 
 /** How many units of `id` would fit right now. */
 export function roomFor(w: World, a: Actor, id: ItemId): number {
-  const cap = capacity(w, a), max = maxStack(id);
-  let r = 0;
-  for (let i = 0; i < cap; i++) {
-    const s = a.inventory[i];
-    if (!s) r += max;
-    else if (s.item === id) r += max - s.n;
-  }
-  return r;
-}
-
-/** Remove n units (from the last matching slots first). All-or-nothing. */
-export function removeItems(a: Actor, id: ItemId, n = 1): boolean {
-  if (countItem(a, id) < n) return false;
-  const inv = a.inventory;
-  for (let i = inv.length - 1; i >= 0 && n > 0; i--) {
-    const s = inv[i];
-    if (!s || s.item !== id) continue;
-    const k = Math.min(n, s.n);
-    s.n -= k; n -= k;
-    if (s.n === 0) inv[i] = null;
-  }
-  return true;
+  return roomIn(a.inventory, capacity(w, a), id);
 }
 
 /**
@@ -154,6 +119,7 @@ export function removeItems(a: Actor, id: ItemId, n = 1): boolean {
  * ground next to the actor as a loose item, so nothing is ever lost.
  */
 export function giveItem(w: World, a: Actor, id: ItemId, n = 1) {
+  rememberItem(w, a, id);
   const left = addItems(w, a, id, n);
   if (left < n) emit(w, { t: "itemGained", actor: a.id, item: id, stored: true, n: n - left });
   if (left > 0) {

@@ -2,7 +2,7 @@
 // non-player actors performing queued work, travel between areas.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { player, currentArea, makeActor, enterArea, getArea, type World } from "../src/game/world/world";
+import { hasFlag, player, currentArea, makeActor, enterArea, getArea, type World } from "../src/game/world/world";
 import { AREAS } from "../src/game/world/areas";
 import { serialize, deserialize, migrate, SAVE_VERSION, MIGRATIONS } from "../src/game/world/save";
 import { hasItem } from "../src/game/sim/inventory";
@@ -56,7 +56,7 @@ test("save/load round-trips world changes, pending schedule and in-progress work
   const a2 = currentArea(w2);
   assert.equal(a2.tile(51, 5), T.FLOOR);
   assert.equal(a2.tile(47, 10), T.FLOOR);
-  assert.ok(w2.flags.has(FLAGS.golemArm));
+  assert.ok(hasFlag(w2, FLAGS.golemArm));
   assert.ok(player(w2).task, "task in progress survives");
   assert.equal(w2.scheduled.length, 1);
   assert.ok(json.length < 20000, `save is a diff, not a dump (${json.length} bytes)`);

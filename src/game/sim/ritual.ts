@@ -13,25 +13,21 @@ export function checkRune(w: World, area: Area) {
   if (r.sockets.some((s) => s < 0) || !r.core || !r.carved) return;
   const ok = r.sockets.every((s, i) => s === r.solution[i]);
   if (ok) {
-    r.active = true; r.actT = 0;
-    r.wrong = r.wrong.map(() => false);
+    area.updateRitual({ active: true, actT: 0, wrong: r.wrong.map(() => false) });
     // The circle is this area's node in the rune network: lighting it activates the node.
     setFlag(w, RUNE_NODES.dungeon.flag);
     emit(w, { t: "runeActivated" });
   } else {
-    r.wrong = r.sockets.map((s, i) => s !== r.solution[i]);
+    area.updateRitual({ wrong: r.sockets.map((s, i) => s !== r.solution[i]) });
     emit(w, { t: "runeFizzled" });
   }
-  area.touch();
 }
 
 export function deactivate(w: World, area: Area) {
   const r = area.ritual;
   if (!r) return;
-  r.active = false;
-  r.actT = 0;
+  area.updateRitual({ active: false, actT: 0 });
   clearFlag(w, RUNE_NODES.dungeon.flag);
-  area.touch();
   emit(w, { t: "runeDeactivated" });
 }
 
@@ -42,9 +38,9 @@ export function placeGlyph(w: World, actor: Actor, area: Area, socket: number, g
   const id: ItemId = glyphItem(glyph);
   if (ITEMS[id].glyph === undefined) return;
   if (!removeItems(actor, id, 1)) return;
-  r.sockets[socket] = glyph;
-  r.wrong[socket] = false;
-  area.touch();
+  const sockets = [...r.sockets], wrong = [...r.wrong];
+  sockets[socket] = glyph; wrong[socket] = false;
+  area.updateRitual({ sockets, wrong });
   emit(w, { t: "glyphPlaced", socket });
   const s = socketPositions(area.ritualPos)[socket];
   faceTo(actor, s.x, s.y);

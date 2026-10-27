@@ -30,7 +30,7 @@ import { SurfaceRuneArt } from "./surfaceRune";
 import { carvingVisible, clumpCleared } from "./runeReveal";
 import { RUNE_NODES } from "./content/runes";
 import { drawText, drawTextS } from "./font";
-import { createWorld, player, currentArea, hasFlag, setFlag, type World, type SimEvent } from "./world/world";
+import { createWorld, player, currentArea, actorById, hasFlag, setFlag, clearFlag, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
 import { stepPlayer, stepWorld, addPlayTime } from "./sim/step";
 import { interactables, type Interactable } from "./sim/interact";
@@ -38,9 +38,12 @@ import { AreaView } from "./view/areaView";
 import { ScreenStack, type Screen } from "./ui/screens";
 import { BASE_W, BASE_H, ZOOM_STEPS, ZOOM_DEFAULT, viewSize, nextZoomStep } from "./view/zoom";
 import { npcDef } from "./content/npcs";
-import { NPC_ART, type NpcPose } from "./npcArt";
+import { actorDef } from "./content/actors";
+import { drawActor } from "./view/actors";
+import { eventAudience } from "./view/audience";
+import { drawVision } from "./view/vision";
 import { isAwake, npcActor } from "./sim/dialogue";
-import { saveToStorage, loadFromStorage } from "./world/save";
+import { saveToStorage, loadFromStorage } from "./view/persistence";
 import type { Actor } from "./world/world";
 
 /** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
@@ -320,7 +323,7 @@ export class Game {
     const say = (text: string) => { this.debugMsg = { text, t: 0 }; };
     if (n === 1) {
       // Toggle the iron arm.
-      if (this.hasArm) { w.flags.delete(FLAGS.golemArm); say("DEBUG: IRON ARM OFF"); }
+      if (this.hasArm) { clearFlag(w, FLAGS.golemArm); say("DEBUG: IRON ARM OFF"); }
       else { setFlag(w, FLAGS.golemArm); say("DEBUG: IRON ARM ON"); }
     } else if (n === 2) {
       // Give every rune glyph, the aether core, the rune chisel and the schematic
@@ -463,10 +466,40 @@ export class Game {
     const evs = this.world.events;
     if (!evs.length) return;
     this.world.events = [];
-    for (const e of evs) this.onEvent(e);
+    for (const e of evs) {
+      const aud = eventAudience(this.world, e);
+      if (aud === "player") this.onEvent(e);
+      else if (aud === "nearby") this.onNearby(e);
+    }
   }
 
-  /** Sound, particles and UI reactions to simulation events. */
+  /** Another actor in the player's area did something: world-space feedback only. */
+  private onNearby(e: SimEvent) {
+    if (e.t === "step") {
+      const a = actorById(this.world, e.actor);
+      if (a) for (let i = 0; i < 2; i++)
+        this.spawn({ x: a.x + (Math.random() - 0.5) * 8, y: a.y, z: 1, vx: (Math.random() - 0.5) * 12, vz: 6, life: 0.5, kind: "dust", col: "#8a8478", g: 20 });
+    } else if (e.t === "harvestHit") {
+      if (e.kind === "tree" || e.kind === "log") this.sfx.thud(); else this.sfx.clink();
+      for (let i = 0; i < (e.depleted ? 14 : 6); i++)
+        this.spawn({ x: e.x + (Math.random() - 0.5) * 10, y: e.y, z: 6 + Math.random() * 8, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 14, vz: 10 + Math.random() * 20, life: 0.8, kind: "debris", col: e.kind === "rock" ? "#6a6372" : "#6a5034", g: 120 });
+    } else if (e.t === "cue") {
+      // Cues are local sound/particles for the worker that made them: no screen
+      // shake, fizz timer or crack flash, because those belong to the player.
+      if (e.cue === "clank") this.sfx.clank();
+      else if (e.cue === "scrape") this.sfx.scrape();
+      else if (e.cue === "dud") this.sfx.fizzle();
+      else if (e.cue === "scrapeDust") {
+        this.sfx.scrape();
+        for (let i = 0; i < 4; i++) this.spawn({ x: e.x, y: e.y, z: 2, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.8, kind: "dust", col: "#9a96a0", g: 20 });
+      } else if (e.cue === "push") {
+        this.sfx.thud();
+        for (let i = 0; i < 6; i++) this.spawn({ x: e.x + (Math.random() - 0.5) * 16, y: e.y + 2, z: 20 + Math.random() * 10, vx: (Math.random() - 0.5) * 10, life: 1.5, kind: "debris", col: "#6a6372", g: 80 });
+      }
+    }
+  }
+
+  /** Sound, particles and UI reactions to the player's (and world) simulation events. */
   private onEvent(e: SimEvent) {
     const pl = this.pl;
     switch (e.t) {
@@ -715,7 +748,7 @@ export class Game {
     if (this.has("arrowup", "w")) iy -= 1;
     if (this.has("arrowdown", "s")) iy += 1;
     // E / Enter interact, Space attacks (the two-arm slam): separate actions, both usable next to anything.
-    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
+    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), toggleScan: this.hit("z"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
     this.drainEvents();
     // golem damage sparks
     lk.sparkT -= dt;
@@ -1112,8 +1145,8 @@ export class Game {
       }
     // NPCs (one generic path: art looked up by NpcDef id)
     for (const a of this.world.actors) {
-      if (a.kind !== "npc" || a.area !== area.id || a.x < vx0 || a.x > vx1 || a.y < vy0 || a.y > vy1) continue;
-      list.push({ y: a.y, f: () => this.drawNpc(a, camX, camY) });
+      if (a.id === this.world.playerId || a.area !== area.id || a.x < vx0 || a.x > vx1 || a.y < vy0 || a.y > vy1) continue;
+      list.push({ y: a.y, f: () => drawActor(sc, ec, this.world, a, camX, camY, this.t, this.npcLook(a)) });
     }
     // player
     const pl = this.pl;
@@ -1161,6 +1194,7 @@ export class Game {
     this.lighting.accumulate(active, camX, camY);
     this.lighting.compose(sImg.data, eImg.data, this.outImg.data, area.base.ambient ?? [0.05, 0.045, 0.065]);
     this.wctx.putImageData(this.outImg, 0, 0);
+    drawVision(this.wctx, this.world, this.pl, camX, camY, W, H);
   }
 
   /**
@@ -1322,8 +1356,8 @@ export class Game {
     const area = this.area;
     for (const a of this.world.actors) {
       if (a.kind !== "npc" || a.area !== area.id) continue;
-      const def = npcDef(a.npc);
-      if (!def) continue;
+      if (!npcDef(a.npc)) continue;
+      const def = actorDef(a);
       const L = this.npcLook(a), on = isAwake(this.world, a.id);
       L.wakeT += dt; L.sleepT += dt;
       // awake: the eye sputters on first, then it straightens; dormant: the eye dims, then it slumps
@@ -1349,22 +1383,6 @@ export class Game {
   npcDust(a: Actor) {
     for (let i = 0; i < 12; i++)
       this.spawn({ x: a.x + (Math.random() - 0.5) * 26, y: a.y, z: 2 + Math.random() * 6, vx: (Math.random() - 0.5) * 24, vz: 6 + Math.random() * 8, life: 1, kind: "dust", col: "#8a8478", g: 14 });
-  }
-
-  /** Draw any NPC: shadow, then its NPC_ART entry (albedo + emissive passes), looked up by NpcDef id. */
-  drawNpc(a: Actor, camX: number, camY: number) {
-    const def = npcDef(a.npc), art = def && NPC_ART[def.art];
-    if (!def || !art) return;
-    const L = this.npcLook(a), sc = this.scene.ctx;
-    const x = Math.round(a.x - camX), y = Math.round(a.y - camY);
-    const hw = Math.round(def.box[0] / 2) + 2;
-    sc.fillStyle = "rgba(0,0,0,0.45)";
-    sc.fillRect(x - hw, y - 1, hw * 2, 2);
-    sc.fillRect(x - hw + 3, y - 3, hw * 2 - 6, 4);
-    const ease = (v: number) => v * v * (3 - 2 * v);
-    const pose: NpcPose = { facing: a.facing, awake: ease(clamp(L.awake, 0, 1)), eye: L.eye + L.flare, reach: clamp(L.reach, 0, 1), t: this.t };
-    art(new Pen(sc, false), x, y, pose);
-    art(new Pen(this.emit.ctx, true), x, y, pose);
   }
 
   renderHud() {

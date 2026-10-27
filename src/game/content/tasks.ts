@@ -4,7 +4,7 @@
 // performed by any actor — today only the golem, later NPCs and animals.
 import type { GearSlot, ItemId } from "./items";
 
-export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle" | "slam" | "craft";
+export type TaskKind = "reach" | "push" | "attach" | "smash" | "carve" | "punch" | "channel" | "talk" | "dismantle" | "slam" | "craft" | "scan";
 
 /** Fraction of a slam where the blow lands: the effect fires here, and the art's impact frame (golem.ts: slamPose) is pinned to it. */
 export const SLAM_HIT = 0.5;
@@ -29,6 +29,7 @@ export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
   dismantle: { fire: (d) => d * 0.85 },
   /** Working at a bench: the product is made near the end. */
   craft: { fire: (d) => d * 0.85 },
+  scan: { fire: (d) => d * 0.85 },
 };
 
 /** Presentation-only cues an effect can request (sound/particles). */
@@ -62,7 +63,11 @@ export type Effect =
   /** Make crafting recipe `recipe` (content/crafting.ts) at the station target.propId: re-validates, consumes the inputs, gives the output. */
   | { op: "craft"; recipe: string }
   /** Travel through the rune at target.propId to its linked rune. */
-  | { op: "travel" }
+  | { op: "travel"; destination?: string }
+  | { op: "analyze" }
+  | { op: "useStorage" }
+  | { op: "manageActor" }
+  | { op: "deposit"; item: ItemId; n: number }
   /** One blow against a harvestable prop (target.propId). */
   | { op: "harvest" }
   /** Regrowth hook for harvestables with a `regrow` time (none in v1). */
@@ -106,6 +111,8 @@ export interface Target {
 export interface TaskSpec { kind: TaskKind; dur: number; effect?: Effect }
 
 export interface Task extends TaskSpec {
+  /** Ownership prevents a replaced order from receiving an old task's result. */
+  jobId?: number;
   t: number;
   fired: boolean;
   target?: Target;

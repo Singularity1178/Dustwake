@@ -4,19 +4,13 @@ import { TS, isSolidT } from "../content/tiles";
 import { HARVEST } from "../content/harvest";
 import type { Area, PropInst } from "../world/area";
 import type { Actor, World } from "../world/world";
-import { npcDef } from "../content/npcs";
+import { actorDef } from "../content/actors";
 import type { Box } from "./reach";
 
-/**
- * Body box [x0, y0, x1, y1] of an actor that blocks movement, or null. Today
- * that is NPCs, whose footprint comes from their NpcDef (same convention as
- * prop boxes: centred on x, ending at the feet). The golem itself has no body
- * box (two golems would need one; add it here when that happens).
- */
+/** Every actor has its definition's body, centred on x and ending at its feet. */
 export function actorBox(a: Actor): Box | null {
-  const d = a.kind === "npc" ? npcDef(a.npc) : undefined;
-  if (!d) return null;
-  return [a.x - d.box[0] / 2, a.y - d.box[1], a.x + d.box[0] / 2, a.y];
+  const [w, h] = actorDef(a).body.box;
+  return [a.x - w / 2, a.y - h, a.x + w / 2, a.y];
 }
 
 /** Blocking bodies of the actors in an area, except one (usually the mover). */
@@ -34,8 +28,8 @@ export function actorBoxes(w: World, areaId: string, except?: string): Box[] {
 export const propBlocks = (p: PropInst) => !!p.box && !(p.taken && HARVEST[p.kind]?.clearBox);
 
 /** Is a golem-sized box (10x5 px, feet at x,y) free of solid tiles, props and the given actor bodies? */
-export function boxFree(area: Area, x: number, y: number, bodies: readonly Box[] = []) {
-  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
+export function boxFree(area: Area, x: number, y: number, bodies: readonly Box[] = [], size: readonly [number, number] = [10, 5]) {
+  const x0 = x - size[0] / 2, x1 = x + size[0] / 2, y0 = y - size[1], y1 = y;
   for (let ty = Math.floor(y0 / TS); ty <= Math.floor((y1 - 0.01) / TS); ty++)
     for (let tx = Math.floor(x0 / TS); tx <= Math.floor((x1 - 0.01) / TS); tx++) {
       if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return false;
@@ -55,13 +49,13 @@ export function boxFree(area: Area, x: number, y: number, bodies: readonly Box[]
  * candidates 8 px apart in a fixed order. Deterministic; null if nothing free
  * within ~6 tiles.
  */
-export function nearestFree(area: Area, x: number, y: number, bodies: readonly Box[] = []): { x: number; y: number } | null {
-  if (boxFree(area, x, y, bodies)) return { x, y };
+export function nearestFree(area: Area, x: number, y: number, bodies: readonly Box[] = [], size: readonly [number, number] = [10, 5]): { x: number; y: number } | null {
+  if (boxFree(area, x, y, bodies, size)) return { x, y };
   for (let r = 1; r <= 12; r++) {
     for (let i = -r; i <= r; i++)
       for (const [dx, dy] of [[i, r], [i, -r], [r, i], [-r, i]] as [number, number][]) {
         const px = x + dx * 8, py = y + dy * 8;
-        if (boxFree(area, px, py, bodies)) return { x: px, y: py };
+        if (boxFree(area, px, py, bodies, size)) return { x: px, y: py };
       }
   }
   return null;

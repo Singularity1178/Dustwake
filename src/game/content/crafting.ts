@@ -1,7 +1,7 @@
 // Crafting recipes (data) for work stations such as the crafting bench.
 //
-// A recipe turns `inputs` from the crafter's own pack (stations have no item
-// slots) into `output`. The crafting screen lists these rows and its CRAFT
+// A recipe turns `inputs` from the pack plus nearby storage into `output`.
+// The crafting screen lists these rows and its CRAFT
 // button calls sim/crafting.ts: orderCraft, which starts a `craft` task whose
 // `craft` effect re-validates when it fires, consumes the inputs and gives the
 // output (overflow lands on the ground, as for any pickup; nothing is deleted).
@@ -21,6 +21,10 @@ import { FLAGS } from "./flags";
 
 export interface CraftRecipe {
   id: string;
+  /** Inverse rows never define the raw-material value of their output. */
+  mode?: "craft" | "deconstruct";
+  /** Explicit canonical valuation row when there are alternative forward recipes. */
+  valuation?: boolean;
   /** Bitmap font only (uppercase, FONT_GLYPHS). */
   name: string;
   /** Station UI that offers it (PropKindDef.station). */
@@ -75,8 +79,15 @@ export const craftRecipesFor = (station: string, list: readonly CraftRecipe[] = 
  * not crafted count 1), derived from the recipe that makes it. The build menu
  * sorts by this, so a crafted material weighs what it cost to make.
  */
-export function rawValue(item: ItemId, list: readonly CraftRecipe[] = CRAFT_RECIPES, depth = 0): number {
-  const r = list.find((c) => c.output.item === item);
-  if (!r || depth > 4) return 1;
-  return r.inputs.reduce((s, c) => s + c.n * rawValue(c.item, list, depth + 1), 0) / r.output.n;
+export function rawValue(item: ItemId, list: readonly CraftRecipe[] = CRAFT_RECIPES, _depth = 0): number {
+  const value = (id: ItemId, seen: Set<ItemId>): number => {
+    if (seen.has(id)) return 1;
+    const rows = list.filter((r) => r.output.item === id && r.mode !== "deconstruct" && r.valuation !== false)
+      .sort((a, b) => Number(!!b.valuation) - Number(!!a.valuation) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const r = rows[0];
+    if (!r || r.output.n <= 0) return 1;
+    const next = new Set(seen).add(id);
+    return r.inputs.reduce((n, c) => n + c.n * value(c.item, next), 0) / r.output.n;
+  };
+  return value(item, new Set());
 }

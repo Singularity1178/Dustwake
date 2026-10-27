@@ -7,9 +7,12 @@ import type { Effect, Task, Cue } from "../content/tasks";
 import { Area } from "./area";
 import type { NpcSpawn } from "../map";
 import { AREAS } from "./areas";
+import { ACTORS } from "../content/actors";
+import { NPCS } from "../content/npcs";
+import type { Job } from "./jobs";
+import type { Slot } from "../content/inventory";
+export type { Slot } from "../content/inventory";
 
-/** One inventory slot: a stack of one item kind, or empty. */
-export type Slot = { item: ItemId; n: number } | null;
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
 
@@ -17,6 +20,12 @@ export type Gear = Partial<Record<GearSlot, ItemId>>;
 export interface Actor {
   id: string;
   kind: string;
+  definition: string;
+  upgrades: string[];
+  powerCore: ItemId | null;
+  mode: "normal" | "scan";
+  job: Job | null;
+  jobSeq: number;
   area: string;
   x: number; y: number; vx: number; vy: number;
   facing: Facing;
@@ -29,7 +38,7 @@ export interface Actor {
   inventory: Slot[];
   /** Gear worn on the body, by slot (the basket on the back; sim/gear.ts). Actor-owned like the pack; worn items are not in it. */
   gear: Gear;
-  /** kind "npc" only: the NpcDef id (content/npcs.ts) that gives this actor its name, dialogue, sprite and body. */
+  /** Optional dialogue identity. The body and art always come from definition. */
   npc?: string;
 }
 
@@ -41,10 +50,10 @@ export type SimEvent =
   | { t: "itemGained"; actor: string; item: ItemId; stored: boolean; n?: number }
   | { t: "itemDropped"; actor: string; item: ItemId; n: number; x: number; y: number; reason: "drop" | "full" | "overflow" }
   | { t: "packFull"; actor: string; item: ItemId }
-  | { t: "message"; text: string }
+  | { t: "message"; text: string; actor?: string }
   | { t: "step"; actor: string; heavy: boolean }
   | { t: "taskTick"; actor: string; task: Task; dt: number }
-  | { t: "cue"; cue: Cue; x: number; y: number }
+  | { t: "cue"; cue: Cue; x: number; y: number; actor?: string }
   | { t: "equipped"; actor: string; item: ItemId }
   /** `actor` put gear on (the basket onto its back) / took it off into its pack. */
   | { t: "gearOn"; actor: string; item: ItemId; slot: GearSlot }
@@ -63,7 +72,7 @@ export type SimEvent =
   | { t: "runeFizzled" }
   | { t: "runeDeactivated" }
   | { t: "teleport"; actor: string; first: boolean; x: number; y: number }
-  | { t: "runeAwakened"; rune: string }
+  | { t: "runeAwakened"; rune: string; actor: string }
   | { t: "travelled"; actor: string; from: string; to: string; rune: string }
   | { t: "harvestHit"; actor: string; prop: string; kind: string; x: number; y: number; depleted: boolean }
   | { t: "built"; actor: string; prop: string; x: number; y: number }
@@ -80,7 +89,12 @@ export type SimEvent =
   /** An NPC woke or went dormant (reversible state). */
   | { t: "npcState"; npc: string; awake: boolean }
   /** The golem's eye was mended (by NPC `by`). */
-  | { t: "eyeRepaired"; actor: string; by?: string };
+  | { t: "eyeRepaired"; actor: string; by?: string }
+  | { t: "powerChanged"; actor: string; powered: boolean }
+  | { t: "jobChanged"; actor: string; status: string; reason?: string }
+  | { t: "manageActor"; actor: string; target: string }
+  | { t: "openStorage"; actor: string; prop: string }
+  | { t: "analyzed"; actor: string; prop: string; flag: string };
 
 export interface World {
   seed: number;
@@ -109,12 +123,17 @@ export function createWorld(seed: number): World {
 }
 
 export function makeActor(id: string, kind: string, area: string, x: number, y: number): Actor {
-  return { id, kind, area, x, y, vx: 0, vy: 0, facing: "down", phase: 0, moving: false, steps: 0, task: null, queue: [], inventory: [], gear: {} };
+  return {
+    id, kind, definition: ACTORS[kind] ? kind : "golem", area, x, y, vx: 0, vy: 0,
+    facing: "down", phase: 0, moving: false, steps: 0, task: null, queue: [], inventory: [], gear: {},
+    upgrades: [], powerCore: null, mode: "normal", job: null, jobSeq: 0,
+  };
 }
 
 /** An NPC actor from an area's spawn row. Its inventory starts empty (it is still per actor). */
 export function makeNpc(s: NpcSpawn, area: string): Actor {
-  const a = makeActor(s.id, "npc", area, s.x, s.y);
+  const a = makeActor(s.id, NPCS[s.npc]?.actor ?? s.npc, area, s.x, s.y);
+  a.kind = "npc";
   a.npc = s.npc;
   if (s.facing) a.facing = s.facing;
   return a;
@@ -151,13 +170,22 @@ export function enterArea(w: World, a: Actor, areaId: string, x: number, y: numb
   a.x = x; a.y = y; a.vx = 0; a.vy = 0;
   a.task = null;
   a.queue = a.queue.filter((t) => !t.area || t.area === areaId);
+  if (a.job) a.job.nav = null;
   emit(w, { t: "areaEntered", actor: a.id, area: areaId });
 }
 
 export const emit = (w: World, e: SimEvent) => { w.events.push(e); };
-export const hasFlag = (w: World, f: string) => w.flags.has(f);
-export const setFlag = (w: World, f: string) => { w.flags.add(f); };
-export const clearFlag = (w: World, f: string) => { w.flags.delete(f); };
+export const isBodyFlag = (f: string) => f === "golem.arm" || f.startsWith("golem.slot.");
+export const actorHasFlag = (a: Actor, f: string) => a.upgrades.includes(f);
+export function setActorFlag(a: Actor, f: string, on = true) {
+  if (on && !a.upgrades.includes(f)) a.upgrades.push(f);
+  if (!on) a.upgrades = a.upgrades.filter((x) => x !== f);
+}
+// Compatibility for the tutorial and debug keys. Body state is stored only on
+// the player actor; sim rules for other actors use actorFlags requirements.
+export const hasFlag = (w: World, f: string) => isBodyFlag(f) ? !!player(w)?.upgrades.includes(f) : w.flags.has(f);
+export const setFlag = (w: World, f: string) => { if (isBodyFlag(f)) setActorFlag(player(w), f); else w.flags.add(f); };
+export const clearFlag = (w: World, f: string) => { if (isBodyFlag(f)) setActorFlag(player(w), f, false); else w.flags.delete(f); };
 
 function shuffle(rng: SeededRng, perm: number[]) {
   for (let i = perm.length - 1; i > 0; i--) {

@@ -5,8 +5,8 @@
 import { RECIPES, categoryIndex, categoryName, costTotal, type Recipe } from "../content/build";
 import { ITEM_NAMES } from "../content/items";
 import type { Actor, World } from "../world/world";
-import { meets } from "./requirements";
 import { countItem } from "./inventory";
+import { recipeKnown } from "./analysis";
 
 export type EntryStatus = "ok" | "cost" | "unknown";
 export interface CostLine { item: Recipe["cost"][number]["item"]; need: number; have: number }
@@ -39,7 +39,7 @@ export interface CatalogQuery {
 
 /** Status of one recipe for an actor. Hidden-until-known recipes return null. */
 export function entryFor(w: World, a: Actor, id: string, r: Recipe = RECIPES[id]): CatalogEntry | null {
-  const known = meets(w, a, r.requires);
+  const known = recipeKnown(w, a, r);
   if (!known && r.unknown === "hidden") return null;
   const lines = r.cost.map((c) => ({ item: c.item, need: c.n, have: countItem(a, c.item) }));
   const status: EntryStatus = !known ? "unknown" : lines.every((l) => l.have >= l.need) ? "ok" : "cost";

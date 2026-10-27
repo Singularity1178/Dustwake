@@ -20,10 +20,11 @@
 // through sim/commands.ts (wearFromSlot / takeOffGear); any actor can run the
 // same "wear" / "takeOff" effects as tasks (sim/tasks.ts).
 import { ITEMS, ITEM_NAMES, type GearSlot, type ItemId } from "../content/items";
-import { GEAR_SLOT_DEFS, GOLEM_LIGHT, RUNE_SLOTS, slotDef, slotsOfKind, type GearSlotDef, type GolemLight } from "../content/gear";
+import { GEAR_SLOT_DEFS, GOLEM_LIGHT, RUNE_SLOTS, slotsOfKind, type GearSlotDef, type GolemLight } from "../content/gear";
 import { emit, type Actor, type Gear, type World } from "../world/world";
 import { capacity, giveItem, reconcileCapacity, repackInto, slotsNeeded, type Stack } from "./inventory";
 import { meets } from "./requirements";
+import { actorDef } from "../content/actors";
 
 /** What `a` wears in `slot` (undefined: the slot is empty). */
 export const wornIn = (a: Actor, slot: GearSlot): ItemId | undefined => a.gear[slot];
@@ -32,11 +33,12 @@ export const wears = (a: Actor, id: ItemId) => Object.values(a.gear).includes(id
 
 // ---------------------------------------------------------------- slots
 /** Can `a` use `slot` right now? A slot with no unlock requirement always can. */
-export const slotUsable = (w: World, a: Actor, slot: GearSlot) => meets(w, a, slotDef(slot).unlock);
+export const slotUsable = (w: World, a: Actor, slot: GearSlot) => actorDef(a).gearSlots.includes(slot) && meets(w, a, actorDef(a).gearUnlocks?.[slot]);
 export const usableSlots = (w: World, a: Actor): GearSlot[] => GEAR_SLOT_DEFS.filter((d) => slotUsable(w, a, d.id)).map((d) => d.id);
 
 /** The lines that say why a locked slot is locked (the first `locked` entry whose condition holds). */
 export function lockedText(w: World, a: Actor, def: GearSlotDef): string[] {
+  if (!actorDef(a).gearSlots.includes(def.id)) return ["THIS BODY HAS NO SUCH SLOT."];
   const row = def.locked?.find((l) => meets(w, a, l.when));
   return row ? row.text : ["LOCKED."];
 }

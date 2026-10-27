@@ -16,7 +16,7 @@ import type { DecalDef, LooseItem, PropDef } from "../map";
 import type { ItemId } from "../content/items";
 import { Area, type RitualState } from "./area";
 import { AREAS } from "./areas";
-import { makeNpc, type Actor, type Scheduled, type World } from "./world";
+import { makeNpc, type Actor, type Scheduled, type Slot, type World } from "./world";
 import { GUARDIAN_FLAGS } from "../content/dialogue";
 
 /**
@@ -49,10 +49,12 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
  *     rebalance can't be farmed by building cheap and taking apart for more.
  *     Build work still pending for a recipe whose cost changed is dropped: a
  *     build only takes its materials when it fires, so nothing was consumed.
- */
-export const SAVE_VERSION = 9;
+  * v10: actor definitions/upgrades, body power, scan mode, durable jobs;
+  *      prop inventories, analysis grandfathering and relic discovery credit.
+  */
+export const SAVE_VERSION = 10;
 
-type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number };
+type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[] };
 
 export interface AreaSave {
   tiles: [number, number][];
@@ -72,7 +74,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 9;
+  version: 10;
   seed: number;
   rng: number;
   time: number;
@@ -226,6 +228,29 @@ export const MIGRATIONS: Record<number, Migration> = {
       areas: Object.fromEntries(Object.entries(s.areas ?? {}).map(([id, d]: [string, any]) => [id, { ...d, propsAdded: (d.propsAdded ?? []).map(stamp) }])),
     };
   },
+  9: (s) => {
+    // Frozen v9 names, not a blanket bypass: future recipes still need analysis.
+    const flags: string[] = [...(s.flags ?? [])];
+    const body = (f: string) => f === "golem.arm" || f.startsWith("golem.slot.");
+    if (flags.includes("know.build")) for (const id of ["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"]) {
+      if (!flags.includes(`analysis.${id}`)) flags.push(`analysis.${id}`);
+    }
+    const pl = s.actors.find((a: any) => a.id === s.playerId);
+    const taken = s.areas?.dungeon?.looseTaken ?? [];
+    for (const id of ["crown", "coin", "goblet"]) {
+      const found = pl?.inventory?.some((x: any) => x?.item === id) || taken.includes(id)
+        || (id === "goblet" && s.areas?.dungeon?.props?.["longtable@59.5,47"]?.taken);
+      if (found && !flags.includes(`relic.found.${id}`)) flags.push(`relic.found.${id}`);
+    }
+    return {
+      ...s, version: 10, flags: flags.filter((f) => !body(f)),
+      actors: s.actors.map((a: any) => ({
+        ...a, definition: a.definition ?? (a.npc === "guardian" ? "guardian" : a.npc ? "npc_worker" : "golem"),
+        upgrades: [...new Set([...(a.upgrades ?? []), ...(a.id === s.playerId ? flags.filter(body) : [])])],
+        powerCore: a.powerCore ?? null, mode: a.mode ?? "normal", job: a.job ?? null, jobSeq: a.jobSeq ?? 0,
+      })),
+    };
+  },
 };
 
 /**
@@ -278,13 +303,16 @@ export function migrate(raw: unknown, migrations = MIGRATIONS, target = SAVE_VER
   return s;
 }
 
-const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number }, b?: { lit?: boolean; item?: ItemId; open?: boolean }) => {
+const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number; inventory?: Slot[] }, b?: { lit?: boolean; item?: ItemId; open?: boolean; inventory?: Slot[] }) => {
   const d: PropState = {};
   if (p.open !== !!b?.open) d.open = p.open;
   if (p.taken) d.taken = true;
   if (!!p.lit !== !!b?.lit) d.lit = !!p.lit;
   if (p.item !== b?.item) d.item = p.item ?? null;
   if (p.dmg) d.dmg = p.dmg;
+  if (p.inventory?.some((s, i) => s?.item !== b?.inventory?.[i]?.item || s?.n !== b?.inventory?.[i]?.n)) {
+    d.inventory = p.inventory.some(Boolean) ? p.inventory : [];
+  }
   return d;
 };
 
@@ -297,7 +325,7 @@ function diffArea(a: Area): AreaSave {
   const baseProps = new Map(base.props.map((p) => [p.id, p]));
   for (const p of a.props) {
     if (p.dyn) {
-      const { box: _b, dyn: _d, open: _o, taken: _t, dmg: _m, ...def } = p;
+      const { box: _b, dyn: _d, open: _o, taken: _t, dmg: _m, inventory: _i, ...def } = p;
       propsAdded.push({ ...def, ...propState(p) } as AreaSave["propsAdded"][number]);
       continue;
     }
@@ -320,27 +348,31 @@ function restoreArea(id: string, d: AreaSave): Area {
   const build = AREAS[id];
   if (!build) throw new Error(`save references unknown area "${id}"`);
   const a = new Area(build());
-  for (const [i, t] of d.tiles) a.grid[i] = t;
-  for (const [pid, st] of Object.entries(d.props)) a.setPropState(pid, st);
+  for (const [i, t] of d.tiles) a.setTile(i % a.w, Math.floor(i / a.w), t);
+  for (const [pid, st] of Object.entries(d.props)) {
+    a.setPropState(pid, st);
+    if (st.inventory) a.setInventory(pid, st.inventory);
+  }
   for (const pid of d.propsRemoved ?? []) a.removeProp(pid);
   for (const p of d.propsAdded) {
-    const { id: pid, kind, x, y, open, taken, dmg, lit, item, ...rest } = p;
+    const { id: pid, kind, x, y, open, taken, dmg, lit, item, inventory, ...rest } = p;
     a.addProp(kind, x, y, { ...rest, lit, item: item ?? undefined }, pid);
     a.setPropState(pid, { open, taken, dmg });
+    if (inventory) a.setInventory(pid, inventory);
   }
-  a.propSeq = d.propSeq;
   for (const lid of d.looseTaken) a.takeLoose(lid);
   for (const l of d.looseAdded) a.addLoose(l.item, l.n ?? 1, l.x, l.y, l.id);
-  a.looseSeq = d.looseSeq;
-  a.decals.push(...d.decalsAdded);
-  a.ritual = d.ritual ? clone(d.ritual) : null;
+  a.restoreCounters(d.looseSeq, d.propSeq);
+  for (const decal of d.decalsAdded) a.addDecal(decal);
+  a.setRitual(d.ritual);
   return a;
 }
 
-// ---- browser persistence (thin; the format above is what matters)
+// Storage is injected; the browser default lives in view/persistence.ts.
 const KEY = "dustwake.save";
-export function saveToStorage(w: World, storage: Storage = localStorage) { storage.setItem(KEY, JSON.stringify(serialize(w))); }
-export function loadFromStorage(storage: Storage = localStorage): World | null {
+export interface SaveStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
+export function saveToStorage(w: World, storage: SaveStorage) { storage.setItem(KEY, JSON.stringify(serialize(w))); }
+export function loadFromStorage(storage: SaveStorage): World | null {
   const raw = storage.getItem(KEY);
   return raw ? deserialize(JSON.parse(raw)) : null;
 }

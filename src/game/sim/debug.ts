@@ -1,9 +1,9 @@
 // Debug kits (testing only, not part of the game's rules): the same pure sim
 // functions the tests call, so what the Ctrl+6 key does is checked headless.
 import { FLAGS } from "../content/flags";
-import { GEAR_SLOT_DEFS } from "../content/gear";
+import { ACTORS, actorDef } from "../content/actors";
 import type { ItemId } from "../content/items";
-import { clearFlag, setFlag, type Actor, type World } from "../world/world";
+import { player, setActorFlag, setFlag, type Actor, type World } from "../world/world";
 import { countItem, giveItem } from "./inventory";
 import { ensureWorn, reconcileGear, wears } from "./gear";
 
@@ -13,10 +13,10 @@ export const GEAR_KIT: [ItemId, number][] = [["wood", 40], ["stone", 40], ["plan
 export const GEAR_KIT_RUNES: ItemId[] = ["rune_swift", "rune_glow"];
 
 /** Every flag that unlocks a gear slot (read from the slot rows, so a new locked slot is covered with no change here). */
-export const slotUnlockFlags = (): string[] => GEAR_SLOT_DEFS.flatMap((d) => d.unlock?.flags ?? []);
+export const slotUnlockFlags = (a?: Actor): string[] => Object.values((a ? actorDef(a) : ACTORS.golem).gearUnlocks ?? {}).flatMap((r) => r?.actorFlags ?? []);
 
 /** Are all the slots that can be unlocked, unlocked? */
-export const allSlotsUnlocked = (w: World) => slotUnlockFlags().every((f) => w.flags.has(f));
+export const allSlotsUnlocked = (w: World, a = player(w)) => slotUnlockFlags(a).every((f) => a.upgrades.includes(f));
 
 /**
  * Ctrl+6, a toggle. ON: building knowledge (and masonry, for the brazier), the
@@ -28,8 +28,8 @@ export const allSlotsUnlocked = (w: World) => slotUnlockFlags().every((f) => w.f
  * Returns whether the kit is now ON.
  */
 export function toggleGearKit(w: World, a: Actor): boolean {
-  if (allSlotsUnlocked(w)) {
-    for (const f of slotUnlockFlags()) clearFlag(w, f);
+  if (allSlotsUnlocked(w, a)) {
+    for (const f of slotUnlockFlags(a)) setActorFlag(a, f, false);
     reconcileGear(w, a);
     return false;
   }
@@ -37,6 +37,6 @@ export function toggleGearKit(w: World, a: Actor): boolean {
   ensureWorn(w, a, "basket");
   for (const [item, n] of GEAR_KIT) { const have = countItem(a, item); if (have < n) giveItem(w, a, item, n - have); }
   for (const r of GEAR_KIT_RUNES) if (!wears(a, r) && countItem(a, r) === 0) giveItem(w, a, r, 1);
-  for (const f of slotUnlockFlags()) setFlag(w, f);
+  for (const f of slotUnlockFlags(a)) setActorFlag(a, f);
   return true;
 }

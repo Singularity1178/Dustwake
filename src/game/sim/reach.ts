@@ -14,8 +14,8 @@ export interface ReachGrid { w: number; h: number; grid: ArrayLike<number> }
 export const cellFeet = (tx: number, ty: number) => ({ x: tx * TS + 8, y: ty * TS + 11 });
 
 /** Is the golem box (feet at x, y) free? Same test as sim/collision.ts boxFree. */
-export function freeAt(g: ReachGrid, boxes: Box[], x: number, y: number): boolean {
-  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
+export function freeAt(g: ReachGrid, boxes: readonly Box[], x: number, y: number, size: readonly [number, number] = [10, 5]): boolean {
+  const x0 = x - size[0] / 2, x1 = x + size[0] / 2, y0 = y - size[1], y1 = y;
   for (let ty = Math.floor(y0 / TS); ty <= Math.floor((y1 - 0.01) / TS); ty++)
     for (let tx = Math.floor(x0 / TS); tx <= Math.floor((x1 - 0.01) / TS); tx++) {
       if (tx < 0 || ty < 0 || tx >= g.w || ty >= g.h) return false;

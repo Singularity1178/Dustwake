@@ -56,6 +56,8 @@ export interface Recipe {
   v?: number;
   cost: Cost[];
   requires: Requirement;
+  /** Optional analysis key. Omit for things not discoverable in an area (e.g. a torch post). */
+  analysis?: string;
   /** How the entry is shown while `requires` isn't met. Default "locked". */
   unknown?: "locked" | "hidden";
   /** Placement rule. Default "floor". */
@@ -137,7 +139,7 @@ export const AUTHORED_SALVAGE: Record<string, SalvageRow> = (() => {
 })();
 
 /** The recipe that builds a prop kind (first match), for built props saved before recipes were recorded. */
-export const recipeForProp = (kind: string) => RECIPE_IDS.find((id) => RECIPES[id].prop === kind);
+export const recipeForProp = (kind: string) => Object.keys(RECIPES).find((id) => RECIPES[id].prop === kind);
 
 /** How far (in tiles, Chebyshev) from the builder a placement may be. */
 export const BUILD_REACH = 2;

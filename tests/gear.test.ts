@@ -3,7 +3,7 @@
 // included, still fits. Headless, through the sim commands the pack screen uses.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { player, currentArea, enterArea, setFlag, makeActor, type World } from "../src/game/world/world";
+import { hasFlag, player, currentArea, enterArea, setFlag, makeActor, type World } from "../src/game/world/world";
 import { serialize, deserialize } from "../src/game/world/save";
 import { capacity, addItems, countItem, hasItem } from "../src/game/sim/inventory";
 import { wearFromSlot, takeOffGear, dropFromSlot } from "../src/game/sim/commands";
@@ -53,7 +53,7 @@ test("the iron arm's pickup is unchanged: attached with the ceremony, never stor
   const ev = events(w);
   assert.ok(ev.some((e) => e.t === "taskTick" && e.task.kind === "attach"));
   assert.ok(ev.some((e) => e.t === "equipped" && e.item === "arm"));
-  assert.ok(w.flags.has(FLAGS.golemArm) && !hasItem(pl, "arm"));
+  assert.ok(hasFlag(w, FLAGS.golemArm) && !hasItem(pl, "arm"));
 });
 
 test("wearing the basket moves it to the back slot and raises capacity; taking it off lowers it again", () => {

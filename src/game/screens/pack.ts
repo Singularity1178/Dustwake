@@ -23,10 +23,11 @@
 // Presentation only: dropping, placing and wearing go through sim commands.
 import type { Screen } from "../ui/screens";
 import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
-import { ITEMS, RELICS, effectLines, isGlyph, type GearSlot } from "../content/items";
+import { ITEMS, effectLines, isGlyph, type GearSlot } from "../content/items";
 import { GEAR_SLOT_DEFS, slotDef, type GearSlotDef } from "../content/gear";
 import { FLAGS } from "../content/flags";
-import { capacity, hasItem } from "../sim/inventory";
+import { capacity } from "../sim/inventory";
+import { relicCount } from "../sim/discovery";
 import { lockedText, runeMarks, slotUsable, targetSlot, wornIn } from "../sim/gear";
 import { dropFromSlot, wearFromSlot, takeOffGear } from "../sim/commands";
 import { placeGlyph } from "../sim/ritual";
@@ -280,7 +281,7 @@ export class PackUi {
       for (let i = 0; i < 20; i += 2) { ctx.fillRect(ax + i % 8, ay, 1, 1); ctx.fillRect(ax, ay + i, 1, 1); ctx.fillRect(ax + 8, ay + i, 1, 1); ctx.fillRect(ax + (i % 8), ay + 20, 1, 1); }
     }
     // relics found (the three old treasures), beside the header
-    const rel = RELICS.filter((r) => hasItem(pl, r)).length;
+    const rel = relicCount(g.world, pl);
     for (let i = 0; i < 3; i++) { ctx.fillStyle = i < rel ? "#c9a040" : "#2a2630"; ctx.fillRect(DX + 22 + i * 6, PY + 7, 4, 4); }
     drawText(ctx, "RUNES", DX + FEET.x, DY + 86, UI.dim, 1, "center");
   }

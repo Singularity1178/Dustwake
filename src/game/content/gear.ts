@@ -45,17 +45,17 @@ export const GEAR_SLOT_DEFS: readonly GearSlotDef[] = [
   { id: "back", kind: "back", name: "BACK", hint: ["NOTHING ON YOUR BACK.", "WEAR A BASKET FROM THE PACK."] },
   { id: "armR", kind: "arm", name: "R ARM", hint: ["THE SOUND STONE ARM.", "FITTINGS FOR AN ARM GO HERE."] },
   {
-    id: "armL", kind: "arm", name: "L ARM", unlock: { flags: [FLAGS.slotArmLeft] },
+    id: "armL", kind: "arm", name: "L ARM", unlock: { actorFlags: [FLAGS.slotArmLeft] },
     locked: [
-      { when: { flags: [FLAGS.golemArm] }, text: ["THE IRON ARM IS BOLTED ON.", "IT TAKES NO FITTINGS YET."] },
+      { when: { actorFlags: [FLAGS.golemArm] }, text: ["THE IRON ARM IS BOLTED ON.", "IT TAKES NO FITTINGS YET."] },
       { text: ["A BROKEN STUB. NOTHING CAN", "BE FITTED TO IT YET."] },
     ],
   },
   { id: "core", kind: "core", name: "CORE", hint: ["A MOUNT BESIDE THE CORE.", "FOR ATTACHMENTS TO IT, NOT", "THE AETHER CORE ITSELF."] },
   { id: "rune0", kind: "rune", name: "RUNE 1", hint: ["AN OPEN RUNE SLOT.", "WEAR A RUNE FROM THE PACK."] },
-  { id: "rune1", kind: "rune", name: "RUNE 2", unlock: { flags: [FLAGS.slotRune1] }, locked: [{ text: SEALED }] },
-  { id: "rune2", kind: "rune", name: "RUNE 3", unlock: { flags: [FLAGS.slotRune2] }, locked: [{ text: SEALED }] },
-  { id: "rune3", kind: "rune", name: "RUNE 4", unlock: { flags: [FLAGS.slotRune3] }, locked: [{ text: SEALED }] },
+  { id: "rune1", kind: "rune", name: "RUNE 2", unlock: { actorFlags: [FLAGS.slotRune1] }, locked: [{ text: SEALED }] },
+  { id: "rune2", kind: "rune", name: "RUNE 3", unlock: { actorFlags: [FLAGS.slotRune2] }, locked: [{ text: SEALED }] },
+  { id: "rune3", kind: "rune", name: "RUNE 4", unlock: { actorFlags: [FLAGS.slotRune3] }, locked: [{ text: SEALED }] },
 ];
 
 export const GEAR_SLOTS: readonly GearSlot[] = GEAR_SLOT_DEFS.map((d) => d.id);

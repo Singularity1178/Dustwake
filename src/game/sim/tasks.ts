@@ -3,10 +3,10 @@
 // the single path by which interactions change the world, for any actor.
 import { TS, T, TILE_INTERACT } from "../content/tiles";
 import { ITEMS, glyphItem, isDroppable } from "../content/items";
-import { propDef } from "../content/props";
+import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
 import { TASK_KINDS, type Effect, type TaskSpec, type Target } from "../content/tasks";
-import { emit, setFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
+import { emit, setFlag, setActorFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
 import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
@@ -16,6 +16,13 @@ import { actorBoxes } from "./collision";
 import { applyDialogueEffect } from "./dialogue";
 import { applyWear, applyTakeOff, gearRefusal } from "./gear";
 import { applyCraft } from "./crafting";
+import { powered } from "./actorStats";
+import { harvestStep } from "./harvesting";
+import { capable } from "../content/actors";
+import { applyAnalysis } from "./analysis";
+import { packRef, storageRef, transferItems } from "./storage";
+import { actorMessage } from "./messages";
+import { lineOfSight } from "./navigation";
 
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
@@ -32,13 +39,15 @@ export function tickTask(w: World, a: Actor, dt: number) {
   if (!a.task && a.queue.length) { a.task = a.queue.shift()!; a.vx = 0; a.vy = 0; }
   const task = a.task;
   if (!task) return;
+  if (task.jobId !== undefined && (!powered(a) || a.job?.status === "paused")) return;
   // Work is bound to the area it was started in; never let it fire elsewhere.
   if (task.area && task.area !== a.area) { a.task = null; return; }
   task.t += dt;
   emit(w, { t: "taskTick", actor: a.id, task, dt });
   if (!task.fired && task.t >= TASK_KINDS[task.kind].fire(task.dur)) {
     task.fired = true;
-    if (task.effect) applyEffect(w, a, task.effect, task.target);
+    const ok = task.effect ? applyEffect(w, a, task.effect, task.target) : true;
+    if (task.jobId !== undefined && a.job?.id === task.jobId) a.job.result = ok !== false;
   }
   // An effect may have replaced the task (e.g. picking up the arm begins attaching it).
   if (task.t >= task.dur && a.task === task) a.task = null;
@@ -78,15 +87,15 @@ export function runScheduled(w: World) {
 }
 
 /** Apply one effect. `areaId` overrides the area it acts on (scheduled effects). */
-export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, areaId?: string) {
+export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, areaId?: string): boolean | void {
   const area = areaId ? getArea(w, areaId) : areaOf(w, a);
   switch (e.op) {
     case "cue":
-      emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y });
+      emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y, actor: a.id });
       break;
     case "message":
-      emit(w, { t: "message", text: e.text });
-      if (e.cue) emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y });
+      actorMessage(w, a, e.text);
+      if (e.cue) emit(w, { t: "cue", cue: e.cue, x: target?.x ?? a.x, y: target?.y ?? a.y, actor: a.id });
       break;
     case "examine": {
       const p = target?.propId ? area.prop(target.propId) : undefined;
@@ -142,7 +151,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       break;
     case "equip": {
       const def = ITEMS[e.item];
-      if (def.equip) setFlag(w, def.equip.flag);
+      if (def.equip) setActorFlag(a, def.equip.flag);
       emit(w, { t: "equipped", actor: a.id, item: e.item });
       break;
     }
@@ -162,8 +171,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       const r = area.ritual;
       if (!r) break;
       removeItems(a, e.consume, 1);
-      r.core = true;
-      area.touch();
+      area.updateRitual({ core: true });
       emit(w, { t: "corePlaced" });
       checkRune(w, area);
       break;
@@ -171,8 +179,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
     case "carveGap": {
       const r = area.ritual;
       if (!r) break;
-      r.carved = true;
-      area.touch();
+      area.updateRitual({ carved: true });
       emit(w, { t: "carved" });
       checkRune(w, area);
       break;
@@ -182,9 +189,9 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       const i = target?.socket;
       if (!r || i === undefined || r.sockets[i] < 0) break;
       const g = r.sockets[i];
-      r.sockets[i] = -1;
-      r.wrong[i] = false;
-      area.touch();
+      const sockets = [...r.sockets], wrong = [...r.wrong];
+      sockets[i] = -1; wrong[i] = false;
+      area.updateRitual({ sockets, wrong });
       giveItem(w, a, glyphItem(g), 1);
       if (r.active) deactivate(w, area);
       break;
@@ -231,22 +238,38 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       if (e.text) emit(w, { t: "message", text: e.text });
       break;
     case "travel":
-      if (target?.propId) travel(w, a, area, target.propId);
+      return !!target?.propId && travel(w, a, area, target.propId, e.destination);
+    case "analyze": return applyAnalysis(w, a, area, target);
+    case "deposit": {
+      const p = target?.propId ? area.prop(target.propId) : undefined;
+      if (!p?.inventory || a.area !== area.id || Math.hypot(a.x - p.x, a.y - p.y) > propReach(p.kind) + 8) return false;
+      const n = transferItems(w, packRef(a), storageRef(area.id, p.id), e.item, e.n);
+      if (a.job && a.task?.jobId === a.job.id) a.job.completed += n;
+      return n > 0;
+    }
+    case "useStorage":
+      if (target?.propId && area.prop(target.propId)?.inventory) emit(w, { t: "openStorage", actor: a.id, prop: target.propId });
+      break;
+    case "manageActor":
+      if (target?.actorId && actorById(w, target.actorId)) emit(w, { t: "manageActor", actor: a.id, target: target.actorId });
       break;
     case "harvest": {
       const p = target?.propId ? area.prop(target.propId) : undefined;
       const def = p && HARVEST[p.kind];
-      if (!p || !def || p.taken) break;
-      area.damageProp(p.id, 1);
-      giveItem(w, a, def.perHit.item, def.perHit.n);
-      const depleted = p.dmg >= def.hp;
+      if (!p || !def || p.taken || !capable(a, "harvest") || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
+      const hit = harvestStep(a, p);
+      if (!hit) return false;
+      area.damageProp(p.id, hit.damage);
+      // Pay for cumulative work crossed, not the number of blows. Fractional,
+      // mixed-actor and overkill hits conserve the original total yield.
+      for (const reward of hit.rewards) giveItem(w, a, reward.item, reward.n);
+      const depleted = hit.depleted;
       if (depleted) {
         area.setPropState(p.id, { taken: true });
-        if (def.final) giveItem(w, a, def.final.item, def.final.n);
         if (def.regrow) schedule(w, def.regrow, a, { op: "regrow", prop: p.id }, area.id);
       }
       emit(w, { t: "harvestHit", actor: a.id, prop: p.id, kind: p.kind, x: p.x, y: p.y, depleted });
-      break;
+      return true;
     }
     case "regrow":
       area.setPropState(e.prop, { taken: false, dmg: 0 });
@@ -258,8 +281,7 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       applyDeconstruct(w, a, area, target?.propId);
       break;
     case "craft":
-      applyCraft(w, a, area, e.recipe, target?.propId);
-      break;
+      return applyCraft(w, a, area, e.recipe, target?.propId);
     case "useStation": {
       const p = target?.propId ? area.prop(target.propId) : undefined;
       const station = p && propDef(p.kind).station;

@@ -242,7 +242,9 @@ test("v6 -> v7 migration: a saved crafting bench becomes the workbench prop, kee
   const b2 = a2.prop(bench.id)!;
   assert.ok(b2 && b2.dyn && b2.kind === "workbench" && b2.recipe === "craftbench");
   assert.equal(interactables(a2).find((i) => i.propId === bench.id)!.kind, "station");
-  assert.deepEqual(serialize(w2), serialize(w), "loading the old save is the same world as building it now");
+  const expected = serialize(w);
+  expected.flags.push(...["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"].map((id) => `analysis.${id}`));
+  assert.deepEqual(serialize(w2), expected, "same world, plus v10's frozen legacy analysis grants");
 });
 
 // ------------------------------------------------------------------ crafting bench
@@ -391,6 +393,7 @@ test("deconstructing the dungeon's authored wall torch: full wall-torch refund, 
   view.flush();
   assert.ok(!view.lights.has("area" + li), "the owned light goes with its prop");
   // no tutorial logic hangs off torches: everything else interactable is unchanged
+  // (buildable furniture is a scan-only target, not part of this list)
   assert.deepEqual(interactables(a).map((i) => `${i.kind}:${i.propId ?? i.looseId ?? i.socket ?? i.tx}`), interBefore);
   const s = serialize(w);
   assert.deepEqual(s.areas.dungeon.propsRemoved, [id]);
