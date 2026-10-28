@@ -48,7 +48,7 @@ export const RULES: Record<string, Rule[]> = {
   ],
   runeDormant: [{ task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "THE RUNE IS DARK AND SILENT", cue: "dud" } } }],
   // ---- surface
-  harvest: [{ task: { kind: "punch", dur: 0.75, effect: { op: "harvest" } } }],
+  // Trees, rocks and logs have no row: they aren't interactables. The golem harvests them with the attack (SLAM_RULES' note below).
   examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],
   // ---- work stations (props with a `station`, e.g. the crafting bench)
   station: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStation" } } }],
@@ -69,6 +69,9 @@ export const SLAM_TASK: TaskSpec = { kind: "slam", dur: 1.1 };
  * the effect applied to it. Kinds without rules, and empty ground, just take
  * the blow: the slam plays in full and nothing changes. Interacting (E) is
  * separate: RULES above.
+ *
+ * Harvestable props (content/harvest.ts) are not in this table: every one in
+ * reach of the blow is harvested by the slam itself, one blow of work each.
  */
 export const SLAM_RULES: Record<string, { when?: Requirement; then: Effect }[]> = {
   cracked: [

@@ -46,7 +46,8 @@ function deriveInteractables(area: Area): Interactable[] {
       if (!(area.ritual && !area.ritual.core)) I.push({ kind: "rune", x: p.x, y: p.y, r: 18, propId: p.id });
       continue;
     }
-    if (HARVEST[p.kind] && !p.taken) { I.push({ kind: "harvest", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
+    // Standing trees, rocks and logs are not interactables (so not in the golem's vision either): they are harvested by slamming near them (sim/tasks.ts, op "slam").
+    if (HARVEST[p.kind] && !p.taken) continue;
     if (def.storage) { I.push({ kind: "storage", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
     // A station is used once nothing rests on it: the dungeon workbench hands over its chisel first (the tutorial
     // needs that), then works as a bench. Built benches carry no item, so they are stations straight away.

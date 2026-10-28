@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
 installFakeCanvas();
 import { clearFlag, player, currentArea, getArea, setFlag, enterArea, makeActor, type World } from "../src/game/world/world";
+import type { PropInst } from "../src/game/world/area";
 import { serialize, deserialize, SAVE_VERSION } from "../src/game/world/save";
 import { capacity, addItems, giveItem, countItem, hasItem, reconcileCapacity } from "../src/game/sim/inventory";
 import { dropFromSlot, orderBuild, readItem, wearFromSlot } from "../src/game/sim/commands";
@@ -15,8 +16,10 @@ import { schedule, enqueueTask } from "../src/game/sim/tasks";
 import { stepWorld } from "../src/game/sim/step";
 import { boxFree } from "../src/game/sim/collision";
 import { interactables } from "../src/game/sim/interact";
+import { harvestReach } from "../src/game/sim/harvesting";
 import { RUNE_NODES, runeDestination } from "../src/game/content/runes";
 import { HARVEST } from "../src/game/content/harvest";
+import { SLAM_RADIUS } from "../src/game/content/tasks";
 import { FLAGS } from "../src/game/content/flags";
 import { T, TS } from "../src/game/content/tiles";
 import { AreaView } from "../src/game/view/areaView";
@@ -242,20 +245,31 @@ test("arrival falls back to the nearest free spot when the rune is blocked", () 
 });
 
 // ------------------------------------------------------------------ Part C
+/** Where the golem stands to slam a prop: just below it, facing up, so the fists land in its footprint. */
+const slamSpot = (p: PropInst) => ({ x: p.x, y: p.y + 9 });
+/** Slam a prop (harvesting is the attack: trees and rocks are not interactables). */
+function slamProp(w: World, p: PropInst) {
+  const s = slamSpot(p), pl = player(w);
+  pl.x = s.x; pl.y = s.y; pl.vx = 0; pl.vy = 0; pl.facing = "up";
+  frame(w, { ix: 0, iy: 0, use: false, attack: true });
+  let g = 0; while (pl.task && g++ < 1000) frame(w);
+  frames(w, 30);
+}
+/** The nearest standing tree that is the only harvestable the blow reaches, so a slam at it harvests just it. */
 function nearestTree(w: World) {
-  const pl = player(w);
-  return interactables(currentArea(w)).filter((i) => i.kind === "harvest" && currentArea(w).prop(i.propId!)!.kind === "tree")
-    .sort((a, b) => Math.hypot(a.x - pl.x, a.y - pl.y) - Math.hypot(b.x - pl.x, b.y - pl.y))[0];
+  const pl = player(w), a = currentArea(w);
+  return a.props.filter((p) => p.kind === "tree" && !p.taken && harvestReach(a, p.x, p.y + 2, SLAM_RADIUS).length === 1)
+    .sort((p, q) => Math.hypot(p.x - pl.x, p.y - pl.y) - Math.hypot(q.x - pl.x, q.y - pl.y))[0];
 }
 
 test("multi-hit harvest: damage lives on the tree, yields wood, then depletes to a stump", () => {
   const w = newWorld(); toSurface(w);
-  const pl = player(w), t = nearestTree(w), p = currentArea(w).prop(t.propId!)!;
+  const pl = player(w), p = nearestTree(w);
   const rev = currentArea(w).revision;
-  for (let i = 0; i < 3; i++) useOn(w, t);
+  for (let i = 0; i < 3; i++) slamProp(w, p);
   assert.equal(p.dmg, 3); assert.equal(p.taken, false); assert.equal(countItem(pl, "wood"), 3);
   assert.ok(currentArea(w).revision > rev);
-  useOn(w, t);
+  slamProp(w, p);
   assert.equal(p.taken, true, "depleted (permanent in v1)");
   assert.equal(countItem(pl, "wood"), HARVEST.tree.hp * HARVEST.tree.perHit.n + HARVEST.tree.final!.n);
   assert.ok(!interactables(currentArea(w)).some((i) => i.propId === p.id));
@@ -266,17 +280,17 @@ test("harvesting with a full pack drops the yield on the ground", () => {
   const pl = player(w);
   setFlag(w, FLAGS.golemArm);
   for (let i = 0; i < 16; i++) addItems(w, pl, i % 2 ? "coin" : "crown", 1);
-  useOn(w, nearestTree(w));
+  slamProp(w, nearestTree(w));
   assert.equal(countItem(pl, "wood"), 0);
   assert.equal(total(w, "wood"), 1);
 });
 
 test("regrow hook schedules into the prop's own area, even after the harvester travels", () => {
   const w = newWorld(); toSurface(w);
-  const pl = player(w), t = nearestTree(w), p = currentArea(w).prop(t.propId!)!;
+  const pl = player(w), p = nearestTree(w);
   HARVEST.tree.regrow = 2;
   try {
-    for (let i = 0; i < 4; i++) useOn(w, t);
+    for (let i = 0; i < 4; i++) slamProp(w, p);
     assert.equal(p.taken, true);
     assert.equal(w.scheduled.at(-1)!.area, "surface");
     useOn(w, find(w, (i) => i.kind === "rune"));
@@ -335,19 +349,19 @@ test("placing a torch consumes materials, creates a lit prop and registers its l
   view.prepare(torch.x - 160, torch.y - 90, 320, 180);
   assert.ok(view.lights.get("prop:" + torch.id)!.n > 0, "traced once in view");
   // a partially harvested tree too
-  const t = nearestTree(w); useOn(w, t);
+  const t = nearestTree(w); slamProp(w, t);
   const w2 = deserialize(JSON.parse(JSON.stringify(serialize(w))));
   assert.deepEqual(serialize(w2), serialize(w));
   const a2 = currentArea(w2);
   assert.equal(a2.prop(torch.id)!.lit, true);
-  assert.equal(a2.prop(t.propId!)!.dmg, 1);
+  assert.equal(a2.prop(t.id)!.dmg, 1);
   assert.ok(new AreaView(a2).lights.has("prop:" + torch.id));
 });
 
 test("surface changes persist across travel and save/load", () => {
   const w = newWorld(); toSurface(w);
   const pl = player(w);
-  useOn(w, nearestTree(w));
+  slamProp(w, nearestTree(w));
   addItems(w, pl, "coin", 1); pl.facing = "down"; dropFromSlot(w, pl, pl.inventory.findIndex((s) => s?.item === "coin"));
   const snap = JSON.stringify(serialize(w).areas.surface);
   useOn(w, find(w, (i) => i.kind === "rune"));

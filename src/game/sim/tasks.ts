@@ -9,7 +9,7 @@ import { TASK_KINDS, SLAM_RADIUS, type Effect, type TaskSpec, type Target } from
 import { SLAM_RULES } from "../content/interactions";
 import { meets } from "./requirements";
 import { emit, setFlag, setActorFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
-import type { Area } from "../world/area";
+import type { Area, PropInst } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
 import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
 import { travel } from "./runes";
@@ -19,7 +19,7 @@ import { applyDialogueEffect } from "./dialogue";
 import { applyWear, applyTakeOff, gearRefusal } from "./gear";
 import { applyCraft } from "./crafting";
 import { powered } from "./actorStats";
-import { harvestStep } from "./harvesting";
+import { harvestReach, harvestStep } from "./harvesting";
 import { capable } from "../content/actors";
 import { applyAnalysis } from "./analysis";
 import { packRef, storageRef, transferItems } from "./storage";
@@ -257,12 +257,16 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       // The blow lands: both fists into the ground in front of the actor, and
       // everything slammable within SLAM_RADIUS of the fists (not of the actor)
       // takes it. Targets are looked up now, in the world as it is at impact.
+      // Harvestables (trees, rocks, logs) are slammable too: each one in reach
+      // takes one blow of work and pays out, however many there are.
       const p = strikePoint(a);
       const hits = slamReach(area, p.x, p.y, SLAM_RADIUS)
         .map((t) => ({ t, rule: SLAM_RULES[t.kind].find((r) => meets(w, a, r.when)) }))
         .filter((h) => h.rule);
-      emit(w, { t: "slam", actor: a.id, x: p.x, y: p.y, hit: hits.length > 0 });
+      const harvestables = harvestReach(area, p.x, p.y, SLAM_RADIUS);
+      emit(w, { t: "slam", actor: a.id, x: p.x, y: p.y, hit: hits.length > 0 || harvestables.length > 0 });
       for (const h of hits) applyEffect(w, a, h.rule!.then, h.t);
+      for (const hp of harvestables) harvestProp(w, a, area, hp);
       break;
     }
     case "withstand":
@@ -287,22 +291,10 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       if (target?.actorId && actorById(w, target.actorId)) emit(w, { t: "manageActor", actor: a.id, target: target.actorId });
       break;
     case "harvest": {
+      // A worker's blow at a chosen prop (jobs). The golem's own harvesting is the slam, which finds props itself.
       const p = target?.propId ? area.prop(target.propId) : undefined;
-      const def = p && HARVEST[p.kind];
-      if (!p || !def || p.taken || !capable(a, "harvest") || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
-      const hit = harvestStep(a, p);
-      if (!hit) return false;
-      area.damageProp(p.id, hit.damage);
-      // Pay for cumulative work crossed, not the number of blows. Fractional,
-      // mixed-actor and overkill hits conserve the original total yield.
-      for (const reward of hit.rewards) giveItem(w, a, reward.item, reward.n);
-      const depleted = hit.depleted;
-      if (depleted) {
-        area.setPropState(p.id, { taken: true });
-        if (def.regrow) schedule(w, def.regrow, a, { op: "regrow", prop: p.id }, area.id);
-      }
-      emit(w, { t: "harvestHit", actor: a.id, prop: p.id, kind: p.kind, x: p.x, y: p.y, depleted });
-      return true;
+      if (!p || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
+      return harvestProp(w, a, area, p);
     }
     case "regrow":
       area.setPropState(e.prop, { taken: false, dmg: 0 });
@@ -330,6 +322,29 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       applyDialogueEffect(w, a, e, target);
       break;
   }
+}
+
+/**
+ * One blow of work against a harvestable prop, by any actor: stores the damage
+ * on the prop, pays for the cumulative work crossed, and depletes it. Reach is
+ * the caller's business (a worker's job, or the slam's radius). False when
+ * nothing came of it (not harvestable, already depleted, or the actor can't).
+ */
+function harvestProp(w: World, a: Actor, area: Area, p: PropInst): boolean {
+  const def = HARVEST[p.kind];
+  if (!def || p.taken || !capable(a, "harvest")) return false;
+  const hit = harvestStep(a, p);
+  if (!hit) return false;
+  area.damageProp(p.id, hit.damage);
+  // Pay for cumulative work crossed, not the number of blows. Fractional,
+  // mixed-actor and overkill hits conserve the original total yield.
+  for (const reward of hit.rewards) giveItem(w, a, reward.item, reward.n);
+  if (hit.depleted) {
+    area.setPropState(p.id, { taken: true });
+    if (def.regrow) schedule(w, def.regrow, a, { op: "regrow", prop: p.id }, area.id);
+  }
+  emit(w, { t: "harvestHit", actor: a.id, prop: p.id, kind: p.kind, x: p.x, y: p.y, depleted: hit.depleted });
+  return true;
 }
 
 /** Clear a vertical run of breakable tiles starting at the anchor and scatter debris. */

@@ -59,7 +59,8 @@ export type Effect =
   /**
    * A slam lands: emits `slam` at the strike point (between the fists), then
    * applies the SLAM_RULES outcome to everything slammable within SLAM_RADIUS of
-   * it. Targets are found when the blow lands, so nothing needs re-validating.
+   * it, and harvests every harvestable prop (tree, rock, log) in that radius.
+   * Targets are found when the blow lands, so nothing needs re-validating.
    */
   | { op: "slam" }
   /** A blow the target withstands (cracked debris without the iron arm): the world doesn't change; emits `withstood`. */
@@ -82,7 +83,7 @@ export type Effect =
   | { op: "useStorage" }
   | { op: "manageActor" }
   | { op: "deposit"; item: ItemId; n: number }
-  /** One blow against a harvestable prop (target.propId). */
+  /** One blow against a harvestable prop (target.propId): a worker's job. The golem harvests with the slam instead, which needs no target. */
   | { op: "harvest" }
   /** Regrowth hook for harvestables with a `regrow` time (none in v1). */
   | { op: "regrow"; prop: string }

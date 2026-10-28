@@ -3,7 +3,6 @@ import { HIGHLIGHT_RULES, SCAN_DURATION, analysisFlag, type Highlight } from "..
 import { ITEMS, type ItemId } from "../content/items";
 import { propDef, propReach } from "../content/props";
 import { actorDef, capable } from "../content/actors";
-import { HARVEST } from "../content/harvest";
 import { TILE_INTERACT, TS } from "../content/tiles";
 import type { Target } from "../content/tasks";
 import type { Area, PropInst } from "../world/area";
@@ -86,7 +85,7 @@ export function visionTargets(w: World, area: Area): VisionTarget[] {
     const d = propDef(p.kind);
     const category = classifyHighlight({
       item: !p.taken && !p.open ? p.item : undefined, rune: d.rune, buildable: buildRows(p.kind).length > 0,
-      interactable: !!(d.station || d.storage || d.examine || (!p.taken && (p.item || HARVEST[p.kind])) || (p.container && !p.open)),
+      interactable: !!(d.station || d.storage || d.examine || (!p.taken && p.item) || (p.container && !p.open)),
     });
     if (category) out.push({ id: p.id, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
   }
