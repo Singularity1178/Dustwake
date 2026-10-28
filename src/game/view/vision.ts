@@ -347,6 +347,8 @@ export class VisionView {
     this.ringR = on ? this.R * easeOut(Math.min(1, this.sinceOn / SWEEP)) : this.R * smooth(this.k);
     if (focusId !== this.focusId) { this.focusId = focusId; this.focusT = 0; } else this.focusT += dt;
     this.counts.pending = 0; this.counts.done = 0;
+    // The readout counts kinds of thing, not copies: five wall torches in sight are one kind.
+    const pendingKinds = new Set<string>(), doneKinds = new Set<string>();
     if (this.k <= 0 && !on) { this.tracks.clear(); return cues; }
 
     const area = areaOf(w, pl);
@@ -384,8 +386,9 @@ export class VisionView {
         const h = tr.holo;
         cues.push({ t: "lock", target: t, x: h ? tr.hx + h.left : t.x - 6, y: h ? tr.hy + h.top : t.y - t.height, w: h ? h.right - h.left + 1 : 12, h: h ? h.bottom - h.top + 1 : t.height });
       }
-      if (tr.seen > 0.5) { if (t.analysis === "pending") this.counts.pending++; else if (t.analysis === "done") this.counts.done++; }
+      if (tr.seen > 0.5) { if (t.analysis === "pending") pendingKinds.add(t.kind); else if (t.analysis === "done") doneKinds.add(t.kind); }
     }
+    this.counts.pending = pendingKinds.size; this.counts.done = doneKinds.size;
     for (const [id, tr] of this.tracks) if (!tr.visited || (tr.seen <= 0 && tr.lock > 1 && !on)) this.tracks.delete(id);
     return cues;
   }
@@ -613,7 +616,7 @@ export class VisionView {
     ctx.fillRect(x1 - L + 1, y1, L, 1); ctx.fillRect(x1, y1 - L + 1, 1, L);
   }
 
-  /** A compact readout on the UI layer: plans still to read, and plans read, within sight. */
+  /** A compact readout on the UI layer: kinds of thing with plans still to read, and kinds already read, within sight. */
   drawHud(ctx: CanvasRenderingContext2D, W: number) {
     const e = smooth(this.k);
     if (e <= 0.01 || (!this.counts.pending && !this.counts.done)) return;

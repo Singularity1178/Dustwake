@@ -5,6 +5,7 @@ import { TS, T, TILE_INTERACT } from "../content/tiles";
 import { ITEMS, glyphItem, isDroppable } from "../content/items";
 import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
+import { VISION_OFF_OPS } from "../content/vision";
 import { TASK_KINDS, SLAM_RADIUS, type Effect, type TaskSpec, type Target } from "../content/tasks";
 import { SLAM_RULES } from "../content/interactions";
 import { meets } from "./requirements";
@@ -27,9 +28,15 @@ import { actorMessage } from "./messages";
 import { lineOfSight } from "./navigation";
 import { think } from "./monologue";
 
+/** Vision mode ends by itself when work starts that takes the golem's attention elsewhere (talking, rune travel, stations...). */
+function endScanFor(a: Actor, spec: TaskSpec) {
+  if (a.mode === "scan" && spec.effect && VISION_OFF_OPS.includes(spec.effect.op)) a.mode = "normal";
+}
+
 export function beginTask(a: Actor, spec: TaskSpec, target?: Target) {
   a.task = { ...spec, t: 0, fired: false, target, area: a.area };
   a.vx = 0; a.vy = 0;
+  endScanFor(a, spec);
 }
 
 /** Add work to the actor's queue; it starts when the current task finishes. */
@@ -39,7 +46,7 @@ export function enqueueTask(a: Actor, spec: TaskSpec, target?: Target) {
 
 /** Advance the actor's work by dt. */
 export function tickTask(w: World, a: Actor, dt: number) {
-  if (!a.task && a.queue.length) { a.task = a.queue.shift()!; a.vx = 0; a.vy = 0; }
+  if (!a.task && a.queue.length) { a.task = a.queue.shift()!; a.vx = 0; a.vy = 0; endScanFor(a, a.task); }
   const task = a.task;
   if (!task) return;
   if (task.jobId !== undefined && (!powered(a) || a.job?.status === "paused")) return;

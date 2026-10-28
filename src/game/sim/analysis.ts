@@ -59,6 +59,8 @@ export function analysisState(w: World, p: PropInst): AnalysisState | undefined 
 
 export interface VisionTarget {
   id: string; x: number; y: number; height: number; category: Highlight;
+  /** What kind of thing it is (all wall torches share one), so the readout counts types, not copies. */
+  kind: string;
   /** Absent: nothing to analyze. */
   analysis?: AnalysisState;
   /** Where it came from, so presentation can find its art without re-deriving it. */
@@ -72,7 +74,7 @@ function tileTargets(area: Area): VisionTarget[] {
   if (c && c.rev === area.revision) return c.list;
   const list: VisionTarget[] = [];
   for (let y = 0; y < area.h; y++) for (let x = 0; x < area.w; x++) if (TILE_INTERACT[area.tile(x, y)]) {
-    list.push({ id: `tile:${x},${y}`, x: x * TS + 8, y: y * TS + 16, height: 16, category: "interactable", source: "tile" });
+    list.push({ id: `tile:${x},${y}`, kind: `tile:${area.tile(x, y)}`, x: x * TS + 8, y: y * TS + 16, height: 16, category: "interactable", source: "tile" });
   }
   tileTargetCache.set(area, { rev: area.revision, list });
   return list;
@@ -87,10 +89,10 @@ export function visionTargets(w: World, area: Area): VisionTarget[] {
       item: !p.taken && !p.open ? p.item : undefined, rune: d.rune, buildable: buildRows(p.kind).length > 0,
       interactable: !!(d.station || d.storage || d.examine || (!p.taken && p.item) || (p.container && !p.open)),
     });
-    if (category) out.push({ id: p.id, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
+    if (category) out.push({ id: p.id, kind: `prop:${p.kind}`, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
   }
-  for (const l of area.loose) if (!l.taken) out.push({ id: l.id, x: l.x, y: l.y, height: 8, category: classifyHighlight({ item: l.item, interactable: true })!, source: "loose" });
-  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId) out.push({ id: a.id, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc", source: "actor" });
+  for (const l of area.loose) if (!l.taken) out.push({ id: l.id, kind: `item:${l.item}`, x: l.x, y: l.y, height: 8, category: classifyHighlight({ item: l.item, interactable: true })!, source: "loose" });
+  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId) out.push({ id: a.id, kind: `actor:${a.npc ?? a.definition}`, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc", source: "actor" });
   for (const t of tileTargets(area)) out.push(t);
   return out;
 }

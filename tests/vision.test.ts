@@ -13,6 +13,7 @@ import { visionTargets, analysisState } from "../src/game/sim/analysis";
 import { analysisFlag, VISION_CATEGORIES } from "../src/game/content/vision";
 import { T } from "../src/game/content/tiles";
 import { newWorld } from "./helpers";
+import { beginTask } from "../src/game/sim/tasks";
 import type { VisionCue } from "../src/game/view/vision";
 
 test("vision targets carry analysis state: pending until every plan is read, absent when there is nothing to read", () => {
@@ -88,4 +89,37 @@ test("host vision overlay: finishing a scan locks the target in live, from pendi
   assert.equal(g.vision.tracks.get("brazier@33,23")!.state, "done");
   assert.ok(cues.includes("lock"));
   assert.ok(g.vision.counts.pending < pendingBefore, "the readout counts one fewer plan to read");
+});
+
+test("vision targets carry a kind, so copies of one thing share it", () => {
+  const w = newWorld(), area = currentArea(w);
+  const ts = visionTargets(w, area).filter((t) => t.source === "prop");
+  const braziers = ts.filter((t) => t.id.startsWith("brazier@"));
+  assert.ok(braziers.length > 1);
+  assert.equal(new Set(braziers.map((t) => t.kind)).size, 1);
+});
+
+test("the readout counts kinds of thing, not copies", () => {
+  const { g, w } = hostAt(536, 366, "down");
+  g.keyDown("z"); g.update(1 / 60); g.keyUp("z");
+  for (let i = 0; i < 40; i++) g.update(1 / 60);
+  const seen = [...g.vision.tracks.values()].filter((t) => t.seen > 0.5).map((t) => t.target);
+  const kinds = (st: string) => new Set(seen.filter((t) => t.analysis === st).map((t) => t.kind)).size;
+  assert.equal(g.vision.counts.pending, kinds("pending"));
+  assert.equal(g.vision.counts.done, kinds("done"));
+  assert.ok(seen.filter((t) => t.analysis === "pending").length >= g.vision.counts.pending);
+  void w;
+});
+
+test("vision turns itself off when a rune jump or a conversation begins", () => {
+  const w = newWorld(), pl = player(w);
+  pl.mode = "scan";
+  beginTask(pl, { kind: "talk", dur: 0.3, effect: { op: "talk" } });
+  assert.equal(pl.mode, "normal");
+  pl.mode = "scan"; pl.task = null;
+  beginTask(pl, { kind: "channel", dur: 2.2, effect: { op: "travel" } });
+  assert.equal(pl.mode, "normal");
+  pl.mode = "scan"; pl.task = null;
+  beginTask(pl, { kind: "scan", dur: 0.9, effect: { op: "analyze" } });
+  assert.equal(pl.mode, "scan", "scanning itself keeps vision on");
 });

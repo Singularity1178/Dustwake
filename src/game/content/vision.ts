@@ -23,4 +23,10 @@ export const HIGHLIGHT_RULES: { category: Highlight; tags?: ItemTag[]; trait?: "
   { category: "interactable", trait: "interactable" },
 ];
 export const SCAN_DURATION = 0.9;
+/**
+ * Effects that take the golem's attention elsewhere (a conversation, a rune jump,
+ * a work/storage/management screen). Starting a task with one of these ends vision
+ * mode on its own, so the overlay plays its normal switch-off.
+ */
+export const VISION_OFF_OPS: readonly string[] = ["talk", "travel", "useStation", "useStorage", "manageActor"];
 export const analysisFlag = (key: string) => `analysis.${key}`;
