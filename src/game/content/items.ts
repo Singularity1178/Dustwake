@@ -80,8 +80,9 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   arm: { name: "IRON ARM", tags: ["part"], droppable: false, desc: ["AN IRON ARM FOR YOUR BROKEN", "SIDE. IT BOLTS ON AT ONCE."], equip: { flag: FLAGS.golemArm, task: { kind: "attach", dur: 1.8 } } },
   key: { name: "RUSTED KEY", tags: ["key"], droppable: false, desc: ["A RUSTED KEY. IT FITS SOME", "OLD LOCK IN THE RUINS."] },
   core: { name: "AETHER CORE", tags: ["power"], droppable: false, desc: ["AN AETHER CORE. THE CIRCLE", "NEEDS IT TO WAKE. IT STAYS", "IN YOUR PACK, NOT ON YOU."] },
-  ruby_core: { name: "RUBY GOLEM CORE", tags: ["power"], desc: ["A FIRST-TIER GOLEM CORE.", "POWERS A LESSER BODY."] },
-  large_ruby: { name: "LARGE RUBY", tags: ["material"], stack: 10, desc: ["A LARGE, UNCUT RUBY."] },
+  // The ruby chain: the crown's gem, carved at a bench into the one core that can power a worker golem.
+  ruby_core: { name: "RUBY GOLEM CORE", tags: ["power"], desc: ["A FIRST-TIER CORE FOR A WORKER.", "FACE A GOLEM, C TO SLOT IT IN.", "C AGAIN TAKES IT BACK OUT."] },
+  large_ruby: { name: "HIGH-GRADE RUBY", tags: ["material"], stack: 10, desc: ["A LARGE RUBY, CUT CLEAN AND", "DEEP RED. FINE ENOUGH TO", "CARVE INTO A GOLEM CORE."] },
   glyph0: glyph(0), glyph1: glyph(1), glyph2: glyph(2), glyph3: glyph(3),
   schematic: { name: "SCHEMATIC", tags: ["document"], droppable: false, showOnProp: false, desc: ["THE PLAN OF THE CIRCLE.", "E TO STUDY IT AGAIN."], opens: "schematic", opensOnPickup: true },
   crown: { name: "BROKEN CROWN", tags: ["relic"], desc: ["A BROKEN CROWN. NO ONE", "RULES HERE ANY MORE."] },

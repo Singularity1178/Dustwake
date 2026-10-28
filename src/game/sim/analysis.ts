@@ -10,8 +10,39 @@ import { emit, type Actor, type World } from "../world/world";
 import { meets } from "./requirements";
 import { lineOfSight } from "./navigation";
 
-export const buildRows = (kind: string) => Object.entries(RECIPES).filter(([, r]) => r.prop === kind);
-export const recipeKnown = (w: World, a: Actor, r: Recipe) => meets(w, a, r.requires) && (!r.analysis || w.flags.has(analysisFlag(r.analysis)));
+/** The plans a prop of this kind teaches: the recipes that build it, and those that learn from it (`Recipe.learnFrom`). */
+export const buildRows = (kind: string) => Object.entries(RECIPES).filter(([, r]) => r.prop === kind || !!r.learnFrom?.some((l) => l.kind === kind));
+
+/**
+ * Why a recipe is unknown to an actor: `knowledge` (its `requires`, e.g. the
+ * Primer's know.build), `analysis` (its plan hasn't been read from an example
+ * yet), or null when it is known. The catalog, the build effect and the menu's
+ * reason all read this one gate.
+ */
+export type PlanLock = "knowledge" | "analysis";
+export function planLock(w: World, a: Actor, r: Recipe): PlanLock | null {
+  if (!meets(w, a, r.requires)) return "knowledge";
+  if (r.analysis && !w.flags.has(analysisFlag(r.analysis))) return "analysis";
+  return null;
+}
+export const recipeKnown = (w: World, a: Actor, r: Recipe) => planLock(w, a, r) === null;
+
+/**
+ * Read every plan a prop teaches (a scan, or taking it apart): grants each
+ * unread analysis flag and emits one `analyzed` per plan. Returns the plans
+ * read just now. Callers own the validation (reach, sight, capability).
+ */
+export function learnPlans(w: World, a: Actor, p: Pick<PropInst, "id" | "kind">): [string, Recipe][] {
+  const fresh: [string, Recipe][] = [];
+  for (const [id, r] of buildRows(p.kind)) {
+    const flag = analysisFlag(r.analysis ?? id);
+    if (w.flags.has(flag)) continue;
+    w.flags.add(flag);
+    fresh.push([id, r]);
+    emit(w, { t: "analyzed", actor: a.id, prop: p.id, flag });
+  }
+  return fresh;
+}
 
 export function toggleScan(a: Actor) {
   if (capable(a, "scan")) a.mode = a.mode === "scan" ? "normal" : "scan";
@@ -27,12 +58,7 @@ export function applyAnalysis(w: World, a: Actor, area: Area, target?: Target): 
   if (!p || a.area !== area.id || !capable(a, "scan") || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
   const rows = buildRows(p.kind);
   if (!rows.length) return false;
-  for (const [id, r] of rows) {
-    const flag = analysisFlag(r.analysis ?? id);
-    if (w.flags.has(flag)) continue;
-    w.flags.add(flag);
-    emit(w, { t: "analyzed", actor: a.id, prop: p.id, flag });
-  }
+  learnPlans(w, a, p);
   if (a.id === w.playerId) emit(w, { t: "message", text: `ANALYZED: ${rows[0][1].name}` });
   return true;
 }

@@ -2,6 +2,7 @@
 // the craft task and effect, tools carried but not consumed, re-validation,
 // overflow to the ground, any actor crafting, saves mid-work, the recipe data,
 // and the v8 -> v9 migration of pending build work.
+import { learnAllPlans } from "../src/game/sim/debug";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
@@ -24,7 +25,8 @@ import { TS, T } from "../src/game/content/tiles";
 import { newWorld, frame, frames, events, useOn, propItem } from "./helpers";
 
 const finish = (w: World) => { let g = 0; while (player(w).task && g++ < 600) frame(w); };
-const know = (w: World) => setFlag(w, FLAGS.knowBuild);
+// Knows how to build and has read every plan: crafting needs only the first; the build-cost tests here need both.
+const know = (w: World) => { setFlag(w, FLAGS.knowBuild); learnAllPlans(w); };
 const BENCH = "workbench@13.5,37";
 const loose = (w: World, item: string) => currentArea(w).loose.filter((l) => !l.taken && l.item === item).reduce((s, l) => s + (l.n ?? 1), 0);
 /** The golem beside the dungeon's workbench with the chisel taken (it is a bench from then on). */
@@ -39,7 +41,8 @@ function atBench() {
 
 test("crafting data: planks and cut stone from raw materials, two runes carved from cut stone with the chisel as a tool", () => {
   const by = Object.fromEntries(CRAFT_RECIPES.map((r) => [r.id, r]));
-  assert.deepEqual(Object.keys(by).sort(), ["cut_stone", "planks", "rune_glow", "rune_swift"]);
+  // (plus the ruby chain and the inverse rows promoted from the foundation fixture: tests/rollout.test.ts)
+  assert.deepEqual(Object.keys(by).sort(), ["cut_stone", "planks", "ruby_core", "rune_glow", "rune_swift", "unmake_crown", "unmake_rune_glow", "unmake_rune_swift"]);
   assert.deepEqual(by.planks.inputs.map((c) => c.item), ["wood"]); assert.equal(by.planks.output.item, "planks");
   assert.deepEqual(by.cut_stone.inputs.map((c) => c.item), ["stone"]); assert.equal(by.cut_stone.output.item, "cut_stone");
   for (const id of ["rune_swift", "rune_glow"]) {
@@ -190,7 +193,8 @@ test("the crafting screen: CRAFT closes it so the golem can work, and it comes b
 
 // ------------------------------------------------------------------ the rebalanced catalog
 test("build costs: rough builds stay raw, finer ones use crafted materials, and the bench itself stays raw", () => {
-  const crafted = new Set(CRAFT_RECIPES.map((r) => r.output.item));
+  // Made at a bench by a forward recipe: an inverse row's output (a rune ground back to stone) doesn't make stone crafted.
+  const crafted = new Set(CRAFT_RECIPES.filter((r) => r.mode !== "deconstruct").map((r) => r.output.item));
   const usesCrafted = (id: string) => RECIPES[id].cost.some((c) => crafted.has(c.item));
   for (const id of ["torch_post", "craftbench", "barricade"]) assert.ok(!usesCrafted(id), `${id} is a rough build: raw only`);
   for (const id of ["table", "chair", "wall_banner", "wall_torch", "brazier"]) assert.ok(usesCrafted(id), `${id} uses crafted materials`);
@@ -218,7 +222,7 @@ test("build menu: cost lines, the can-build filter and the cost sort handle craf
   assert.deepEqual(queryCatalog(catalogEntries(w, pl), q).map((e) => e.id).sort(), ["barricade", "chair"]);
   // search finds buildables by crafted material names
   const hits = (s: string) => list.filter((e) => matchesSearch(e, s)).map((e) => e.id).sort();
-  assert.deepEqual(hits("planks"), ["chair", "table", "wall_banner"]);
+  assert.deepEqual(hits("planks"), ["chair", "storage_chest", "table", "wall_banner"]);
   assert.deepEqual(hits("cut stone"), ["brazier", "wall_banner", "wall_torch"]);
   // the cost sort weighs a crafted unit by what it costs to make (planks 2/3 of a wood, cut stone 1.5 stone)
   assert.equal(rawValue("planks"), 2 / 3); assert.equal(rawValue("cut_stone"), 1.5); assert.equal(rawValue("wood"), 1);
@@ -253,7 +257,7 @@ test("v8 -> v9: pending build work for a rebalanced recipe is dropped (nothing w
   s.actors[0].task = task("table");
   s.actors[0].queue = [task("torch_post"), task("wall_banner"), task("craftbench")];
   const m: any = migrate(s);
-  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 11); // v11: the inner monologue
+  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 12); // v12: the production rollout
   assert.equal(m.actors[0].task, null);
   assert.deepEqual(m.actors[0].queue.map((t: any) => t.effect.recipe), ["torch_post", "craftbench"]);
   // the migrated save loads, and nothing the golem carries changed

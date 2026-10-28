@@ -13,7 +13,12 @@
 // someone who knows the craft (STATION_REQUIRES). Without it the screen still
 // opens, greyed out and empty, so the bench is never a dead prop. Every recipe
 // below, rune carving included, is unlocked by the existing building knowledge
-// (`know.build`, the Builder's Primer): no separate crafting flag or book.
+// (`know.build`, the Builder's Primer): no separate crafting flag or book, and
+// no analysis: nothing at a bench is ever gated by golem vision, so the ruby
+// chain (crown -> High-Grade Ruby -> Ruby Golem Core) needs only the Primer.
+//
+// Inverse rows (`mode: "deconstruct"`, ids `unmake_*`) take a crafted thing
+// back apart for less than it cost. They never value their output (rawValue).
 import type { ItemId } from "./items";
 import type { Requirement } from "./interactions";
 import type { Cost } from "./build";
@@ -70,6 +75,23 @@ export const CRAFT_RECIPES: CraftRecipe[] = [
     desc: ["CARVE THE SIGN OF LIGHT", "INTO CUT STONE. NEEDS THE", "RUNE CHISEL IN YOUR PACK."],
     inputs: [{ item: "cut_stone", n: 3 }], tools: ["chisel"], output: { item: "rune_glow", n: 1 },
   },
+  {
+    // The crown holds the game's one High-Grade Ruby, so exactly one core can ever be carved.
+    id: "ruby_core", name: "RUBY GOLEM CORE", station: "crafting", dur: 2.4,
+    desc: ["CARVE THE HIGH-GRADE RUBY", "INTO A GOLEM CORE. NEEDS THE", "RUNE CHISEL IN YOUR PACK."],
+    inputs: [{ item: "large_ruby", n: 1 }], tools: ["chisel"], output: { item: "ruby_core", n: 1 },
+  },
+  // ---- inverse rows: names stay distinct (and within the list's 20 characters) so each reads on its own.
+  {
+    id: "unmake_crown", mode: "deconstruct", name: "UNMAKE BROKEN CROWN", station: "crafting", dur: 1.6,
+    desc: ["PRY THE HIGH-GRADE RUBY OUT", "OF THE BROKEN CROWN. ITS", "SOFT GOLD IS OF NO USE."],
+    inputs: [{ item: "crown", n: 1 }], output: { item: "large_ruby", n: 1 },
+  },
+  ...([["rune_swift", "SWIFT"], ["rune_glow", "GLOW"]] as const).map(([item, sign]): CraftRecipe => ({
+    id: `unmake_${item}`, mode: "deconstruct", name: `UNMAKE RUNE OF ${sign}`, station: "crafting",
+    desc: ["GRIND THE SIGN OFF A RUNE OF", `${sign}. ONE ROUGH STONE IS`, "ALL THAT IS LEFT."],
+    inputs: [{ item, n: 1 }], output: { item: "stone", n: 1 },
+  })),
 ];
 
 export const craftRecipesFor = (station: string, list: readonly CraftRecipe[] = CRAFT_RECIPES) => list.filter((r) => r.station === station);

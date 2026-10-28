@@ -15,6 +15,18 @@ export function glyphPattern(p: Pen, gi: number, x: number, y: number, color: st
 /** Draws one 16x16 item icon. */
 export type ItemArt = (p: Pen) => void;
 
+/**
+ * The ruby ramp, shared by the High-Grade Ruby, the crown's main stone (the same
+ * gem, still set) and the Ruby Golem Core carved from it.
+ */
+const RB = { o: "#2a0610", d: "#5c0d1f", m: "#8e1530", l: "#c0233f", h: "#e5566b", s: "#ffb0ba" };
+
+/** An outlined box with its corners clipped (round-ish at icon size). */
+function rbox(p: Pen, x: number, y: number, w: number, h: number, fill: string, line: string) {
+  p.r(x + 1, y, w - 2, h, line); p.r(x, y + 1, w, h - 2, line);
+  p.r(x + 1, y + 1, w - 2, h - 2, fill);
+}
+
 const glyphIcon = (gi: number): ItemArt => (p) => {
   const g = GLYPHS[gi];
   p.o(2, 3, 12, 12, "#4a4552", S.o); p.r(3, 4, 10, 2, "#6a6372"); p.r(3, 12, 10, 2, "#2e2a33");
@@ -23,11 +35,34 @@ const glyphIcon = (gi: number): ItemArt => (p) => {
 
 /** Item icon registry: item id -> draw function. Adding an item = adding an entry. */
 export const ITEM_ART: Record<ItemId, ItemArt> = {
+  // A big brilliant-cut stone: a bright table, crown facets lit from the top left, a dark girdle,
+  // and a pavilion narrowing to the culet. One glint glows, so it catches the eye on the ground.
   large_ruby: (p) => {
-    p.o(4, 3, 8, 10, "#9c2548", "#391424"); p.r(5, 4, 5, 3, "#e65b75"); p.r(6, 4, 2, 2, "#ffd1c4");
+    p.r(5, 3, 6, 1, RB.o);
+    p.r(4, 4, 8, 1, RB.o); p.r(5, 4, 6, 1, RB.h); p.r(5, 4, 2, 1, RB.s);
+    p.r(3, 5, 10, 1, RB.o); p.r(4, 5, 1, 1, RB.l); p.r(5, 5, 6, 1, RB.h); p.r(11, 5, 1, 1, RB.m); p.p(6, 5, RB.s);
+    p.r(2, 6, 12, 1, RB.o); p.r(3, 6, 4, 1, RB.l); p.r(7, 6, 3, 1, RB.m); p.r(10, 6, 3, 1, RB.d);
+    p.r(2, 7, 12, 1, RB.o); p.r(3, 7, 10, 1, RB.d);
+    for (let j = 0; j < 5; j++) {
+      const y = 8 + j, x0 = 3 + j, w = 10 - 2 * j;
+      p.r(x0, y, w, 1, RB.o);
+      if (w > 2) { p.r(x0 + 1, y, w - 2, 1, RB.m); p.r(x0 + 1, y, Math.max(1, (w - 2) >> 1), 1, RB.l); p.p(x0 + w - 2, y, RB.d); }
+    }
+    p.p(8, 9, RB.d); p.p(8, 10, RB.d);
+    p.gp(6, 4, "#fff0f2");
   },
+  // The same stone carved down to a rune-cut dome, set in a plain iron collar with a bayonet lug each side and
+  // a socket pin: a mass-made part, one tier notch, a modest glow. (The aether core is a free crystal, all light.)
   ruby_core: (p) => {
-    p.o(3, 2, 10, 12, "#5a4650", "#21151e"); p.g(5, 4, 6, 8, "#c53858"); p.g(6, 5, 2, 5, "#ffc3bc");
+    p.o(1, 7, 3, 3, IR.d, "#14161a"); p.o(12, 7, 3, 3, IR.d, "#14161a");
+    p.r(7, 13, 2, 2, "#14161a"); p.p(7, 13, IR.m);
+    rbox(p, 3, 3, 10, 11, IR.m, "#14161a");
+    p.r(4, 4, 8, 1, IR.l); p.r(4, 12, 8, 1, IR.d); p.r(11, 5, 1, 7, IR.d);
+    p.p(5, 4, IR.h);
+    rbox(p, 5, 5, 6, 7, RB.m, RB.o);
+    p.r(6, 6, 2, 1, RB.h); p.p(6, 7, RB.l); p.r(9, 7, 1, 4, RB.d);
+    p.p(7, 8, RB.o); p.p(8, 9, RB.o); p.p(7, 10, RB.o); // the carved rune
+    p.g(7, 7, 2, 1, "#d8344e"); p.g(8, 8, 1, 1, "#ff8090"); p.g(6, 9, 1, 2, "#b02040");
   },
   chisel: (p) => {
     p.r(3, 11, 6, 3, "#14100c"); p.r(4, 12, 4, 1, WD.l);
@@ -58,11 +93,18 @@ export const ITEM_ART: Record<ItemId, ItemArt> = {
     p.r(4, 8, 7, 1, "#8aa8d8"); p.r(4, 10, 5, 1, "#8aa8d8"); p.r(7, 7, 1, 4, "#8aa8d8");
     p.r(6, 3, 4, 10, "#6a2020"); p.r(6, 3, 4, 1, "#8a3030");
   },
+  // The broken crown: its main stone is the High-Grade Ruby (same ramp, still set), a small sapphire beside it,
+  // an empty setting, one point snapped short and a crack through the band.
   crown: (p) => {
-    p.r(2, 11, 12, 3, GD.m); p.r(2, 13, 12, 1, GD.d); p.r(2, 11, 12, 1, GD.l);
-    for (const x of [2, 7, 12]) { p.r(x, 6, 2, 5, GD.m); p.p(x, 6, GD.l); }
-    p.r(4, 9, 3, 2, GD.d); p.p(7, 12, "#c02030"); p.p(4, 12, "#2040c0");
-    p.r(10, 7, 2, 3, "rgba(0,0,0,0)"); p.line(9, 11, 11, 13, "#3a2a08");
+    const O = "#3a2a08";
+    for (const [x, top] of [[2, 6], [7, 4], [12, 8]] as const) { p.r(x - 1, top - 1, 4, 11 - top + 1, O); p.r(x, top, 2, 11 - top, GD.m); p.p(x, top, GD.l); }
+    p.p(13, 7, O); p.p(12, 8, GD.d); // the snapped point
+    p.r(1, 9, 14, 6, O); p.r(2, 10, 12, 4, GD.m); p.r(2, 10, 12, 1, GD.l); p.r(2, 13, 12, 1, GD.d);
+    p.r(6, 9, 4, 5, RB.o); p.r(7, 10, 2, 3, RB.m); p.p(7, 10, RB.h); p.p(8, 12, RB.d); p.p(7, 11, RB.l);
+    p.r(3, 11, 2, 2, "#1a2a70"); p.p(3, 11, "#4a70e0");
+    p.r(11, 11, 2, 2, "#2a1e06");
+    p.line(10, 10, 12, 13, O);
+    p.gp(7, 10, "#ffd8de");
   },
   goblet: (p) => {
     p.o(4, 2, 8, 6, IR.l, "#2a2e34"); p.r(5, 3, 2, 3, IR.h);

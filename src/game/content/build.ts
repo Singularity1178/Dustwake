@@ -7,6 +7,13 @@
 // the default) or left out of the menu entirely ("hidden"), so recipes can be
 // unlocked later by setting a flag.
 //
+// Analysis gating: a row with `analysis` also needs its plan read from an
+// example in the world first (golem vision, Z: scan a prop of the recipe's own
+// kind, or of a `learnFrom` kind; taking one apart reads it too). The flag is
+// analysis.<key>. Rows without it (the torch post, the barricade) need only
+// knowledge and materials. Nothing the tutorial needs is ever built, so no gate
+// can block it (tests/rollout.test.ts).
+//
 // Deconstruction: anything built from a recipe can be taken apart for the full
 // cost of that recipe, and so can every authored (map-placed) prop whose kind a
 // recipe builds (AUTHORED_SALVAGE is derived from this table). Other authored
@@ -58,6 +65,14 @@ export interface Recipe {
   requires: Requirement;
   /** Optional analysis key. Omit for things not discoverable in an area (e.g. a torch post). */
   analysis?: string;
+  /**
+   * Other prop kinds whose analysis also teaches this plan, with the name the
+   * build menu points at ("SCAN AN OLD CHEST"). For a buildable with no example
+   * of its own kind in the world: the storage chest is read off the dungeon's
+   * looted chests. Only analysis reads it: those kinds don't become buildable
+   * or deconstructable (AUTHORED_SALVAGE follows `prop` alone).
+   */
+  learnFrom?: { kind: string; name: string }[];
   /** How the entry is shown while `requires` isn't met. Default "locked". */
   unknown?: "locked" | "hidden";
   /** Placement rule. Default "floor". */
@@ -81,18 +96,18 @@ export const RECIPES: Record<string, Recipe> = {
   wall_torch: {
     name: "WALL TORCH", category: "light", order: 1, prop: "torch", lit: true, place: "wall",
     desc: ["AN IRON SCONCE FOR WALLS. HANGS", "ON THE LIT FACE OF A WALL", "WITH FLOOR IN FRONT OF IT."],
-    cost: [{ item: "cut_stone", n: 1 }, { item: "wood", n: 1 }], requires: KNOW_BUILD,
+    cost: [{ item: "cut_stone", n: 1 }, { item: "wood", n: 1 }], requires: KNOW_BUILD, analysis: "wall_torch",
   },
   brazier: {
     name: "BRAZIER", category: "light", order: 2, prop: "brazier", lit: true, dur: 1.1,
     desc: ["A STONE FIRE BOWL. BURNS", "BRIGHT AND WIDE. NEEDS THE", "MASON'S KNOWLEDGE."],
-    cost: [{ item: "cut_stone", n: 4 }, { item: "wood", n: 2 }], requires: { flags: [FLAGS.knowMasonry] },
+    cost: [{ item: "cut_stone", n: 4 }, { item: "wood", n: 2 }], requires: { flags: [FLAGS.knowMasonry] }, analysis: "brazier",
   },
   craftbench: {
     // Builds the same `workbench` prop the dungeon's artificery has (same sprite, same station).
     name: "CRAFTING BENCH", category: "craft", order: 0, prop: "workbench", dur: 1.4,
     desc: ["A STURDY BENCH TO WORK AT.", "USE IT TO OPEN THE CRAFTING", "PLANS. TAKES THREE TILES."],
-    cost: [{ item: "wood", n: 6 }, { item: "stone", n: 2 }], requires: KNOW_BUILD,
+    cost: [{ item: "wood", n: 6 }, { item: "stone", n: 2 }], requires: KNOW_BUILD, analysis: "craftbench",
   },
   barricade: {
     name: "BARRICADE", category: "defense", order: 0, prop: "barricade", dur: 1.0,
@@ -102,21 +117,34 @@ export const RECIPES: Record<string, Recipe> = {
   table: {
     name: "TABLE", category: "furniture", order: 0, prop: "table", dur: 1.0,
     desc: ["A PLAIN PLANK TABLE.", "TAKES THREE TILES OF FLOOR."],
-    cost: [{ item: "planks", n: 4 }], requires: KNOW_BUILD,
+    cost: [{ item: "planks", n: 4 }], requires: KNOW_BUILD, analysis: "table",
   },
   chair: {
     name: "CHAIR", category: "furniture", order: 1, prop: "chair",
     desc: ["SOMEWHERE TO SIT, IF A", "GOLEM EVER NEEDED TO."],
-    cost: [{ item: "planks", n: 2 }], requires: KNOW_BUILD,
+    cost: [{ item: "planks", n: 2 }], requires: KNOW_BUILD, analysis: "chair",
+  },
+  storage_chest: {
+    // Its own kind (sharing only the looted chest's art), never the dungeon's `chest`: those stay out of
+    // AUTHORED_SALVAGE. No storage chest stands in the dungeon, so its plan is read off the looted ones.
+    name: "STORAGE CHEST", category: "furniture", order: 2, prop: "storage_chest", dur: 1.0,
+    desc: ["A PLANK CHEST WITH 32 SLOTS", "FOR KEEPING MATERIALS. TAKES", "ONE TILE OF FLOOR."],
+    cost: [{ item: "planks", n: 4 }], requires: KNOW_BUILD,
+    analysis: "storage_chest", learnFrom: [{ kind: "chest", name: "OLD CHEST" }],
   },
   wall_banner: {
     name: "WALL BANNER", category: "decor", order: 0, prop: "banner", v: 3, place: "wall",
     desc: ["A CRIMSON BANNER ON AN IRON", "ROD. HANGS ON A WALL FACE."],
-    cost: [{ item: "planks", n: 1 }, { item: "cut_stone", n: 1 }], requires: KNOW_BUILD,
+    cost: [{ item: "planks", n: 1 }, { item: "cut_stone", n: 1 }], requires: KNOW_BUILD, analysis: "wall_banner",
   },
 };
 
 export const RECIPE_IDS = Object.keys(RECIPES);
+/** What the build menu tells the player to scan for a plan: the first `learnFrom` example, else the thing itself. */
+export function scanHint(r: Recipe): string {
+  const name = r.learnFrom?.[0]?.name ?? r.name;
+  return `${/^[AEIOU]/.test(name) ? "AN" : "A"} ${name}`;
+}
 export const placeRule = (r: Recipe): PlaceRule => r.place ?? "floor";
 /** What a recipe costs in raw-material units (crafted materials weigh what they cost to make): the build menu's cost sort. */
 export const costTotal = (r: Recipe) => Math.round(r.cost.reduce((s, c) => s + c.n * rawValue(c.item), 0) * 100) / 100;

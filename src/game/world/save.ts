@@ -53,8 +53,14 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      prop inventories, analysis grandfathering and relic discovery credit.
   * v11: the inner monologue (`monologue`: one-shot lines already thought and
   *      recurring lines' cooldowns). Older saves start with nothing thought.
+  * v12: the production rollout. Build plans are analysis-gated: a save that
+  *      knew building is granted exactly the plans it could already build (a
+  *      frozen list, never the live catalog: the storage chest stays locked).
+  *      The dungeon gains its dormant worker golem (actor
+  *      `npc.worker.artificery`), once, even for v4 saves that MIGRATIONS[4]
+  *      already gave it, and never on top of a player standing there.
   */
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[] };
 
@@ -76,7 +82,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 11;
+  version: 12;
   seed: number;
   rng: number;
   time: number;
@@ -257,7 +263,35 @@ export const MIGRATIONS: Record<number, Migration> = {
   // Nothing has been thought yet. The opening's lines are not marked: a loaded
   // save never replays the opening, and only it fires them.
   10: (s) => ({ ...s, version: 11, monologue: s.monologue ?? { said: [], ready: {} } }),
+  11: (s) => {
+    // (1) Plans gated in v12 that v10/v11 let anyone who knew building build:
+    // grant those, frozen here, to a save with know.build. Nothing for a save
+    // without it; analysis flags it already has are kept. Never derived from
+    // RECIPES, so the storage chest and any later plan still need analysis.
+    const flags: string[] = [...(s.flags ?? [])];
+    if (flags.includes("know.build")) for (const id of V11_BUILDABLE) if (!flags.includes(`analysis.${id}`)) flags.push(`analysis.${id}`);
+    // (2) Actors live on the World, so a dungeon visited before v12 never re-runs
+    // its spawns: add the dormant worker (the v4 guardian precedent). A v4 save
+    // already got it from MIGRATIONS[4], which loops the live builder's spawns:
+    // match by id, never a second one. If the player stands where it goes, it
+    // takes its second spot, so no body ever starts inside another.
+    const actors: any[] = [...(s.actors ?? [])];
+    if (s.areas?.dungeon) {
+      let worker = actors.find((a) => a.id === V12_WORKER.id);
+      if (!worker) actors.push((worker = makeNpc({ ...V12_WORKER, facing: "down" }, "dungeon")));
+      const pl = actors.find((a) => a.id === s.playerId);
+      const hit = (x: number, y: number) => pl?.area === "dungeon" && Math.abs(pl.x - x) < 5 + 4 + 2 && pl.y > y - 4 - 2 && pl.y - 5 < y + 2;
+      if (hit(worker.x, worker.y)) { worker.x = V12_WORKER_ALT.x; worker.y = V12_WORKER_ALT.y; }
+    }
+    return { ...s, version: 12, flags, actors };
+  },
 };
+
+/** v12's analysis-gated plans that v10/v11 had open to anyone with know.build (frozen: not the live catalog). */
+const V11_BUILDABLE = ["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"];
+/** The v12 dormant worker's spawn (as map.ts places it), and its second spot (the artificery's south-west corner). */
+const V12_WORKER = { id: "npc.worker.artificery", npc: "worker_golem", x: 7 * 16 + 13, y: 37 * 16 + 14 };
+const V12_WORKER_ALT = { x: 5 * 16 + 8, y: 43 * 16 + 12 };
 
 /**
  * The recipes whose cost changed in v9, as they cost in v8 (frozen here on

@@ -80,6 +80,9 @@ export interface AreaData {
 /** @deprecated alias kept for art/schematic signatures */
 export type MapData = AreaData;
 
+/** The dormant worker golem's spawn row (stable id; a save migration places the same one). */
+export const ARTIFICERY_WORKER = { id: "npc.worker.artificery", npc: "worker_golem", x: 7 * TS + 13, y: 37 * TS + 14 } as const;
+
 export function buildDungeon(): AreaData {
   return buildMap(DUNGEON_SEED);
 }
@@ -420,8 +423,15 @@ export function buildMap(seed: number): MapData {
   // ---- NPCs (no rng, no props: nothing above changes). The Treasury Guardian
   // slumps against the treasury's north wall between the two looted chests,
   // facing the door; its body box (content/npcs.ts) keeps rows 5-8 and the
-  // doorway at 51,5 clear.
-  const npcs: NpcSpawn[] = [{ id: "npc.guardian", npc: "guardian", x: 55.5 * TS + 8, y: 4 * TS + 10, facing: "down" }];
+  // doorway at 51,5 clear. A dormant worker golem (no NPCS row, so no dialogue:
+  // its `npc` names its actor definition) is parked in the artificery's alcove
+  // between the forge and the cradle, against the north wall, facing the room.
+  // Its 8x4 box leaves row 38 (start, cradle, forge, workbench) and the exit
+  // corridor at 17,40 open (tests/rollout.test.ts checks the routes).
+  const npcs: NpcSpawn[] = [
+    { id: "npc.guardian", npc: "guardian", x: 55.5 * TS + 8, y: 4 * TS + 10, facing: "down" },
+    { id: ARTIFICERY_WORKER.id, npc: ARTIFICERY_WORKER.npc, x: ARTIFICERY_WORKER.x, y: ARTIFICERY_WORKER.y, facing: "down" },
+  ];
 
   return {
     id: "dungeon", w: MW, h: MH,

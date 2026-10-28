@@ -59,6 +59,9 @@ export const RULES: Record<string, Rule[]> = {
   npc: [{ task: { kind: "talk", dur: 0.3, effect: { op: "talk" } } }],
 };
 
+/** Slotting or removing a power core (C, facing a golem body): a short reach into its chest. sim/power.ts adds the effect. */
+export const CORE_TASK: TaskSpec = { kind: "reach", dur: 0.9 };
+
 /** The attack (Space): a two-arm ground slam. Always the same task; what it does is decided by SLAM_RULES. */
 export const SLAM_TASK: TaskSpec = { kind: "slam", dur: 1.1 };
 

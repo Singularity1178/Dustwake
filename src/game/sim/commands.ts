@@ -3,7 +3,13 @@
 // saveable and testable headless.
 import { ITEMS, isDroppable, type GearSlot, type ItemId } from "../content/items";
 import { RECIPES, DECONSTRUCT_DUR } from "../content/build";
-import { emit, areaOf, type Actor, type World } from "../world/world";
+import { CORE_TASK } from "../content/interactions";
+import { actorDef } from "../content/actors";
+import { emit, areaOf, actorById, type Actor, type World } from "../world/world";
+import type { Area } from "../world/area";
+import { CORE_TEXT, coreActionFor, coreCheck } from "./power";
+import { countItem } from "./inventory";
+import { findTargetIn } from "./interact";
 import { applyEffect, beginTask } from "./tasks";
 import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, deconMessage } from "./build";
 import { dropSpot } from "./inventory";
@@ -81,4 +87,45 @@ export function orderDeconstruct(w: World, a: Actor, propId: string): boolean {
 export function readItem(w: World, a: Actor, id: ItemId) {
   const g = ITEMS[id].book?.grants;
   if (g) applyEffect(w, a, { op: "learn", flag: g });
+}
+
+/**
+ * Order a power-core swap on the body `targetId`: slot `item` from the pack, or
+ * take its core out (`item: null`). Validates now (same area, a body that takes
+ * cores, the core carried and fitting, something to take out) and starts the
+ * short CORE_TASK whose `slotCore` effect re-validates reach and sight when it
+ * lands (sim/power.ts: applySlotCore). The one entry point for both ways: the C
+ * key today, the worker management screen later.
+ */
+export function orderCoreSwap(w: World, a: Actor, targetId: string, item: ItemId | null): boolean {
+  const target = actorById(w, targetId);
+  if (a.task || !target || target.id === a.id || target.area !== a.area || !actorDef(target).power) return false;
+  if (item && !(coreCheck(target, item).accepts && countItem(a, item) > 0)) { emit(w, { t: "message", text: CORE_TEXT.noCore }); return false; }
+  if (!item && !target.powerCore) { emit(w, { t: "message", text: CORE_TEXT.empty }); return false; }
+  faceTo(a, target.x, target.y - 6);
+  beginTask(a, { ...CORE_TASK, effect: { op: "slotCore", item } }, { kind: "core", x: target.x, y: target.y, actorId: target.id });
+  return true;
+}
+
+/** The body in front of `a` that takes a power core (any actor whose definition needs power), within its reach. */
+export function coreTargetFor(w: World, a: Actor, area: Area): Actor | undefined {
+  const bodies = w.actors.filter((x) => x.id !== a.id && x.area === area.id && !!actorDef(x).power)
+    .map((x) => ({ kind: "core", x: x.x, y: x.y + 2, r: actorDef(x).body.reach, actorId: x.id }));
+  const it = findTargetIn(bodies, a);
+  return it?.actorId ? actorById(w, it.actorId) : undefined;
+}
+
+/**
+ * The C key on the play screen: a deliberate input of its own, never E (E on
+ * the guardian always talks). Facing a body that takes cores, it takes the core
+ * out if there is one, else slots the first fitting core carried. Nothing in
+ * front: nothing happens. Returns whether work started.
+ */
+export function coreKey(w: World, a: Actor, area: Area): boolean {
+  if (a.task) return false;
+  const target = coreTargetFor(w, a, area);
+  if (!target) return false;
+  const act = coreActionFor(a, target);
+  if (act.op === "none") { emit(w, { t: "message", text: CORE_TEXT.noCore }); return false; }
+  return orderCoreSwap(w, a, target.id, act.op === "insert" ? act.item : null);
 }

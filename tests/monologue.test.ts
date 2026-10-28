@@ -1,7 +1,7 @@
 // The inner monologue (sim side) and the opening cutscene that uses it:
 // line data lint, one-shot and cooldown rules, the three ways a line fires
-// (event triggers, the `think` effect, the `think` command), the planned
-// power lines as pure data rows, save/load and the v10 -> v11 migration, the
+// (event triggers, the `think` effect, the `think` command), the shipped
+// power lines through real interactions, save/load and the v10 -> v11 migration, the
 // Primer's note, and the intro script played through the real host.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import { installFakeCanvas } from "./support/fakeCanvas";
 installFakeCanvas();
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-import { THOUGHTS, type ThoughtLine } from "../src/game/content/monologue";
+import { THOUGHTS, thoughtTriggers, type ThoughtLine } from "../src/game/content/monologue";
 import { INTRO } from "../src/game/content/cutscenes";
 import { FLAGS, learnedText } from "../src/game/content/flags";
 import { FONT_GLYPHS, textWidth } from "../src/game/font";
@@ -20,13 +20,12 @@ import { CUTSCENE_CUES } from "../src/game/screens/intro";
 import { THOUGHT_CONDITIONS, think, thoughtBlocked, reactToEvents, hasThought, playerThinks } from "../src/game/sim/monologue";
 import { applyEffect } from "../src/game/sim/tasks";
 import { readItem } from "../src/game/sim/commands";
-import { insertPowerCore } from "../src/game/sim/power";
 import { addItems } from "../src/game/sim/inventory";
 import { createWorld, enterArea, getArea, makeActor, player, setFlag, actorById, type SimEvent } from "../src/game/world/world";
 import { serialize, deserialize, migrate, SAVE_VERSION } from "../src/game/world/save";
 import { registerFoundations } from "../src/game/sim/debugFoundations";
 import { Game } from "../src/game/game";
-import { events, frame, frames, newWorld, guardianIt, useOn, GUARDIAN } from "./helpers";
+import { events, find, frame, frames, newWorld, guardianIt, useOn, standAt, GUARDIAN } from "./helpers";
 
 registerFoundations();
 const thoughts = (evs: SimEvent[]) => evs.filter((e) => e.t === "thought").map((e) => (e as { line: string }).line);
@@ -160,34 +159,37 @@ test("golem vision: analyzing a buildable thinks OBJECT ANALYZED. once per analy
   assert.equal(THOUGHTS["vision.analyzed"].text, "OBJECT ANALYZED.");
 });
 
-test("planned lines are plain data rows: a dormant golem missing its core, a guardian given a core too weak for it", () => {
-  const dormant: ThoughtLine = { text: "INTEGRITY INTACT, MISSING POWER SOURCE.", on: { event: "manageActor" }, if: ["subjectNoPower"], once: false, cooldown: 2 };
-  const weak: ThoughtLine = { text: "INSUFFICIENT POWER SOURCE.", on: [{ event: "manageActor" }, { event: "dialogue" }], if: ["subjectWeakPower"], once: false, cooldown: 2 };
-  withLine("golem.dormant", dormant, () => withLine("golem.underpowered", weak, () => {
-    // a lesser golem without a core: walking up to it and pressing E
-    const w = createWorld(12), area = getArea(w, "debug_workshop"), pl = player(w);
-    enterArea(w, pl, area.id, 120, 120); pl.facing = "up";
-    const worker = makeActor("lesser", "worker_golem", area.id, 120, 104);
-    w.actors.push(worker);
-    events(w);
-    frame(w, { ix: 0, iy: 0, use: true }); frames(w, 40);
-    assert.deepEqual(thoughts(events(w)), ["golem.dormant"]);
-    // powered, it is just a worker: nothing to think
-    addItems(w, pl, "ruby_core", 1);
-    assert.ok(insertPowerCore(w, pl, worker, "ruby_core"));
-    events(w); frames(w, 130);
-    frame(w, { ix: 0, iy: 0, use: true }); frames(w, 40);
-    assert.deepEqual(thoughts(events(w)), []);
-
-    // the guardian takes a ruby core (it fits) but its body needs more; then talking to it
-    const v = newWorld(), gp = player(v), it = guardianIt(v), guardian = actorById(v, GUARDIAN)!;
-    gp.x = it.x; gp.y = it.y + 9; gp.facing = "up";
-    addItems(v, gp, "ruby_core", 1);
-    assert.ok(insertPowerCore(v, gp, guardian, "ruby_core"));
-    events(v);
-    useOn(v, it);
-    assert.deepEqual(thoughts(events(v)), ["golem.underpowered"]);
-  }));
+test("the power lines ship: E on the dormant worker golem, and the guardian holding the ruby core (C, then talk)", () => {
+  const dormant = THOUGHTS["golem.dormant"], weak = THOUGHTS["golem.underpowered"];
+  assert.equal(dormant.text, "INTEGRITY INTACT, MISSING POWER SOURCE.");
+  assert.deepEqual(thoughtTriggers(dormant).map((t) => t.event), ["manageActor"], "manageActor only: subjectNoPower also holds for the unpowered guardian");
+  assert.deepEqual(dormant.if, ["subjectNoPower"]);
+  assert.equal(weak.text, "INSUFFICIENT POWER SOURCE.");
+  assert.deepEqual(thoughtTriggers(weak).map((t) => t.event), ["manageActor", "talkedTo", "coreSlotted"]);
+  assert.deepEqual(weak.if, ["subjectWeakPower"]);
+  // the dormant golem in the artificery: walking up to it and pressing E
+  const w = newWorld(), pl = player(w), worker = actorById(w, "npc.worker.artificery")!;
+  const at = () => find(w, (i) => i.actorId === worker.id);
+  events(w);
+  useOn(w, at());
+  assert.deepEqual(thoughts(events(w)), ["golem.dormant"]);
+  // powered (C slots the core), it is just a worker: nothing to think
+  addItems(w, pl, "ruby_core", 1);
+  frame(w, { ix: 0, iy: 0, use: false, core: true }); frames(w, 150);
+  assert.equal(worker.powerCore, "ruby_core");
+  useOn(w, at());
+  assert.deepEqual(thoughts(events(w)), []);
+  // the guardian takes a ruby core (it fits) but its body needs more: thought as it goes in, and on talking
+  const v = newWorld(), gp = player(v), it = guardianIt(v), guardian = actorById(v, GUARDIAN)!;
+  addItems(v, gp, "ruby_core", 1);
+  standAt(v, it); events(v);
+  frame(v, { ix: 0, iy: 0, use: false, core: true }); frames(v, 150);
+  assert.equal(guardian.powerCore, "ruby_core");
+  assert.deepEqual(thoughts(events(v)), ["golem.underpowered"]);
+  useOn(v, it);
+  const evs = events(v);
+  assert.ok(evs.some((e) => e.t === "dialogue"), "the dialogue still opens");
+  assert.deepEqual(thoughts(evs), ["golem.underpowered"]);
 });
 
 // ------------------------------------------------------------------ saves
@@ -210,12 +212,12 @@ test("monologue state saves and loads: one-shot lines stay said, cooldowns carry
 });
 
 test("v10 -> v11: the migration adds an empty monologue; a migrated save plays on", () => {
-  assert.equal(SAVE_VERSION, 11);
+  assert.equal(SAVE_VERSION, 12); // v12: the production rollout (its migration: tests/rollout.test.ts)
   const w = newWorld();
   const s: any = serialize(w);
   s.version = 10; delete s.monologue;
   const m: any = migrate(s);
-  assert.equal(m.version, 11);
+  assert.equal(m.version, 12);
   assert.deepEqual(m.monologue, { said: [], ready: {} });
   const w2 = deserialize(s);
   assert.deepEqual(serialize(w2), serialize(w));

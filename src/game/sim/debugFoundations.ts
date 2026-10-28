@@ -1,6 +1,3 @@
-import { FOUNDATION_BUILDS, FOUNDATION_CRAFTS } from "../content/foundations";
-import { RECIPES } from "../content/build";
-import { CRAFT_RECIPES } from "../content/crafting";
 import { RUNE_NODES, RUNE_LINKS } from "../content/runes";
 import { createWorld, enterArea, getArea, makeActor, player, setFlag } from "../world/world";
 import { AREAS } from "../world/areas";
@@ -9,10 +6,13 @@ import { giveItem } from "./inventory";
 import { insertPowerCore } from "./power";
 import { assignJob, gatherOrder } from "./jobs";
 
-/** Registration is idempotent and performed before loading fixture saves. */
+/**
+ * Registers the two debug areas and their rune link (?debug and tests). The
+ * storage chest, ruby and inverse recipes it used to opt into are production
+ * rows now (content/build.ts, content/crafting.ts), so nothing here touches a
+ * catalog. Idempotent, and performed before loading fixture saves.
+ */
 export function registerFoundations() {
-  Object.assign(RECIPES, FOUNDATION_BUILDS);
-  for (const r of FOUNDATION_CRAFTS) if (!CRAFT_RECIPES.some((c) => c.id === r.id)) CRAFT_RECIPES.push(r);
   for (const id of ["debug_yard", "debug_workshop"] as const) {
     AREAS[id] = () => buildFoundationArea(id);
     RUNE_NODES[id] = { id, area: id, prop: `rune.${id}`, flag: `rune.${id}.active`, name: id.toUpperCase(), arrive: { dx: 0, dy: 16, facing: "down" } };

@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import { ACTORS, actorDef } from "../src/game/content/actors";
 import { POWER_CORES } from "../src/game/content/power";
 import { CRAFT_RECIPES, rawValue } from "../src/game/content/crafting";
-import { FOUNDATION_CRAFTS } from "../src/game/content/foundations";
 import { AUTHORED_SALVAGE } from "../src/game/content/build";
 import { actorById, createWorld, enterArea, getArea, makeActor, player, setActorFlag, setFlag } from "../src/game/world/world";
 import { deserialize, serialize } from "../src/game/world/save";
@@ -226,7 +225,7 @@ test("inverse recipes preserve raw values and relic discovery; core carving carr
   addItems(w, pl, "rune_glow", 1); assert.ok(applyCraft(w, pl, area, "unmake_rune_glow", bench.id));
   assert.equal(countItem(pl, "stone"), 1);
   assert.equal(relicCount(deserialize(serialize(w)), player(deserialize(serialize(w)))), 1);
-  assert.ok(FOUNDATION_CRAFTS.filter((r) => r.mode === "deconstruct").every((r) => !r.tools));
+  assert.ok(CRAFT_RECIPES.filter((r) => r.mode === "deconstruct").every((r) => !r.tools));
 });
 
 test("weak, strong and mixed harvesters get exactly the same finite yield, including a fractional-work save", () => {

@@ -25,11 +25,13 @@ import { FONT_GLYPHS } from "../src/game/font";
 import { TS, T } from "../src/game/content/tiles";
 import { AreaView } from "../src/game/view/areaView";
 import { newWorld, frame, frames, events, useOn, propItem } from "./helpers";
+import { learnAllPlans } from "../src/game/sim/debug";
 
 // ------------------------------------------------------------------ fixtures
 const finish = (w: World) => { let g = 0; while (player(w).task && g++ < 600) frame(w); };
 const kit = (w: World, wood = 30, stone = 30, planks = 30, cut = 30) => {
-  const pl = player(w); setFlag(w, FLAGS.knowBuild);
+  // A builder who has also read every plan (analysis gating has its own tests: tests/rollout.test.ts).
+  const pl = player(w); setFlag(w, FLAGS.knowBuild); learnAllPlans(w);
   addItems(w, pl, "wood", wood); addItems(w, pl, "stone", stone); addItems(w, pl, "planks", planks); addItems(w, pl, "cut_stone", cut);
 };
 
@@ -65,7 +67,7 @@ test("catalog data: every recipe has a prop kind with art, a known category, and
   const ok = (s: string) => [...s].every((ch) => FONT_GLYPHS.has(ch));
   for (const [id, r] of Object.entries(RECIPES)) {
     assert.ok(PROPS[r.prop], `${id}: prop kind ${r.prop}`);
-    assert.ok(PROP_ART[r.prop], `${id}: sprite for ${r.prop}`);
+    assert.ok(PROP_ART[PROPS[r.prop].art ?? r.prop], `${id}: sprite for ${r.prop}`); // a kind may borrow art (the storage chest: the chest's)
     assert.ok(cats.has(r.category), `${id}: category`);
     assert.ok(ok(r.name) && r.name.length <= 24, `${id}: name "${r.name}"`);
     assert.ok(r.desc.length <= 3 && r.desc.every((l) => ok(l) && l.length <= 34), `${id}: desc`);
@@ -150,6 +152,11 @@ test("cost and knowledge gating for the new recipes (and the catalog's locked en
     assert.equal(entryFor(w, pl, id)!.status, "unknown", id);
   assert.deepEqual(placement(w, pl, a, "craftbench", tx, ty), { ok: false, reason: "unknown" });
   setFlag(w, FLAGS.knowBuild);
+  // knowing how to build is not enough for an analysis-gated plan: the reason says what to scan, and that vision is Z
+  assert.deepEqual(placement(w, pl, a, "craftbench", tx, ty), { ok: false, reason: "unknown" });
+  assert.equal(entryFor(w, pl, "craftbench")!.lock, "analysis");
+  assert.equal(entryReason(entryFor(w, pl, "craftbench")!), "SCAN A CRAFTING BENCH IN VISION (Z)");
+  learnAllPlans(w);
   assert.deepEqual(placement(w, pl, a, "craftbench", tx, ty), { ok: false, reason: "cost" });
   addItems(w, pl, "wood", 5); addItems(w, pl, "stone", 2);
   assert.deepEqual(placement(w, pl, a, "craftbench", tx, ty), { ok: false, reason: "cost" }, "6 wood needed");
@@ -243,7 +250,7 @@ test("v6 -> v7 migration: a saved crafting bench becomes the workbench prop, kee
   assert.ok(b2 && b2.dyn && b2.kind === "workbench" && b2.recipe === "craftbench");
   assert.equal(interactables(a2).find((i) => i.propId === bench.id)!.kind, "station");
   const expected = serialize(w);
-  expected.flags.push(...["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"].map((id) => `analysis.${id}`));
+  for (const f of ["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"].map((id) => `analysis.${id}`)) if (!expected.flags.includes(f)) expected.flags.push(f);
   assert.deepEqual(serialize(w2), expected, "same world, plus v10's frozen legacy analysis grants");
 });
 
@@ -403,7 +410,7 @@ test("deconstructing the dungeon's authored wall torch: full wall-torch refund, 
   const v2 = new AreaView(a2); v2.flush();
   assert.ok(!v2.lights.has("area" + li));
   // and a built wall torch can go back on the same face
-  setFlag(w2, FLAGS.knowBuild);
+  setFlag(w2, FLAGS.knowBuild); learnAllPlans(w2);
   assert.deepEqual(placement(w2, player(w2), a2, "wall_torch", 7, 2), { ok: true });
 });
 
@@ -524,7 +531,7 @@ test("catalog filters: tabs, favorites and can-build-only compose", () => {
 
 test("the real catalog lists all recipes for a builder and reflects carried materials", () => {
   const w = newWorld(); const pl = player(w); frame(w);
-  setFlag(w, FLAGS.knowBuild); addItems(w, pl, "planks", 2); addItems(w, pl, "wood", 3);
+  setFlag(w, FLAGS.knowBuild); learnAllPlans(w); addItems(w, pl, "planks", 2); addItems(w, pl, "wood", 3);
   const list = catalogEntries(w, pl);
   assert.equal(list.length, Object.keys(RECIPES).length);
   const chair = list.find((e) => e.id === "chair")!;

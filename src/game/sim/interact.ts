@@ -80,14 +80,17 @@ const scanCache = new WeakMap<Area, { rev: number; list: Interactable[] }>();
 /**
  * Buildable props as scan targets. They are deliberately not normal
  * interactables: E on furniture does nothing unless vision/scan mode is on.
- * Cached on the same revision as interactables because props/taken state move.
+ * `taken` is no reason to skip one: on a buildable it only means the item that
+ * rested on it was picked up (the workbench's chisel, the library table's
+ * Primer), and the furniture is still there to read. Cached on the same
+ * revision as interactables because props move.
  */
 export function scanTargets(area: Area): Interactable[] {
   const c = scanCache.get(area);
   if (c && c.rev === area.interactionRevision) return c.list;
   const list: Interactable[] = [];
   for (const p of area.props) {
-    if (p.taken || !buildRows(p.kind).length) continue;
+    if (!buildRows(p.kind).length) continue;
     list.push({ kind: "buildable", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id });
   }
   scanCache.set(area, { rev: area.interactionRevision, list });

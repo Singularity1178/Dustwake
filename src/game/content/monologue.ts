@@ -56,9 +56,18 @@ export const THOUGHTS: Record<string, ThoughtLine> = {
   /** Golem vision (Z): a buildable's pattern was learned. Each analysis emits one `analyzed` per plan, hence the cooldown. */
   "vision.analyzed": { text: "OBJECT ANALYZED.", on: { event: "analyzed" }, once: false, cooldown: 1 },
 
-  // ---- planned, waiting for their features (see docs/ARCHITECTURE.md, "Inner monologue"):
-  // "golem.dormant":   { text: "INTEGRITY INTACT, MISSING POWER SOURCE.", on: { event: "manageActor" }, if: ["subjectNoPower"], once: false, cooldown: 2 },
-  // "golem.underpowered": { text: "INSUFFICIENT POWER SOURCE.", on: { event: "manageActor" }, if: ["subjectWeakPower"], once: false, cooldown: 2 },
+  // ---- power. Only `manageActor` (E on a worker) diagnoses a body with no core: `subjectNoPower` holds for the
+  // unpowered guardian too, and E on it is talk, so a broader trigger would say this about the guardian.
+  /** E on the dormant worker golem (or any worker) with no core in it. */
+  "golem.dormant": { text: "INTEGRITY INTACT, MISSING POWER SOURCE.", on: { event: "manageActor" }, if: ["subjectNoPower"], once: false, cooldown: 2 },
+  /**
+   * A body holding a core of its family too weak for it (the guardian given the ruby core): when the core goes in,
+   * and on every interaction after. `talkedTo` fires on every talk, segment or idle line, unlike `dialogue`.
+   */
+  "golem.underpowered": {
+    text: "INSUFFICIENT POWER SOURCE.", tone: "warn", once: false, cooldown: 2, if: ["subjectWeakPower"],
+    on: [{ event: "manageActor" }, { event: "talkedTo" }, { event: "coreSlotted", match: { inserted: true } }],
+  },
 };
 
 export const thoughtTriggers = (l: ThoughtLine): ThoughtTrigger[] => (!l.on ? [] : Array.isArray(l.on) ? l.on : [l.on]);

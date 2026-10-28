@@ -27,6 +27,7 @@ import { packRef, storageRef, transferItems } from "./storage";
 import { actorMessage } from "./messages";
 import { lineOfSight } from "./navigation";
 import { think } from "./monologue";
+import { applySlotCore } from "./power";
 
 /** Vision mode ends by itself when work starts that takes the golem's attention elsewhere (talking, rune travel, stations...). */
 function endScanFor(a: Actor, spec: TaskSpec) {
@@ -297,6 +298,8 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
     case "manageActor":
       if (target?.actorId && actorById(w, target.actorId)) emit(w, { t: "manageActor", actor: a.id, target: target.actorId });
       break;
+    case "slotCore":
+      return applySlotCore(w, a, target?.actorId ? actorById(w, target.actorId) : undefined, e.item);
     case "harvest": {
       // A worker's blow at a chosen prop (jobs). The golem's own harvesting is the slam, which finds props itself.
       const p = target?.propId ? area.prop(target.propId) : undefined;

@@ -16,11 +16,14 @@ import { actorSpeed } from "./actorStats";
 import { cancelJob, tickJob } from "./jobs";
 import { toggleScan } from "./analysis";
 import { reactToEvents } from "./monologue";
+import { coreKey } from "./commands";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
   /** Attack (Space on the play screen): the two-arm ground slam. Independent of `use` (E). */
   attack?: boolean;
+  /** Slot or remove a power core in the golem body in front (C on the play screen; sim/commands.ts: coreKey). */
+  core?: boolean;
   /** Toggle the sim's interaction mode (the host only forwards a key press). */
   toggleScan?: boolean;
   /** Movement speed multiplier (debug/testing). Defaults to 1. */
@@ -33,7 +36,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const pl = player(w);
   const area = areaOf(w, pl);
   if (input.toggleScan) toggleScan(pl);
-  if (pl.job && pl.job.status !== "done" && (input.ix || input.iy || input.use || input.attack)) cancelJob(w, pl);
+  if (pl.job && pl.job.status !== "done" && (input.ix || input.iy || input.use || input.attack || input.core)) cancelJob(w, pl);
   tickTask(w, pl, dt);
   if (pl.job && pl.job.status !== "done" && (pl.job.status !== "paused" || pl.job.reason === "power")) {
     tickJob(w, pl, dt);
@@ -45,6 +48,8 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   const target = pl.task ? null : scan ?? findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
   if (!pl.task && target && input.use) ui = interact(w, pl, area, target);
+  // C: the core seam, its own key so talking (E) can never slot or remove one by accident.
+  if (!pl.task && !ui && input.core) coreKey(w, pl, area);
   // The attack is separate from interacting: available whenever the golem could act, target or not.
   if (!pl.task && !ui && input.attack) startSlam(pl);
   // Tutorial beat (one-shot): standing on the freshly charged circle starts the

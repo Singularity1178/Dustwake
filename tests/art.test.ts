@@ -28,7 +28,10 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 // mouth, and 39 entrance decals appended after the procedural pass (all within
 // tiles x 32-39, y 46-49). Everything else in the dungeon is unchanged
 // (was "558f8993").
-const GOLDEN = { props: "9b046139", items: "6cae5365", bake: "c475d9be" };
+// items: updated deliberately for the crown's retexture (its main stone is now the High-Grade Ruby, set in the
+// band): with the old crown function swapped back in, this list still hashes to the previous "6cae5365", so
+// no other legacy icon moved.
+const GOLDEN = { props: "9b046139", items: "644c5ccf", bake: "c475d9be" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();

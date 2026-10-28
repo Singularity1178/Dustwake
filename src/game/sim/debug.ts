@@ -1,6 +1,8 @@
 // Debug kits (testing only, not part of the game's rules): the same pure sim
 // functions the tests call, so what the Ctrl+6 key does is checked headless.
 import { FLAGS } from "../content/flags";
+import { RECIPES } from "../content/build";
+import { analysisFlag } from "../content/vision";
 import { ACTORS, actorDef } from "../content/actors";
 import type { ItemId } from "../content/items";
 import { player, setActorFlag, setFlag, type Actor, type World } from "../world/world";
@@ -14,6 +16,11 @@ export const GEAR_KIT_RUNES: ItemId[] = ["rune_swift", "rune_glow"];
 
 /** Every flag that unlocks a gear slot (read from the slot rows, so a new locked slot is covered with no change here). */
 export const slotUnlockFlags = (a?: Actor): string[] => Object.values((a ? actorDef(a) : ACTORS.golem).gearUnlocks ?? {}).flatMap((r) => r?.actorFlags ?? []);
+
+/** Debug only (Ctrl+4, Ctrl+6): every analysis-gated plan read, from the live catalog. Saves never do this. */
+export function learnAllPlans(w: World) {
+  for (const r of Object.values(RECIPES)) if (r.analysis) w.flags.add(analysisFlag(r.analysis));
+}
 
 /** Are all the slots that can be unlocked, unlocked? */
 export const allSlotsUnlocked = (w: World, a = player(w)) => slotUnlockFlags(a).every((f) => a.upgrades.includes(f));
@@ -33,7 +40,7 @@ export function toggleGearKit(w: World, a: Actor): boolean {
     reconcileGear(w, a);
     return false;
   }
-  setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry);
+  setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); learnAllPlans(w);
   ensureWorn(w, a, "basket");
   for (const [item, n] of GEAR_KIT) { const have = countItem(a, item); if (have < n) giveItem(w, a, item, n - have); }
   for (const r of GEAR_KIT_RUNES) if (!wears(a, r) && countItem(a, r) === 0) giveItem(w, a, r, 1);

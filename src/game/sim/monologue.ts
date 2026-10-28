@@ -21,7 +21,8 @@ export type ThoughtCondition = (c: ThoughtContext) => boolean;
 
 /**
  * The other actor a thought is about: the event's target/NPC, or the effect's
- * target actor. `powerChanged` is about the actor whose power changed.
+ * target actor (`coreSlotted` names the body as its `target`, `talkedTo` as
+ * its `npc`). `powerChanged` is about the actor whose power changed.
  */
 export function thoughtSubject(c: ThoughtContext): Actor | undefined {
   const e = c.event as Record<string, unknown> | undefined;
@@ -32,8 +33,8 @@ export function thoughtSubject(c: ThoughtContext): Actor | undefined {
 
 /**
  * Named conditions for `ThoughtLine.if`. Adding one is a row here. The two
- * power rows exist for the planned dormant-golem and weak-core lines (their
- * triggers wait for those features; tests prove they are data rows).
+ * power rows drive the dormant-golem line (E on a worker with no core) and the
+ * weak-core line (the guardian given the ruby core).
  */
 export const THOUGHT_CONDITIONS: Record<string, ThoughtCondition> = {
   /** The subject has a body that needs power and no core in it. */

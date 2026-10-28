@@ -91,6 +91,10 @@ export type SimEvent =
   /** The golem's eye was mended (by NPC `by`). */
   | { t: "eyeRepaired"; actor: string; by?: string }
   | { t: "powerChanged"; actor: string; powered: boolean }
+  /** `actor` slotted `item` into `target`'s body (inserted) or took it out; `powered`: target's state after. The player's event (powerChanged is the target's). */
+  | { t: "coreSlotted"; actor: string; target: string; item: ItemId; inserted: boolean; powered: boolean }
+  /** `actor` talked to NPC actor `npc`: every time, whether a segment plays (then `dialogue` follows) or only the idle line. */
+  | { t: "talkedTo"; actor: string; npc: string }
   | { t: "jobChanged"; actor: string; status: string; reason?: string }
   | { t: "manageActor"; actor: string; target: string }
   | { t: "openStorage"; actor: string; prop: string }

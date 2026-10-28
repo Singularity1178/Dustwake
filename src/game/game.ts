@@ -5,7 +5,10 @@ import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/items";
 import { hasItem, addItems } from "./sim/inventory";
 import { ensureWorn, golemGlow, runeMarks } from "./sim/gear";
-import { toggleGearKit } from "./sim/debug";
+import { toggleGearKit, learnAllPlans } from "./sim/debug";
+import { storageNote } from "./sim/storage";
+import { coreActionFor, coreCheck } from "./sim/power";
+import { powered } from "./sim/actorStats";
 import { GOLEM_LIGHT } from "./content/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
@@ -367,9 +370,9 @@ export class Game {
       // Building tests: every build knowledge flag (incl. masonry for the brazier),
       // the basket worn on the back (the one in the pack if there is one, else a
       // new one), and enough materials to build one of everything several times.
-      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); ensureWorn(w, pl, "basket");
+      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); learnAllPlans(w); ensureWorn(w, pl, "basket");
       for (const id of ["wood", "stone", "planks", "cut_stone"] as ItemId[]) addItems(w, pl, id, 40);
-      say("DEBUG: BUILD + MASONRY + BASKET + MATERIALS");
+      say("DEBUG: BUILD + MASONRY + PLANS + BASKET + MATERIALS");
     } else if (n === 6) {
       // Gear and crafting tests (sim/debug.ts): ON grants the crafted and raw materials, the chisel and both runes,
       // wears the basket and unlocks every locked gear slot; OFF locks them again (what they hold returns to the pack).
@@ -564,6 +567,42 @@ export class Game {
       case "openStation":
         if (e.actor === this.world.playerId && this.screens.is("play") && e.station === "crafting") this.craftUi.open(e.station, e.prop);
         break;
+      case "openStorage": {
+        // SEAM: the storage screen replaces this note. Until it exists, E on a chest says what it holds.
+        const text = e.actor === this.world.playerId && this.screens.is("play") ? storageNote(this.area, e.prop) : null;
+        if (text) { this.sfx.open(); this.say(text); }
+        break;
+      }
+      case "manageActor": {
+        // SEAM: the worker management screen (tasks, runes, inventory) replaces this. Until then the golem
+        // only thinks about a body with no core (content/monologue.ts), and this says what C would do.
+        const a = actorById(this.world, e.target);
+        if (!a || e.actor !== this.world.playerId) break;
+        const act = coreActionFor(pl, a);
+        if (powered(a) && act.op === "remove") this.say("IDLE: NO TASK GIVEN. C TAKES ITS CORE");
+        else if (act.op === "insert") this.say(`C TO SLOT THE ${ITEM_NAMES[act.item]}`);
+        break;
+      }
+      case "coreSlotted": {
+        // The core seam's feedback (sim/power.ts), both ways. In: the latch, a hum, embers, the core flaring as it
+        // boots before it settles to its faint idle glow. Out: the latch, the hum falling, a puff of dust.
+        const a = actorById(this.world, e.target);
+        if (!a) break;
+        const L = this.npcLook(a), name = ITEM_NAMES[e.item];
+        if (e.inserted) {
+          this.sfx.coreIn(e.powered);
+          if (e.powered) L.flare = 1;
+          this.coreSparks(a, e.powered ? 14 : 5, e.powered);
+          this.say(e.powered ? `${name} SLOTTED - IT POWERS ON` : `${name} SLOTTED`);
+        } else {
+          const ran = coreCheck(a, e.item).sufficient;
+          this.sfx.coreOut(ran);
+          L.flare = 0;
+          for (let i = 0; i < 6; i++) this.spawn({ x: a.x + (Math.random() - 0.5) * 10, y: a.y, z: 6 + Math.random() * 6, vx: (Math.random() - 0.5) * 14, vz: 4 + Math.random() * 6, life: 0.8, kind: "dust", col: "#8a8478", g: 10 });
+          this.say(ran ? `${name} TAKEN OUT - IT POWERS DOWN` : `${name} TAKEN OUT`);
+        }
+        break;
+      }
       case "built":
         this.sfx.place(); this.sfx.tone(520, 0.2, "triangle", 0.05);
         for (let i = 0; i < 10; i++) this.spawn({ x: e.x, y: e.y - 14, z: 2, vx: (Math.random() - 0.5) * 30, vz: 10 + Math.random() * 20, life: 0.6, kind: "spark", col: "#ffb040", emit: true, g: 80 });
@@ -766,7 +805,7 @@ export class Game {
     if (this.has("arrowup", "w")) iy -= 1;
     if (this.has("arrowdown", "s")) iy += 1;
     // E / Enter interact, Space attacks (the two-arm slam): separate actions, both usable next to anything.
-    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), toggleScan: this.hit("z"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
+    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), core: this.hit("c"), toggleScan: this.hit("z"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
     this.drainEvents();
     // golem damage sparks
     lk.sparkT -= dt;
@@ -1440,8 +1479,10 @@ export class Game {
   updateNpcLooks(dt: number) {
     const area = this.area;
     for (const a of this.world.actors) {
-      if (a.kind !== "npc" || a.area !== area.id) continue;
-      if (!npcDef(a.npc)) continue;
+      if (a.area !== area.id || a.id === this.world.playerId) continue;
+      // Bodies without a dialogue identity (workers) only use `flare`: a core's boot flash, fading out.
+      if (!npcDef(a.npc)) { const W = this.npcLooks.get(a.id); if (W) W.flare = Math.max(0, W.flare - dt * 0.8); continue; }
+      if (a.kind !== "npc") continue;
       const def = actorDef(a);
       const L = this.npcLook(a), on = isAwake(this.world, a.id);
       L.wakeT += dt; L.sleepT += dt;
@@ -1459,6 +1500,13 @@ export class Game {
         lt.int = L.eye * 0.42 + L.flare * 0.5 + (L.reach > 0.8 ? 0.25 : 0);
       }
     }
+  }
+
+  /** Embers from a golem's core hatch as a core seats: bright when it powers the body, a few dull ones when too weak. */
+  coreSparks(a: Actor, n: number, bright: boolean) {
+    const z = actorDef(a).body.height * 0.55;
+    for (let i = 0; i < n; i++)
+      this.spawn({ x: a.x + (Math.random() - 0.5) * 4, y: a.y + 1, z: z + Math.random() * 3, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.2) * 16, vz: 8 + Math.random() * 24, life: 0.3 + Math.random() * 0.4, kind: "spark", col: bright ? (Math.random() < 0.5 ? "#ff5a70" : "#ffc0c8") : "#8a3040", emit: true, g: 110 });
   }
 
   npcSparks(a: Actor, n: number) {

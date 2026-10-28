@@ -8,6 +8,7 @@ import type { Area, PropInst } from "../world/area";
 import { capacity } from "./inventory";
 import { copySlots, countItem, insertItems, removeItems, roomIn } from "./inventoryOps";
 import { rememberItem } from "./discovery";
+import { RECIPES, recipeForProp } from "../content/build";
 
 export type InventoryRef = { kind: "actor"; id: string } | { kind: "prop"; area: string; id: string };
 export interface InventoryHandle {
@@ -87,4 +88,16 @@ export function consumeInputs(sources: InventoryHandle[], inputs: readonly { ite
   }
   for (const h of dirty) h.commit();
   return true;
+}
+/**
+ * What E on a storage prop says until the storage screen exists: the host's
+ * `openStorage` seam shows this note (the screen will replace it). Honest about
+ * what is inside; nothing is moved.
+ */
+export function storageNote(area: Area, propId: string): string | null {
+  const p = area.prop(propId), slots = p?.inventory;
+  if (!p || !slots) return null;
+  const id = recipeForProp(p.kind), name = id ? RECIPES[id].name : "STORAGE";
+  const used = slots.filter(Boolean).length;
+  return used ? `${name}: ${used} OF ${slots.length} SLOTS IN USE` : `${name}: EMPTY, ${slots.length} SLOTS`;
 }

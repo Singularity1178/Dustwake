@@ -2,11 +2,11 @@
 // unknown recipe), plus pure search, filter and sort over entries. No DOM; the
 // build menu renders whatever `queryCatalog` returns, and tests drive these
 // functions directly with synthetic catalogs of any size.
-import { RECIPES, categoryIndex, categoryName, costTotal, type Recipe } from "../content/build";
+import { RECIPES, categoryIndex, categoryName, costTotal, scanHint, type Recipe } from "../content/build";
 import { ITEM_NAMES } from "../content/items";
 import type { Actor, World } from "../world/world";
 import { countItem } from "./inventory";
-import { recipeKnown } from "./analysis";
+import { planLock, type PlanLock } from "./analysis";
 
 export type EntryStatus = "ok" | "cost" | "unknown";
 export interface CostLine { item: Recipe["cost"][number]["item"]; need: number; have: number }
@@ -15,6 +15,8 @@ export interface CatalogEntry {
   id: string;
   recipe: Recipe;
   status: EntryStatus;
+  /** Why an `unknown` entry is locked: missing knowledge, or a plan not yet analyzed. */
+  lock?: PlanLock;
   /** Cost against what the builder carries. */
   lines: CostLine[];
 }
@@ -39,11 +41,11 @@ export interface CatalogQuery {
 
 /** Status of one recipe for an actor. Hidden-until-known recipes return null. */
 export function entryFor(w: World, a: Actor, id: string, r: Recipe = RECIPES[id]): CatalogEntry | null {
-  const known = recipeKnown(w, a, r);
-  if (!known && r.unknown === "hidden") return null;
+  const lock = planLock(w, a, r);
+  if (lock && r.unknown === "hidden") return null;
   const lines = r.cost.map((c) => ({ item: c.item, need: c.n, have: countItem(a, c.item) }));
-  const status: EntryStatus = !known ? "unknown" : lines.every((l) => l.have >= l.need) ? "ok" : "cost";
-  return { id, recipe: r, status, lines };
+  const status: EntryStatus = lock ? "unknown" : lines.every((l) => l.have >= l.need) ? "ok" : "cost";
+  return lock ? { id, recipe: r, status, lock, lines } : { id, recipe: r, status, lines };
 }
 
 /** Every listable entry of a recipe table (default: RECIPES) for an actor. */
@@ -92,8 +94,10 @@ export function queryCatalog(entries: readonly CatalogEntry[], q: CatalogQuery):
   return sortEntries(kept, q.sort);
 }
 
-/** Why an entry can't be built, for the detail panel ("" if it can). */
+/** Why an entry can't be built, for the detail panel's status line ("" if it can). At most 36 characters. */
 export function entryReason(e: CatalogEntry): string {
+  // Known how to build, plan not read yet: say what to scan, and that vision is Z.
+  if (e.status === "unknown" && e.lock === "analysis") return `SCAN ${scanHint(e.recipe)} IN VISION (Z)`;
   if (e.status === "unknown") return "UNKNOWN RECIPE - NOT YET LEARNED";
   if (e.status === "cost") {
     const miss = e.lines.filter((l) => l.have < l.need).map((l) => `${l.need - l.have} ${ITEM_NAMES[l.item]}`);

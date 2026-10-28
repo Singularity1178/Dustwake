@@ -7,7 +7,8 @@ import type { Requirement } from "./interactions";
 export interface ActorDef {
   name: string;
   body: { box: [number, number]; height: number; reach: number };
-  art: { key: string; scale?: number };
+  /** Draw function: `golem` (golem.ts), an NPC_ART key (npcArt.ts) or a BODY_ART key (workerArt.ts). */
+  art: { key: string };
   speed: number;
   speedTiers?: { requires: Requirement; speed: number }[];
   harvestPower: number;
@@ -34,12 +35,14 @@ export const ACTORS: Record<string, ActorDef> = {
     power: { family: "golem", tier: 3 }, capabilities: ["talk"],
     eyeLight: { dx: 0, dy: -24, rad: 46, col: [0.5, 0.85, 1] },
   },
-  // Foundation fixtures only: neither worker is placed by a production builder.
+  // The general worker body: simpler and lower in rank than the maintainer, no autonomy, only what it is tasked.
+  // One stands dormant in the artificery (map.ts, `npc.worker.artificery`); the ?debug fixture uses it too.
   worker_golem: {
-    name: "LESSER GOLEM", body: { box: [8, 4], height: 20, reach: 18 }, art: { key: "golem", scale: 0.85 },
+    name: "WORKER GOLEM", body: { box: [8, 4], height: 20, reach: 18 }, art: { key: "worker" },
     speed: 16, harvestPower: 0.5, inventory: { slots: 8 }, gearSlots: ["rune0"],
     power: { family: "golem", tier: 1 }, capabilities: ["move", "harvest", "craft", "travel", "worker"],
   },
+  // Fixture-only (tests): no builder, NPCS row or migration produces one, and its "human" art is a stand-in.
   npc_worker: {
     name: "WORKER", body: { box: [8, 6], height: 22, reach: 18 }, art: { key: "human" },
     speed: 20, harvestPower: 0.75, inventory: { slots: 8 }, gearSlots: ["head", "back", "armR", "armL"],

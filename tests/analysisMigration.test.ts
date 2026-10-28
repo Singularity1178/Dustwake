@@ -122,6 +122,7 @@ test("interacting with a worker asks for actor management, not a player-only dia
 function oldSave(knowledge: boolean) {
   const s: any = serialize(createWorld(19));
   s.version = 9;
+  s.actors = s.actors.filter((a: any) => a.id !== "npc.worker.artificery"); // no worker golem existed before v12
   s.flags = ["golem.arm", "golem.slot.rune1", "golem.eye", ...(knowledge ? ["know.build"] : [])];
   for (const a of s.actors) for (const key of ["definition", "upgrades", "powerCore", "mode", "job", "jobSeq"]) delete a[key];
   s.actors[0].gear = { back: "basket", rune1: "rune_swift" };
@@ -132,7 +133,7 @@ function oldSave(knowledge: boolean) {
 
 test("v9 migrates body flags onto only the player, preserves gear and grants only frozen legacy analyses", () => {
   const raw = oldSave(true), original = JSON.stringify(raw), w = deserialize(raw), pl = player(w), guardian = actorById(w, "npc.guardian")!;
-  assert.equal(SAVE_VERSION, 11); assert.equal(serialize(w).version, 11); // v11: the inner monologue
+  assert.equal(SAVE_VERSION, 12); assert.equal(serialize(w).version, 12); // v12: the production rollout
   assert.equal(JSON.stringify(raw), original, "migrating never mutates the caller's JSON");
   assert.equal(pl.definition, "golem"); assert.equal(guardian.definition, "guardian");
   assert.deepEqual(pl.upgrades, ["golem.arm", "golem.slot.rune1"]); assert.deepEqual(guardian.upgrades, []);

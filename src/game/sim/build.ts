@@ -12,7 +12,7 @@ import type { ItemId } from "../content/items";
 import { countItem, removeItems, giveItem, dropSpot, spawnLoose } from "./inventory";
 import { actorBoxes, propBlocks } from "./collision";
 import type { Box } from "./reach";
-import { recipeKnown } from "./analysis";
+import { learnPlans, recipeKnown } from "./analysis";
 import { capable } from "../content/actors";
 import { powered } from "./actorStats";
 
@@ -263,4 +263,10 @@ export function applyDeconstruct(w: World, a: Actor, area: Area, propId: string 
   }
   for (const c of chk.refund) giveItem(w, a, c.item, c.n);
   emit(w, { t: "deconstructed", actor: a.id, prop: p.id, kind: p.kind, x: p.x, y: p.y });
+  // Taking a thing apart reads its pattern as surely as scanning it, so no plan
+  // is ever lost with the last example of its kind (the dungeon's only workbench).
+  if (capable(a, "scan")) {
+    const fresh = learnPlans(w, a, p);
+    if (fresh.length && a.id === w.playerId) emit(w, { t: "message", text: `PLAN LEARNED: ${fresh[0][1].name}` });
+  }
 }

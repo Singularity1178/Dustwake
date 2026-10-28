@@ -58,6 +58,8 @@ export function applyDialogueEffect(w: World, a: Actor, e: Effect, target?: Targ
       const script = DIALOGUE[scriptId];
       if (!script) break;
       const seg = currentSegment(w, a, script);
+      // Every talk, whatever it shows: a segment's `dialogue` follows, or the idle line once the story is done.
+      emit(w, { t: "talkedTo", actor: a.id, npc: npc.id });
       if (seg) emit(w, { t: "dialogue", actor: a.id, npc: npc.id, script: scriptId, segment: seg.id });
       else emit(w, { t: "message", text: script.idle });
       break;

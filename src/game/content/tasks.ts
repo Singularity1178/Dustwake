@@ -82,6 +82,12 @@ export type Effect =
   | { op: "analyze" }
   | { op: "useStorage" }
   | { op: "manageActor" }
+  /**
+   * Slot a power core into the body at target.actorId (`item`), or take its core
+   * out (`item: null`). One seam for both ways: the C key starts it today, the
+   * management screen will later. Re-validates when it fires (sim/power.ts).
+   */
+  | { op: "slotCore"; item: ItemId | null }
   | { op: "deposit"; item: ItemId; n: number }
   /** One blow against a harvestable prop (target.propId): a worker's job. The golem harvests with the slam instead, which needs no target. */
   | { op: "harvest" }

@@ -174,6 +174,18 @@ export class Sfx {
     this.noise(0.2, 0.08, "lowpass", 500, 1, 1.1);
   }
 
+  /** A core seated in a golem's hatch: the latch, then (if it powers the body) a rising hum and a small ready blip; too weak, a hum that sags. */
+  coreIn(powers: boolean) {
+    this.tone(220, 0.08, "square", 0.05, 110); this.noise(0.06, 0.08, "bandpass", 2200, 4);
+    if (powers) { this.tone(70, 0.9, "sawtooth", 0.035, 180, 0.08); this.tone(660, 0.18, "triangle", 0.035, 880, 0.75); }
+    else { this.tone(70, 0.7, "sawtooth", 0.03, 110, 0.08); this.tone(110, 0.6, "sawtooth", 0.025, 50, 0.5); }
+  }
+  /** A core drawn out: the latch, the hum falling away (only if the body ran on it). */
+  coreOut(powered: boolean) {
+    this.tone(180, 0.08, "square", 0.05, 260); this.noise(0.06, 0.08, "bandpass", 1800, 4);
+    if (powered) { this.tone(180, 0.8, "sawtooth", 0.03, 50, 0.06); this.tone(70, 0.2, "sine", 0.2, 40, 0.8); }
+  }
+
   setHum(level: number) {
     const c = this.ctx; if (!c || !this.master) return;
     if (!this.hum) {
