@@ -6,13 +6,18 @@
 import { actorDef } from "../content/actors";
 import { drawGolem, type GolemPose } from "../golem";
 import { NPC_ART, type NpcPose } from "../npcArt";
-import { BODY_ART, workerPose, workerState } from "../workerArt";
+import { BODY_ART } from "../workerArt";
+import { animPose, initWorkerAnim, taskMotion, type WorkerAnim } from "../workerAnim";
 import { Pen, clamp } from "../util";
 import { powered } from "../sim/actorStats";
 import { runeMarks } from "../sim/gear";
 import type { Actor, World } from "../world/world";
 
-interface Look { awake: number; eye: number; flare: number; reach: number }
+/**
+ * What the host eases per actor (game.ts: NpcLook). `worker` is a worker body's animation sequencer (workerAnim.ts,
+ * stepped by the host; made at rest on first draw when absent), `lift` how far a rune holds it off the ground, px.
+ */
+interface Look { awake: number; eye: number; flare: number; reach: number; worker?: WorkerAnim; lift?: number }
 
 /** Working: powered, with a task in hand or an order running. Powered with neither is idle, and looks dormant. */
 export const actorActive = (a: Actor) => powered(a) && (!!a.task || a.job?.status === "running");
@@ -34,14 +39,16 @@ export function drawActor(sc: CanvasRenderingContext2D, ec: CanvasRenderingConte
   const task = a.task;
   const bodyArt = BODY_ART[d.art.key];
   if (bodyArt) {
-    // Unpowered, powered-idle or working; `flare` (set by the host when a core goes in) flashes the core as it boots.
-    const pose = workerPose(workerState(powered(a), active), {
-      facing: a.facing, phase: a.phase, moving: a.moving, t, hasCore: !!a.powerCore, boot: clamp(look.flare, 0, 1),
-      raise: task?.kind === "punch" ? Math.sin(task.t / task.dur * Math.PI * 2) : 0,
-      reach: task && task.kind !== "punch" ? Math.abs(Math.sin(task.t * 8)) : 0,
+    // The sim says powered / working / has a core; the sequencer (stepped by the host) turns that into a posture.
+    // Walking and task motion layer on top. A rune channel adds nothing: it stands, and the rune plays its own effect.
+    const anim = (look.worker ??= initWorkerAnim({ powered: powered(a), active, moving: a.moving, hasCore: !!a.powerCore }));
+    const pose = animPose(anim, {
+      facing: a.facing, phase: a.phase, moving: a.moving, t, hasCore: !!a.powerCore,
+      task: task ? taskMotion(task.kind, task.t, task.dur) : undefined,
     });
-    bodyArt(new Pen(sc, false), x, y, pose);
-    bodyArt(new Pen(ec, true), x, y, pose);
+    const lift = Math.round(look.lift ?? 0);
+    bodyArt(new Pen(sc, false), x, y - lift, pose);
+    bodyArt(new Pen(ec, true), x, y - lift, pose);
     return;
   }
   if (d.art.key === "golem") {

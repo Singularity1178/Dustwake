@@ -36,11 +36,11 @@ function sheet(rows: Cell[][], cw: number, ch: number, ax: number, ay: number) {
 export function run(dir = "snapshots", scale = 6) {
   (globalThis as unknown as { document: unknown }).document = { createElement: () => new RCanvas() };
   mkdirSync(dir, { recursive: true });
-  const worker = (state: WorkerState, extra: { moving?: boolean; phase?: number; raise?: number; reach?: number; hasCore?: boolean; boot?: number } = {}) =>
-    FACINGS.map((facing): Cell => (p, x, y) => drawWorker(p, x, y, workerPose(state, { facing, phase: extra.phase ?? 0, moving: !!extra.moving, t: 0.3, hasCore: extra.hasCore ?? state !== "off", raise: extra.raise, reach: extra.reach, boot: extra.boot })));
+  const worker = (state: WorkerState, extra: { moving?: boolean; phase?: number; swing?: number; reach?: number; hasCore?: boolean; boot?: number } = {}) =>
+    FACINGS.map((facing): Cell => (p, x, y) => drawWorker(p, x, y, workerPose(state, { facing, phase: extra.phase ?? 0, moving: !!extra.moving, t: 0.3, hasCore: extra.hasCore ?? state !== "off", swing: extra.swing, reach: extra.reach, boot: extra.boot })));
   const rows: Cell[][] = [
     worker("off"), worker("idle"), worker("idle", { boot: 1 }), worker("work"),
-    worker("work", { moving: true, phase: 1.3 }), worker("work", { moving: true, phase: 4.4 }), worker("work", { raise: 1 }), worker("work", { reach: 1 }),
+    worker("work", { moving: true, phase: 1.3 }), worker("work", { moving: true, phase: 4.4 }), worker("work", { swing: 1 }), worker("work", { reach: 1 }),
     [
       (p, x, y) => drawGolem(p, x, y, { facing: "down", phase: 0, moving: false, hasArm: true, dormant: 0, eye: 1, core: 1, raise: 0, reach: 0, t: 0.3, eyeFixed: true }),
       (p, x, y) => drawWorker(p, x, y, workerPose("work", { facing: "down", phase: 0, moving: false, t: 0.3, hasCore: true })),

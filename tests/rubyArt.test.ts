@@ -18,11 +18,11 @@ import { createWorld, actorById } from "../src/game/world/world";
 import { ARTIFICERY_WORKER } from "../src/game/map";
 import { powered } from "../src/game/sim/actorStats";
 
-const GOLDEN = { icons: "24c7cf22", worker: "c9aea7c7" };
+const GOLDEN = { icons: "24c7cf22", worker: "fb2f6126" };
 const FACINGS: Facing[] = ["down", "left", "up", "right"];
 const STATES: WorkerState[] = ["off", "idle", "work"];
-const pose = (state: WorkerState, facing: Facing, extra: Partial<{ moving: boolean; phase: number; raise: number; reach: number; boot: number }> = {}) =>
-  workerPose(state, { facing, phase: extra.phase ?? 0, moving: !!extra.moving, t: 0.3, hasCore: state !== "off", raise: extra.raise, reach: extra.reach, boot: extra.boot });
+const pose = (state: WorkerState, facing: Facing, extra: Partial<{ moving: boolean; phase: number; swing: number; reach: number; boot: number }> = {}) =>
+  workerPose(state, { facing, phase: extra.phase ?? 0, moving: !!extra.moving, t: 0.3, hasCore: state !== "off", swing: extra.swing, reach: extra.reach, boot: extra.boot });
 
 /** Rasterise one pass of one pose at feet (16, 26) on a 32x32 canvas; returns its RGBA pixels. */
 function raster(p: ReturnType<typeof pose>, emit: boolean) {
@@ -42,11 +42,11 @@ test("new icons: the High-Grade Ruby and the Ruby Golem Core are pixel-stable", 
   assert.equal(traceHash(), GOLDEN.icons);
 });
 
-test("the worker body: three states in every facing, walking, punching and reaching, both passes, pixel-stable", () => {
+test("the worker body: three states in every facing, walking, swinging and reaching, both passes, pixel-stable", () => {
   assert.equal(BODY_ART.worker, drawWorker);
   resetTrace();
   const c = makeCanvas(32, 32);
-  const all = [...STATES.flatMap((s) => FACINGS.map((f) => pose(s, f))), ...FACINGS.flatMap((f) => [pose("work", f, { moving: true, phase: 1.3 }), pose("work", f, { moving: true, phase: 4.4 }), pose("work", f, { raise: 1 }), pose("work", f, { reach: 1 }), pose("idle", f, { boot: 1 })])];
+  const all = [...STATES.flatMap((s) => FACINGS.map((f) => pose(s, f))), ...FACINGS.flatMap((f) => [pose("work", f, { moving: true, phase: 1.3 }), pose("work", f, { moving: true, phase: 4.4 }), pose("work", f, { swing: 1 }), pose("work", f, { swing: -1 }), pose("work", f, { reach: 1 }), pose("idle", f, { boot: 1 })])];
   for (const p of all) { drawWorker(new Pen(c.ctx, false), 16, 26, p); drawWorker(new Pen(c.ctx, true), 16, 26, p); }
   assert.equal(traceHash(), GOLDEN.worker);
 });
@@ -67,12 +67,13 @@ test("glow by state: unpowered emits nothing; powered-idle only a faint core; wo
   assert.ok(pose("idle", "down", { boot: 1 }).core > pose("idle", "down").core, "a core flares as it boots, then settles");
 });
 
-test("powered-idle keeps the dormant posture: against unpowered, only the core window's pixels change", () => {
+test("powered-idle keeps the dormant posture: against unpowered, only the core's pixels change (window, or vent slats from behind)", () => {
   for (const f of FACINGS) {
     const a = raster(pose("off", f), false), b = raster(pose("idle", f), false), diff: number[] = [];
     for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) diff.push(i / 4);
-    assert.ok(diff.length > 0 && diff.length <= 4, `${f}: ${diff.length} pixels differ`);
-    for (const i of diff) assert.ok(Math.floor(i / 32) >= 26 - 12 && Math.floor(i / 32) <= 26 - 9, `${f}: a change outside the core (${i % 32},${Math.floor(i / 32)})`);
+    assert.ok(diff.length > 0 && diff.length <= 6, `${f}: ${diff.length} pixels differ`);
+    // crouched: the torso top is 26 - 2 - 8 = 16; the hatch window and the vent slats sit 3..5 rows below it
+    for (const i of diff) assert.ok(Math.floor(i / 32) >= 16 + 3 && Math.floor(i / 32) <= 16 + 5, `${f}: a change outside the core (${i % 32},${Math.floor(i / 32)})`);
     const work = raster(pose("work", f), false);
     assert.notDeepEqual([...work], [...b], `${f}: working stands differently`);
   }
@@ -80,11 +81,11 @@ test("powered-idle keeps the dormant posture: against unpowered, only the core w
 
 test("through drawActor (and so golem vision's per-frame retrace into its scratch canvas) the worker draws in every state", () => {
   const w = createWorld(3), wk = actorById(w, ARTIFICERY_WORKER.id)!;
-  const look = { awake: 0, eye: 0, flare: 0, reach: 0 };
   const states: WorkerState[] = [];
   for (const setup of [() => {}, () => { wk.powerCore = "ruby_core"; }, () => { wk.task = { kind: "punch", dur: 0.75, t: 0.2, fired: false }; }]) {
     setup();
     states.push(workerState(powered(wk), actorActive(wk)));
+    const look = { awake: 0, eye: 0, flare: 0, reach: 0 }; // a fresh look per state: the sequencer starts at rest in what the sim says
     const sc = new RCanvas(56, 64), ec = new RCanvas(56, 64); // view/vision.ts: ACTOR_BOX, feet at (28, 58)
     drawActor(sc.getContext() as unknown as CanvasRenderingContext2D, ec.getContext() as unknown as CanvasRenderingContext2D, w, wk, Math.round(wk.x) - 28, Math.round(wk.y) - 58, 0.3, look);
     let opaque = 0; for (let i = 3; i < sc.data.length; i += 4) if (sc.data[i] > 0) opaque++;

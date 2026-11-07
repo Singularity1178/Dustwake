@@ -46,7 +46,9 @@ import { ScreenStack, type Screen } from "./ui/screens";
 import { BASE_W, BASE_H, ZOOM_STEPS, ZOOM_DEFAULT, viewSize, nextZoomStep } from "./view/zoom";
 import { npcDef } from "./content/npcs";
 import { actorDef } from "./content/actors";
-import { drawActor } from "./view/actors";
+import { drawActor, actorActive } from "./view/actors";
+import { powered } from "./sim/actorStats";
+import { initWorkerAnim, stepWorkerAnim, drainCues, type WorkerAnim, type AnimCue } from "./workerAnim";
 import { eventAudience } from "./view/audience";
 import { VisionView, type VisionCue, type VisionArt } from "./view/vision";
 import type { Target } from "./content/tasks";
@@ -62,7 +64,11 @@ export const W = BASE_W, H = BASE_H;
 export { ZOOM_STEPS, ZOOM_DEFAULT, viewSize };
 
 /** Presentation state of one NPC (eased pose, eye, flare). Not saved: derived from flags on load. */
-interface NpcLook { awake: number; eye: number; wakeT: number; sleepT: number; reach: number; flare: number }
+interface NpcLook {
+  awake: number; eye: number; wakeT: number; sleepT: number; reach: number; flare: number;
+  /** A worker body's animation sequencer (workerAnim.ts), the px a rune holds it off the ground, when it was last stepped, and whether it just arrived through a rune. */
+  worker?: WorkerAnim; lift: number; seen: number; arrived: boolean;
+}
 
 /**
  * First arrival on the surface, in seconds since the arrive screen opened. The
@@ -494,6 +500,7 @@ export class Game {
     if (!evs.length) return;
     this.world.events = [];
     for (const e of evs) {
+      if (e.t === "travelled" && e.actor !== this.world.playerId) { this.workerTravelled(e); continue; }
       const aud = eventAudience(this.world, e);
       if (aud === "player") this.onEvent(e);
       else if (aud === "nearby") this.onNearby(e);
@@ -593,7 +600,7 @@ export class Game {
         if (e.inserted) {
           this.sfx.coreIn(e.powered);
           if (e.powered) L.flare = 1;
-          this.coreSparks(a, e.powered ? 14 : 5, e.powered);
+          this.coreSparks(a, e.powered ? 6 : 5, e.powered); // the latch; the boot animation sparks it again as it lights
           this.say(e.powered ? `${name} SLOTTED - IT POWERS ON` : `${name} SLOTTED`);
         } else {
           const ran = coreCheck(a, e.item).sufficient;
@@ -1472,7 +1479,7 @@ export class Game {
     let L = this.npcLooks.get(a.id);
     if (!L) {
       const on = isAwake(this.world, a.id) ? 1 : 0;
-      L = { awake: on, eye: on, wakeT: 99, sleepT: 99, reach: 0, flare: 0 };
+      L = { awake: on, eye: on, wakeT: 99, sleepT: 99, reach: 0, flare: 0, lift: 0, seen: -99, arrived: false };
       this.npcLooks.set(a.id, L);
     }
     return L;
@@ -1483,8 +1490,8 @@ export class Game {
     const area = this.area;
     for (const a of this.world.actors) {
       if (a.area !== area.id || a.id === this.world.playerId) continue;
-      // Bodies without a dialogue identity (workers) only use `flare`: a core's boot flash, fading out.
-      if (!npcDef(a.npc)) { const W = this.npcLooks.get(a.id); if (W) W.flare = Math.max(0, W.flare - dt * 0.8); continue; }
+      // Bodies without a dialogue identity (workers): the sequencer decides how they stand, sit and shut down.
+      if (!npcDef(a.npc)) { this.updateWorkerLook(a, dt); continue; }
       if (a.kind !== "npc") continue;
       const def = actorDef(a);
       const L = this.npcLook(a), on = isAwake(this.world, a.id);
@@ -1503,6 +1510,74 @@ export class Game {
         lt.int = L.eye * 0.42 + L.flare * 0.5 + (L.reach > 0.8 ? 0.25 : 0);
       }
     }
+  }
+
+  /**
+   * A worker body, one frame: step its animation sequencer from what the sim says (powered, working, moving, has a core),
+   * play the sounds and dust the sequence asks for, and, while it channels a rune, hold it up in the rune's own effect.
+   * A worker that was out of the player's area (or the screen) starts at rest in whatever the sim says it is.
+   */
+  private updateWorkerLook(a: Actor, dt: number) {
+    const L = this.npcLook(a);
+    const inp = { powered: powered(a), active: actorActive(a), moving: a.moving, hasCore: !!a.powerCore };
+    if (!L.worker || this.t - L.seen > 0.5) { L.worker = initWorkerAnim(inp); if (!L.arrived) L.lift = 0; }
+    L.seen = this.t; L.arrived = false;
+    stepWorkerAnim(L.worker, dt, inp);
+    for (const cue of drainCues(L.worker)) this.workerCue(a, cue);
+    L.flare = Math.max(0, L.flare - dt * 0.8);
+    const task = a.task;
+    if (task?.kind === "channel" && task.target) {
+      // Rune travel. The body does nothing of its own (it just stands at the rune); the rune does the effect:
+      // the worker is lifted, motes spiral into the rune and a column of light builds, as the maintainer's jump does.
+      const c = task.target, lift = task.dur - 1.0;
+      L.lift = Math.min(task.t, lift) * 5.5 + Math.sin(task.t * 3);
+      const n = Math.floor(dt * 150 + Math.random());
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2, r = 12 + Math.random() * 26;
+        this.spawn({ x: c.x + Math.cos(ang) * r, y: c.y + Math.sin(ang) * r, z: 1, vx: -Math.cos(ang) * r * 0.8, vy: -Math.sin(ang) * r * 0.8, vz: 8 + Math.random() * 16, life: 1.0, kind: "rune", col: Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: -5 });
+      }
+      if (task.t - dt <= 0) this.runeBlip(c.x, c.y, 0.7);
+    } else L.lift = Math.max(0, L.lift - dt * 26);
+    // its core and lamp light the floor round it
+    const lt = this.view.dynamicLight("npc:" + a.id, () => makeLight(a.x, a.y - 9, 38, [1, 0.38, 0.34], 0, 0.07, "npc:" + a.id));
+    lt.x = a.x; lt.y = a.y - 9 - L.lift;
+    if (Math.abs(lt.x - lt.vx) > 2 || Math.abs(lt.y - lt.vy) > 2) computeVis(lt, this.area);
+    lt.int = L.worker.out.core * 0.2 + L.worker.out.eye * 0.1 + (task?.kind === "channel" ? 0.3 : 0);
+  }
+
+  /** The sounds and dust of a worker's animation cues (workerAnim.ts), quiet when it is far off. */
+  private workerCue(a: Actor, cue: AnimCue) {
+    const near = this.volAt(a.x, a.y) > 0.15;
+    const dust = (n: number) => { for (let i = 0; i < n; i++) this.spawn({ x: a.x + (Math.random() - 0.5) * 12, y: a.y + 1, z: 1, vx: (Math.random() - 0.5) * 22, vy: (Math.random() - 0.5) * 8, vz: 6 + Math.random() * 6, life: 0.6, kind: "dust", col: "#8a7a68", g: 20 }); };
+    switch (cue) {
+      case "spark": this.coreSparks(a, 9, true); if (near) this.sfx.spark(); break;
+      case "creak": if (near) this.sfx.scrape(); break;
+      case "lamp": this.coreSparks(a, 3, true); if (near) this.sfx.wakeSputter(); break;
+      case "plant": dust(7); if (near) this.sfx.thud(); break;
+      case "jolt": this.coreSparks(a, 8, false); dust(3); if (near) this.sfx.clank(); break;
+      case "lampOut": if (near) this.sfx.tone(420, 0.25, "sine", 0.03, 110); break;
+      case "settle": if (near) this.sfx.tone(190, 0.7, "sine", 0.035, 70); break;
+    }
+  }
+
+  /** A soft rune chime and a burst of motes at (x, y): a worker leaving or arriving through a rune. */
+  private runeBlip(x: number, y: number, k = 1) {
+    const v = this.volAt(x, y) * k;
+    if (v > 0.05) { this.sfx.tone(520, 0.35, "sine", 0.06 * v, 1040); this.sfx.tone(780, 0.5, "triangle", 0.04 * v, undefined, 0.07); }
+  }
+  private runeBurst(x: number, y: number) {
+    this.runeBlip(x, y);
+    for (let i = 0; i < 26; i++) {
+      const ang = Math.random() * Math.PI * 2, sp = 14 + Math.random() * 30;
+      this.spawn({ x, y, z: 2 + Math.random() * 10, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.5, vz: 10 + Math.random() * 30, life: 0.7, kind: "rune", col: Math.random() < 0.4 ? "#ffffff" : Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: 10 });
+    }
+  }
+  /** Another body went through a rune: a flash where it left (if that was in the player's area) and where it landed. */
+  private workerTravelled(e: Extract<SimEvent, { t: "travelled" }>) {
+    const a = actorById(this.world, e.actor), pa = this.pl.area;
+    const from = RUNE_NODES[e.from], p = from && from.area === pa ? this.area.prop(from.prop) : null;
+    if (p) this.runeBurst(p.x, p.y);
+    if (a && a.area === pa) { const L = this.npcLook(a); L.lift = 13; L.arrived = true; this.runeBurst(a.x, a.y); }
   }
 
   /** Embers from a golem's core hatch as a core seats: bright when it powers the body, a few dull ones when too weak. */
