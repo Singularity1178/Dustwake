@@ -27,7 +27,7 @@ import { packRef, storageRef, transferItems } from "./storage";
 import { actorMessage } from "./messages";
 import { lineOfSight } from "./navigation";
 import { think } from "./monologue";
-import { applySlotCore } from "./power";
+import { applySlotCore, canManage } from "./power";
 
 /** Vision mode ends by itself when work starts that takes the golem's attention elsewhere (talking, rune travel, stations...). */
 function endScanFor(a: Actor, spec: TaskSpec) {
@@ -296,7 +296,11 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       if (target?.propId && area.prop(target.propId)?.inventory) emit(w, { t: "openStorage", actor: a.id, prop: target.propId });
       break;
     case "manageActor":
-      if (target?.actorId && actorById(w, target.actorId)) emit(w, { t: "manageActor", actor: a.id, target: target.actorId });
+      if (target?.actorId) {
+        const body = actorById(w, target.actorId);
+        // A dormant body (never had a core) has no screen to open: the golem only notes it (content/monologue.ts).
+        if (body) emit(w, { t: canManage(w, body) ? "manageActor" : "dormantTouched", actor: a.id, target: body.id });
+      }
       break;
     case "slotCore":
       return applySlotCore(w, a, target?.actorId ? actorById(w, target.actorId) : undefined, e.item);

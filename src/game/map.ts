@@ -29,6 +29,8 @@ export interface PropDef {
   container?: boolean;
   /** Starts open (e.g. a chest looted long ago). Uses the prop's alternate "open" sprite. */
   open?: boolean;
+  /** A name the player gave it (storage chests). Absent: it goes by its default label, e.g. "DUNGEON CHEST 2" (sim/orders.ts: propName). */
+  name?: string;
   /** Built props: the recipe that built it. */
   recipe?: string;
   /**

@@ -21,6 +21,7 @@ import { inventoryHandle, packRef, storageRef, transferSlot } from "./storage";
 import { orderRefusal, pauseJob, resumeJob, setWorkerOrder, workerRefusal } from "./jobs";
 import { powered } from "./actorStats";
 import { actorMessage } from "./messages";
+import { cleanPropName, defaultPropName, propName } from "./orders";
 import type { JobOrder } from "../world/jobs";
 
 export type DropResult = "ok" | "empty" | "undroppable" | "noRoom";
@@ -175,6 +176,22 @@ export function moveStorageSlot(w: World, a: Actor, propId: string, dir: "store"
   if (!moved) return out("full", 0, full);
   if (moved < want) return out("partial", moved, `${verb} ${moved} OF ${want} ${ITEM_NAMES[item]}. ${full}`);
   return out("ok", moved, `${verb} ${moved} ${ITEM_NAMES[item]}`);
+}
+
+/**
+ * Rename the storage prop `propId` in the player's area: `name` cleaned (cleanPropName), or empty to go back to
+ * its default label ("DUNGEON CHEST 2"). The name is the prop's own (saved with it), so the storage screen and
+ * every order that points at the chest show it. Needs the golem beside it, as the screen does. Says what happened.
+ */
+export function renameStorage(w: World, a: Actor, propId: string, name: string): OrderOutcome {
+  const say = (ok: boolean, text: string): OrderOutcome => { actorMessage(w, a, text); return { ok, text }; };
+  const area = areaOf(w, a), p = area.prop(propId);
+  if (!p?.inventory || !propDef(p.kind).storage) return say(false, STORE_TEXT.gone);
+  if (Math.hypot(a.x - p.x, a.y - p.y) > propReach(p.kind) + 8) return say(false, STORE_TEXT.far);
+  const clean = cleanPropName(name);
+  if (!clean || clean === defaultPropName(area, p)) { area.setPropName(p.id, undefined); return say(true, `NAMED ${propName(area, p)}`); }
+  area.setPropName(p.id, clean);
+  return say(true, `NAMED ${clean}`);
 }
 
 // ---------------------------------------------------------------- management screen

@@ -162,7 +162,7 @@ test("golem vision: analyzing a buildable thinks OBJECT ANALYZED. once per analy
 test("the power lines ship: E on the dormant worker golem, and the guardian holding the ruby core (C, then talk)", () => {
   const dormant = THOUGHTS["golem.dormant"], weak = THOUGHTS["golem.underpowered"];
   assert.equal(dormant.text, "INTEGRITY INTACT, MISSING POWER SOURCE.");
-  assert.deepEqual(thoughtTriggers(dormant).map((t) => t.event), ["manageActor"], "manageActor only: subjectNoPower also holds for the unpowered guardian");
+  assert.deepEqual(thoughtTriggers(dormant).map((t) => t.event), ["dormantTouched"], "dormantTouched only: subjectNoPower also holds for the unpowered guardian");
   assert.deepEqual(dormant.if, ["subjectNoPower"]);
   assert.equal(weak.text, "INSUFFICIENT POWER SOURCE.");
   assert.deepEqual(thoughtTriggers(weak).map((t) => t.event), ["manageActor", "talkedTo", "coreSlotted"]);
@@ -177,6 +177,7 @@ test("the power lines ship: E on the dormant worker golem, and the guardian hold
   addItems(w, pl, "ruby_core", 1);
   frame(w, { ix: 0, iy: 0, use: false, core: true }); frames(w, 150);
   assert.equal(worker.powerCore, "ruby_core");
+  events(w);
   useOn(w, at());
   assert.deepEqual(thoughts(events(w)), []);
   // the guardian takes a ruby core (it fits) but its body needs more: thought as it goes in, and on talking

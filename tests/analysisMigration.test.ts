@@ -110,6 +110,7 @@ test("highlight classification is data-driven with important items, interactable
 test("interacting with a worker asks for actor management, not a player-only dialogue", () => {
   const { w, area, pl } = scanWorld();
   const a = makeActor("small", "worker_golem", area.id, pl.x - 40, pl.y); w.actors.push(a);
+  a.powerCore = "ruby_core"; // a dormant body (never had a core) keeps its screen shut: see tests/dormantGolem.test.ts
   const it = npcInteractables(w, area).find((i) => i.actorId === a.id)!;
   assert.equal(it.kind, "worker");
   pl.x = a.x; pl.y = a.y + 12;

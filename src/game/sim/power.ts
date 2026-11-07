@@ -1,4 +1,5 @@
 import { actorDef } from "../content/actors";
+import { CORE_SEATED, npcFlag } from "../content/flags";
 import { POWER_CORES } from "../content/power";
 import type { ItemId } from "../content/items";
 import { areaOf, emit, type Actor, type World } from "../world/world";
@@ -6,6 +7,16 @@ import { countItem, giveItem, removeItems } from "./inventory";
 import { powered } from "./actorStats";
 import { lineOfSight } from "./navigation";
 import { actorMessage } from "./messages";
+
+/** Has this body ever had a core in it? (a flag on the world, set by the slot seam below) */
+export const coreSeated = (w: World, a: Actor) => w.flags.has(npcFlag(a.id, CORE_SEATED));
+
+/**
+ * May the player open this body's management screen? A body that needs power stays shut (it is dormant:
+ * E only makes the golem think about it) until a core has first been slotted in. After that the screen
+ * opens even with the core taken out again. A body that needs no power is never locked.
+ */
+export const canManage = (w: World, a: Actor) => !actorDef(a).power || !!a.powerCore || coreSeated(w, a);
 
 export function coreCheck(a: Actor, item: ItemId) {
   const core = POWER_CORES[item], req = actorDef(a).power;
@@ -22,6 +33,7 @@ export function insertPowerCore(w: World, source: Actor, target: Actor, item: It
   const old = target.powerCore;
   removeItems(source, item);
   target.powerCore = item;
+  w.flags.add(npcFlag(target.id, CORE_SEATED));
   if (old) giveItem(w, source, old);
   emit(w, { t: "powerChanged", actor: target.id, powered: powered(target) });
   return true;
@@ -32,6 +44,7 @@ export function removePowerCore(w: World, source: Actor, target: Actor): boolean
   if (!lineOfSight(areaOf(w, source), source, target)) return false;
   const old = target.powerCore;
   target.powerCore = null;
+  w.flags.add(npcFlag(target.id, CORE_SEATED));
   giveItem(w, source, old);
   emit(w, { t: "powerChanged", actor: target.id, powered: powered(target) });
   return true;

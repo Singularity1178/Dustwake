@@ -130,9 +130,10 @@ export class Area {
     const tx = Math.floor(d.x / TS), ty = Math.floor(d.y / TS);
     this.markDirty(tx - DIRTY_PAD, ty - DIRTY_PAD, tx + DIRTY_PAD, ty + DIRTY_PAD, false);
   }
-  setPropState(id: string, s: Partial<Pick<PropInst, "open" | "taken" | "lit" | "dmg">> & { item?: ItemId | null }) {
+  setPropState(id: string, s: Partial<Pick<PropInst, "open" | "taken" | "lit" | "dmg" | "name">> & { item?: ItemId | null }) {
     const p = this.propIndex.get(id);
     if (!p) return;
+    if (s.name !== undefined) { if (s.name) p.name = s.name; else delete p.name; }
     const layout = s.taken !== undefined && s.taken !== p.taken;
     if (s.open !== undefined) p.open = s.open;
     if (s.taken !== undefined) p.taken = s.taken;
@@ -140,6 +141,13 @@ export class Area {
     if (s.dmg !== undefined) p.dmg = s.dmg;
     if (s.item !== undefined) p.item = s.item ?? undefined;
     this.touch(layout ? "layout" : "interaction");
+  }
+  /** Give a prop a name of the player's own, or (`undefined`) take it back to its default label. */
+  setPropName(id: string, name: string | undefined) {
+    const p = this.propIndex.get(id);
+    if (!p) return;
+    if (name) p.name = name; else delete p.name;
+    this.touch("state");
   }
   /** Harvest progress: add damage to a prop. */
   damageProp(id: string, n: number) {

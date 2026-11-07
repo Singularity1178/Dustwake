@@ -62,7 +62,7 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   */
 export const SAVE_VERSION = 12;
 
-type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[] };
+type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
 export interface AreaSave {
   tiles: [number, number][];
@@ -344,13 +344,14 @@ export function migrate(raw: unknown, migrations = MIGRATIONS, target = SAVE_VER
   return s;
 }
 
-const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number; inventory?: Slot[] }, b?: { lit?: boolean; item?: ItemId; open?: boolean; inventory?: Slot[] }) => {
+const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: ItemId; dmg: number; inventory?: Slot[]; name?: string }, b?: { lit?: boolean; item?: ItemId; open?: boolean; inventory?: Slot[]; name?: string }) => {
   const d: PropState = {};
   if (p.open !== !!b?.open) d.open = p.open;
   if (p.taken) d.taken = true;
   if (!!p.lit !== !!b?.lit) d.lit = !!p.lit;
   if (p.item !== b?.item) d.item = p.item ?? null;
   if (p.dmg) d.dmg = p.dmg;
+  if (p.name !== b?.name && p.name) d.name = p.name;
   if (p.inventory?.some((s, i) => s?.item !== b?.inventory?.[i]?.item || s?.n !== b?.inventory?.[i]?.n)) {
     d.inventory = p.inventory.some(Boolean) ? p.inventory : [];
   }
@@ -396,7 +397,7 @@ function restoreArea(id: string, d: AreaSave): Area {
   }
   for (const pid of d.propsRemoved ?? []) a.removeProp(pid);
   for (const p of d.propsAdded) {
-    const { id: pid, kind, x, y, open, taken, dmg, lit, item, inventory, ...rest } = p;
+    const { id: pid, kind, x, y, open, taken, dmg, lit, item, inventory, ...rest } = p; // rest carries `name`
     a.addProp(kind, x, y, { ...rest, lit, item: item ?? undefined }, pid);
     a.setPropState(pid, { open, taken, dmg });
     if (inventory) a.setInventory(pid, inventory);

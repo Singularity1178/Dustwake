@@ -10,6 +10,8 @@
 //                     the chest (on the same row, or the nearest one)
 //   E / Enter / Space move the whole stack under the cursor to the other pane
 //   Q                 move one item
+//   R                 rename the chest (type the name, Enter keeps it, Esc cancels;
+//                     an empty name goes back to its default, e.g. DUNGEON CHEST 2)
 //   Esc / I / Tab     close
 //
 // Presentation only. Every move is sim/commands.ts: moveStorageSlot (through
@@ -17,12 +19,12 @@
 // and testable headless. As much as fits moves; a full destination, an empty
 // source and the tutorial's undroppable items are refused with a message.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
 import { ITEMS, effectLines, isDroppable } from "../content/items";
 import { propDef } from "../content/props";
 import { capacity } from "../sim/inventory";
-import { moveStorageSlot } from "../sim/commands";
-import { propLabel } from "../sim/orders";
+import { moveStorageSlot, renameStorage } from "../sim/commands";
+import { PROP_NAME_MAX, propName } from "../sim/orders";
 import { itemIcon } from "../art/items";
 import { drawText, drawTextS, textWidth } from "../font";
 import { BASE_W as W, BASE_H as H } from "../view/zoom";
@@ -51,6 +53,8 @@ export class StorageUi {
   pane: StoragePane = "pack";
   /** Cursor memory per pane. */
   cursors: Record<StoragePane, number> = { pack: 0, chest: 0 };
+  /** The rename field: active while the chest's name is being typed. */
+  readonly nameField = new TextField(PROP_NAME_MAX);
 
   constructor(private g: UiHost) {
     this.screen = { id: "storage", opaque: false, t: 0, update: () => this.update(), render: () => this.render() };
@@ -59,11 +63,12 @@ export class StorageUi {
   get cursor() { return this.cursors[this.pane]; }
 
   /** New session (a world was loaded or restarted): nothing remembered. */
-  reset() { this.propId = null; this.pane = "pack"; this.cursors = { pack: 0, chest: 0 }; }
+  reset() { this.propId = null; this.pane = "pack"; this.cursors = { pack: 0, chest: 0 }; this.nameField.active = false; this.nameField.clear(); }
 
   open(propId: string) {
     if (propId !== this.propId) this.cursors = { pack: 0, chest: 0 };
     this.propId = propId; this.pane = "pack";
+    this.nameField.active = false; this.nameField.clear();
     this.clampCursors();
     this.g.screens.push(this.screen);
     this.g.sfx.open();
@@ -98,6 +103,30 @@ export class StorageUi {
     else if (row < L.rows - 1) this.cursors[this.pane] = Math.min(cap - 1, c + L.cols);
   }
 
+  /** The chest's name as the orders call it (the player's own, else DUNGEON CHEST 2 and the like). */
+  get name(): string {
+    const p = this.propId ? this.g.area.prop(this.propId) : undefined;
+    return p ? propName(this.g.area, p) : "STORAGE";
+  }
+
+  /** Start typing a new name, the current one as the starting text. */
+  startRename() {
+    if (!this.propId) return;
+    this.nameField.value = this.name.slice(0, PROP_NAME_MAX); this.nameField.active = true;
+    this.g.sfx.tone(520, 0.05, "triangle", 0.04);
+  }
+  /** Keep what was typed (empty: the default name). Returns whether the chest took it. */
+  commitRename(): boolean {
+    const g = this.g, f = this.nameField;
+    f.active = false;
+    const r = this.propId ? renameStorage(g.world, g.pl, this.propId, f.value) : { ok: false, text: "" };
+    f.clear();
+    if (r.ok) g.sfx.tone(420, 0.05, "triangle", 0.04); else g.sfx.thud();
+    g.drainEvents();
+    return r.ok;
+  }
+  cancelRename() { this.nameField.active = false; this.nameField.clear(); }
+
   /** Move the stack under the cursor (or `n` of it) to the other pane. Returns whether anything moved. */
   act(n: number): boolean {
     const g = this.g;
@@ -110,8 +139,17 @@ export class StorageUi {
 
   private update() {
     const g = this.g;
+    if (this.nameField.active) {
+      // Typing mode: letters go to the field, never to the cursor or the moves.
+      if (!this.propId || !g.area.prop(this.propId)) { this.cancelRename(); g.say("THE STORAGE IS GONE"); g.screens.popToBase(); return; }
+      if (this.nameField.feed(g.typed)) g.sfx.tone(620, 0.02, "square", 0.015);
+      if (g.hit("enter")) this.commitRename();
+      else if (g.hit("escape")) this.cancelRename();
+      return;
+    }
     if (g.hit("escape", "i", "tab")) { g.screens.popToBase(); return; }
     if (!this.propId || !g.area.prop(this.propId)) { g.say("THE STORAGE IS GONE"); g.screens.popToBase(); return; }
+    if (g.hit("r")) { this.startRename(); return; }
     this.clampCursors();
     const before = `${this.pane}:${this.cursor}`;
     if (g.hit("arrowleft", "a")) this.move("left");
@@ -127,19 +165,22 @@ export class StorageUi {
   private render() {
     const g = this.g, ctx = g.ctx;
     this.clampCursors();
-    const p = this.propId ? g.area.prop(this.propId) : undefined;
     ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
     panel(ctx, PX, PY, PW, PH);
-    const name = p ? propLabel(p.kind) : "STORAGE";
+    const name = this.name, renaming = this.nameField.active;
     for (const k of ["pack", "chest"] as const) {
       const { slots, cap } = this.slots(k), used = slots.slice(0, cap).filter(Boolean).length;
       const head = k === "pack" ? `PACK ${used}/${cap}` : `${name} ${used}/${cap}`;
-      drawText(ctx, clipText(head, PANE[k].w - 4), PANE[k].x + 2, PY + 6, this.pane === k ? UI.title : UI.mid);
+      if (k === "chest" && renaming) this.nameField.draw(ctx, PANE.chest.x, PY + 3, PANE.chest.w - 2, g.t, "NAME");
+      else drawText(ctx, clipText(head, PANE[k].w - 4), PANE[k].x + 2, PY + 6, this.pane === k ? UI.title : UI.mid);
       this.grid(k, slots, cap);
     }
     // the keys, under the chest's grid
     const cl = gridLayout(this.slots("chest").cap, "chest"), ky = cl.gy + cl.gh + 8;
-    ["E MOVE STACK", "Q MOVE ONE", "A/D OTHER SIDE", "ESC CLOSE"].forEach((t, i) => drawText(ctx, t, PANE.chest.x + 4, ky + i * 8, i < 2 ? UI.mid : UI.dim));
+    const keys: [string, number, number, string][] = renaming
+      ? [["ENTER KEEP NAME", 0, 0, UI.mid], ["ESC CANCEL", 0, 1, UI.dim], ["EMPTY: DEFAULT NAME", 0, 2, UI.dim]].map(([t, c, r, col]) => [t as string, c as number, r as number, col as string])
+      : [["E MOVE STACK", 0, 0, UI.mid], ["R RENAME", 1, 0, UI.mid], ["Q MOVE ONE", 0, 1, UI.mid], ["A/D OTHER SIDE", 1, 1, UI.dim], ["ESC CLOSE", 0, 2, UI.dim]];
+    for (const [t, c, r, col] of keys) drawText(ctx, t, PANE.chest.x + 4 + c * 76, ky + r * 8, col);
     this.description();
     g.renderNote(PY + PH + 1);
   }

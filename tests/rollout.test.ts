@@ -340,7 +340,8 @@ test("the dormant line: E on the unpowered golem only, never about the guardian,
   const w = newWorld(), pl = player(w), it = () => npcInteractables(w, currentArea(w)).find((i) => i.actorId === WORKER)!;
   events(w); useOn(w, it());
   let evs = events(w);
-  assert.ok(evs.some((e) => e.t === "manageActor" && e.target === WORKER));
+  assert.ok(evs.some((e) => e.t === "dormantTouched" && e.target === WORKER));
+  assert.ok(!evs.some((e) => e.t === "manageActor"), "no screen for a body that never had a core");
   assert.deepEqual(thoughts(evs), ["golem.dormant"]);
   // the unpowered guardian also has no core, but talking to it is not managing a worker
   currentArea(w).setTile(51, 5, T.FLOOR);
@@ -351,6 +352,12 @@ test("the dormant line: E on the unpowered golem only, never about the guardian,
   useOn(w, it());
   evs = events(w);
   assert.ok(evs.some((e) => e.t === "manageActor")); assert.deepEqual(thoughts(evs), [], "powered: nothing to diagnose");
+  // core taken out again: the screen still opens, and the golem no longer thinks it
+  coreKeyAt(w, actorById(w, WORKER)!); events(w); frames(w, 150);
+  assert.equal(actorById(w, WORKER)!.powerCore, null);
+  useOn(w, it());
+  evs = events(w);
+  assert.ok(evs.some((e) => e.t === "manageActor")); assert.deepEqual(thoughts(evs), [], "slotted once: never the dormant line again");
 });
 
 test("with the core in the guardian, every interaction thinks INSUFFICIENT POWER SOURCE., and the story plays unchanged", () => {
@@ -520,8 +527,8 @@ test("host: C on the golem gives matching in/out feedback, E on it opens its man
   addItems(w, pl, "ruby_core", 1);
   standAt(w, npcInteractables(w, currentArea(w)).find((i) => i.actorId === WORKER)!);
   tick(g); press(g, "e"); tick(g, 30);
-  assert.ok(g.screens.is("manage"), "E on the worker opens its management screen (screens/manage.ts)");
-  press(g, "escape"); assert.ok(g.screens.is("play")); tick(g, 30); // the reach that opened it finishes
+  assert.ok(g.screens.is("play"), "E on the dormant worker opens nothing: its screen stays shut until a core has been slotted in");
+  tick(g, 30); // the reach finishes
   press(g, "c"); tick(g, 60);
   assert.ok(powered(wk)); assert.equal(g.note?.text, "RUBY GOLEM CORE SLOTTED - IT POWERS ON");
   press(g, "e"); tick(g, 30);
@@ -529,6 +536,9 @@ test("host: C on the golem gives matching in/out feedback, E on it opens its man
   press(g, "c"); tick(g, 60);
   assert.ok(!powered(wk)); assert.equal(g.note?.text, "RUBY GOLEM CORE TAKEN OUT - IT POWERS DOWN");
   assert.equal(countItem(pl, "ruby_core"), 1);
+  // core out again: the screen still opens
+  press(g, "e"); tick(g, 30);
+  assert.ok(g.screens.is("manage")); press(g, "escape"); tick(g, 30);
   // a storage chest standing in the artificery: E opens its storage screen
   const area = currentArea(w), chest = area.addProp("storage_chest", 11 * TS + 8, 42 * TS + 16);
   standAt(w, find(w, (i) => i.propId === chest.id)); tick(g);

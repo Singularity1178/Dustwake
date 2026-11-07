@@ -97,6 +97,8 @@ export type SimEvent =
   | { t: "talkedTo"; actor: string; npc: string }
   | { t: "jobChanged"; actor: string; status: string; reason?: string }
   | { t: "manageActor"; actor: string; target: string }
+  /** `actor` used a body that needs power and has never held a core: its management screen stays shut (sim/power.ts: canManage). */
+  | { t: "dormantTouched"; actor: string; target: string }
   | { t: "openStorage"; actor: string; prop: string }
   | { t: "analyzed"; actor: string; prop: string; flag: string }
   /** `actor` thought line `line` (content/monologue.ts). Presentation shows it; nothing else reacts. */

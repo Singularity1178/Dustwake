@@ -47,3 +47,5 @@ export const learnedText = (flag: string) => LEARNED_TEXT[flag] ?? `YOU LEARNED 
 export const npcFlag = (actorId: string, key: string) => `${actorId}.${key}`;
 /** Runtime state every NPC has: present = awake, absent = dormant. Reversible by design. */
 export const NPC_AWAKE = "awake";
+/** Set once a body has had a power core in it (slotted, or taken out of one it held): a worker golem's management screen opens from then on, core or not. */
+export const CORE_SEATED = "coreSeated";

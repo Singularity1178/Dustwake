@@ -39,6 +39,29 @@ export function propLabel(kind: string): string {
 
 export interface PropOption { ref: PropRef; kind: string; label: string; area: string }
 
+/** The longest name a prop may be given. */
+export const PROP_NAME_MAX = 20;
+/** What a typed name becomes: upper case, one space between words, trimmed, no longer than PROP_NAME_MAX. Empty means "no name of its own". */
+export const cleanPropName = (s: string) => s.toUpperCase().replace(/\s+/g, " ").trim().slice(0, PROP_NAME_MAX).trim();
+
+/** Which prop of its kind in its area this is, and how many there are: the orders' numbering (stable id order, among props of that kind). */
+function kindIndex(area: Area, p: PropInst): { n: number; of: number } {
+  const same = area.props.filter((q) => q.kind === p.kind).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return { n: same.indexOf(p) + 1, of: same.length };
+}
+
+/**
+ * What a prop is called until the player names it: its area, its kind and (with several of a kind in the area) its
+ * number, as every order screen words it: "DUNGEON CHEST 1", "DUNGEON CHEST 2", "SURFACE CHEST".
+ */
+export function defaultPropName(area: Area, p: PropInst): string {
+  const { n, of } = kindIndex(area, p);
+  return `${areaName(area.id)} ${SHORT[p.kind] ?? p.kind.toUpperCase().replace(/_/g, " ")}${of > 1 ? ` ${n}` : ""}`;
+}
+
+/** A prop's name: the one the player gave it, else its default. The one name the storage screen and the orders both use. */
+export const propName = (area: Area, p: PropInst) => p.name || defaultPropName(area, p);
+
 /** Props in the areas the worker can get to (areas already visited), in stable area then id order, with labels like "SURFACE CHEST 2". */
 function propOptions(w: World, a: Actor, want: (p: PropInst) => boolean): PropOption[] {
   const out: PropOption[] = [];
@@ -46,8 +69,7 @@ function propOptions(w: World, a: Actor, want: (p: PropInst) => boolean): PropOp
     if (!canReach(w, a, id)) continue;
     const area = w.areas.get(id)!, props = area.props.filter(want).sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
     for (const p of props) {
-      const same = props.filter((q) => q.kind === p.kind), n = same.indexOf(p) + 1;
-      out.push({ ref: { area: id, prop: p.id }, kind: p.kind, area: id, label: `${areaName(id)} ${SHORT[p.kind] ?? p.kind.toUpperCase().replace(/_/g, " ")}${same.length > 1 ? ` ${n}` : ""}` });
+      out.push({ ref: { area: id, prop: p.id }, kind: p.kind, area: id, label: propName(area, p) });
     }
   }
   return out;
