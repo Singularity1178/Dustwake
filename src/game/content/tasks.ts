@@ -84,8 +84,8 @@ export type Effect =
   | { op: "manageActor" }
   /**
    * Slot a power core into the body at target.actorId (`item`), or take its core
-   * out (`item: null`). One seam for both ways: the C key starts it today, the
-   * management screen will later. Re-validates when it fires (sim/power.ts).
+   * out (`item: null`). One seam for both ways: the C key and the worker
+   * management screen both start it. Re-validates when it fires (sim/power.ts).
    */
   | { op: "slotCore"; item: ItemId | null }
   | { op: "deposit"; item: ItemId; n: number }

@@ -1,7 +1,8 @@
 // Commands issued by UI screens (pack, build placement, reading). Each one
 // validates and then goes through the normal Task/Effect path, so it is data,
 // saveable and testable headless.
-import { ITEMS, isDroppable, type GearSlot, type ItemId } from "../content/items";
+import { ITEMS, ITEM_NAMES, isDroppable, type GearSlot, type ItemId } from "../content/items";
+import { propDef, propReach } from "../content/props";
 import { RECIPES, DECONSTRUCT_DUR } from "../content/build";
 import { CORE_TASK } from "../content/interactions";
 import { actorDef } from "../content/actors";
@@ -16,6 +17,11 @@ import { dropSpot } from "./inventory";
 import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
 import { wearCheck, takeOffCheck, gearRefusal } from "./gear";
+import { inventoryHandle, packRef, storageRef, transferSlot } from "./storage";
+import { orderRefusal, pauseJob, resumeJob, setWorkerOrder, workerRefusal } from "./jobs";
+import { powered } from "./actorStats";
+import { actorMessage } from "./messages";
+import type { JobOrder } from "../world/jobs";
 
 export type DropResult = "ok" | "empty" | "undroppable" | "noRoom";
 
@@ -95,11 +101,14 @@ export function readItem(w: World, a: Actor, id: ItemId) {
  * cores, the core carried and fitting, something to take out) and starts the
  * short CORE_TASK whose `slotCore` effect re-validates reach and sight when it
  * lands (sim/power.ts: applySlotCore). The one entry point for both ways: the C
- * key today, the worker management screen later.
+ * key and the worker management screen (screens/manage.ts). The reach that
+ * opened that screen may still be finishing beneath it (it already fired), so
+ * it does not count as busy, as for a crafting bench.
  */
 export function orderCoreSwap(w: World, a: Actor, targetId: string, item: ItemId | null): boolean {
   const target = actorById(w, targetId);
-  if (a.task || !target || target.id === a.id || target.area !== a.area || !actorDef(target).power) return false;
+  const opening = !!a.task?.fired && a.task.effect?.op === "manageActor";
+  if ((a.task && !opening) || !target || target.id === a.id || target.area !== a.area || !actorDef(target).power) return false;
   if (item && !(coreCheck(target, item).accepts && countItem(a, item) > 0)) { emit(w, { t: "message", text: CORE_TEXT.noCore }); return false; }
   if (!item && !target.powerCore) { emit(w, { t: "message", text: CORE_TEXT.empty }); return false; }
   faceTo(a, target.x, target.y - 6);
@@ -128,4 +137,81 @@ export function coreKey(w: World, a: Actor, area: Area): boolean {
   const act = coreActionFor(a, target);
   if (act.op === "none") { emit(w, { t: "message", text: CORE_TEXT.noCore }); return false; }
   return orderCoreSwap(w, a, target.id, act.op === "insert" ? act.item : null);
+}
+
+// ---------------------------------------------------------------- storage screen
+export type StoreResult = "ok" | "partial" | "empty" | "full" | "critical" | "gone" | "far";
+export interface StoreOutcome { result: StoreResult; moved: number; text: string }
+export const STORE_TEXT = {
+  empty: "NOTHING THERE TO MOVE",
+  critical: "TOO IMPORTANT TO STORE",
+  gone: "THE STORAGE IS GONE",
+  far: "STEP UP TO THE STORAGE",
+  chestFull: "THE STORAGE IS FULL",
+  packFull: "YOUR PACK IS FULL",
+} as const;
+
+/**
+ * The storage screen's one move: up to `n` of what pack slot `slot` holds into
+ * the storage prop (`store`), or out of its slot into the pack (`take`). Applied
+ * at once, like dropping, through sim/storage.ts: as much as fits moves, the
+ * rest stays where it was, and a refusal changes nothing. Items the golem can't
+ * even drop (the tutorial's) are never stored, so progress can't be put out of
+ * reach. Says what happened as a player message and returns it.
+ */
+export function moveStorageSlot(w: World, a: Actor, propId: string, dir: "store" | "take", slot: number, n: number): StoreOutcome {
+  const out = (result: StoreResult, moved: number, text: string): StoreOutcome => { actorMessage(w, a, text); return { result, moved, text }; };
+  const area = areaOf(w, a), p = area.prop(propId);
+  if (!p?.inventory || !propDef(p.kind).storage) return out("gone", 0, STORE_TEXT.gone);
+  if (Math.hypot(a.x - p.x, a.y - p.y) > propReach(p.kind) + 8) return out("far", 0, STORE_TEXT.far);
+  const chest = storageRef(area.id, p.id), pack = packRef(a);
+  const from = dir === "store" ? pack : chest, to = dir === "store" ? chest : pack;
+  const s = inventoryHandle(w, from)?.inventory[slot];
+  if (!s) return out("empty", 0, STORE_TEXT.empty);
+  if (dir === "store" && !isDroppable(s.item)) return out("critical", 0, STORE_TEXT.critical);
+  const item = s.item, want = Math.max(1, Math.min(Math.floor(n), s.n));
+  const moved = transferSlot(w, from, to, slot, want), verb = dir === "store" ? "STORED" : "TOOK";
+  const full = dir === "store" ? STORE_TEXT.chestFull : STORE_TEXT.packFull;
+  if (!moved) return out("full", 0, full);
+  if (moved < want) return out("partial", moved, `${verb} ${moved} OF ${want} ${ITEM_NAMES[item]}. ${full}`);
+  return out("ok", moved, `${verb} ${moved} ${ITEM_NAMES[item]}`);
+}
+
+// ---------------------------------------------------------------- management screen
+export interface OrderOutcome { ok: boolean; text: string }
+export const ORDER_TEXT = { given: "ORDER GIVEN", waits: "ORDER GIVEN. IT WAITS FOR A CORE" } as const;
+
+/**
+ * Give a worker an order from the management screen: setWorkerOrder, with its
+ * refusal (out of reach, no sight, not a worker, unknown or invalid order, can't
+ * do that work, busy) said in words. The order replaces the one it had.
+ */
+export function giveWorkerOrder(w: World, a: Actor, targetId: string, order: JobOrder): OrderOutcome {
+  const why = orderRefusal(w, a, targetId, order);
+  if (why) { actorMessage(w, a, why); return { ok: false, text: why }; }
+  const target = actorById(w, targetId)!;
+  if (!setWorkerOrder(w, a, targetId, order)) { const text = "IT WILL NOT TAKE THE ORDER"; actorMessage(w, a, text); return { ok: false, text }; }
+  const text = powered(target) ? ORDER_TEXT.given : ORDER_TEXT.waits;
+  actorMessage(w, a, text);
+  return { ok: true, text };
+}
+
+export type WorkerControl = "pause" | "resume" | "cancel";
+/** Pause, resume (or retry a blocked order) or cancel a worker's order: pauseJob / resumeJob / setWorkerOrder(null), behind the same reach and sight rules. */
+export function controlWorker(w: World, a: Actor, targetId: string, what: WorkerControl): OrderOutcome {
+  const say = (ok: boolean, text: string): OrderOutcome => { actorMessage(w, a, text); return { ok, text }; };
+  const why = workerRefusal(w, a, targetId);
+  if (why) return say(false, why);
+  const target = actorById(w, targetId)!, job = target.job;
+  if (!job) return say(false, "IT HAS NO ORDER");
+  if (what === "cancel") { setWorkerOrder(w, a, targetId, null); return say(true, "ORDER CANCELLED"); }
+  if (job.status === "done") return say(false, "THAT ORDER IS DONE");
+  if (what === "pause") {
+    if (job.status === "paused" && job.reason === "manual") return say(false, "IT IS ALREADY PAUSED");
+    pauseJob(w, target);
+    return say(true, "ORDER PAUSED");
+  }
+  if (job.status === "running") return say(false, "IT IS ALREADY WORKING");
+  resumeJob(w, target);
+  return say(true, powered(target) ? "ORDER RESUMED" : "NO POWER. IT WAITS FOR A CORE");
 }

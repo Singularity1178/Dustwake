@@ -40,8 +40,8 @@ export function removePowerCore(w: World, source: Actor, target: Actor): boolean
 // ---------------------------------------------------------------- the slot seam
 // Slotting and removing share one path: CORE_TASK with the `slotCore` effect
 // (sim/commands.ts: orderCoreSwap starts it; the C key picks the action), and
-// one `coreSlotted` event the host answers. A management screen later issues
-// the same order with an explicit choice. Nothing here creates or deletes a
+// one `coreSlotted` event the host answers. The management screen issues
+// the same order (screens/manage.ts). Nothing here creates or deletes a
 // core: insertion takes it from the pack, removal gives it back (a full pack
 // drops it on the ground through giveItem), a replacement returns the old one.
 

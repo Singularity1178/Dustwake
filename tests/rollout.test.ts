@@ -2,7 +2,7 @@
 // the taken-prop scan fix), the storage chest, the ruby chain at the bench, the
 // dormant worker golem in the artificery with the C-key core seam (in and out,
 // golem and guardian), both power thoughts, the v11 -> v12 migration, and the
-// host's seams (storage note, management note, core feedback). Plus the
+// host's screens (storage, management, core feedback). Plus the
 // guarantees: the tutorial never touches a gate, the one core is never
 // consumed, stranded or duplicated, and a fresh game reaches all of it with no
 // debug tools.
@@ -39,7 +39,6 @@ import { powered } from "../src/game/sim/actorStats";
 import { relicCount } from "../src/game/sim/discovery";
 import { talkTo, playSegment, scriptOf, npcActor } from "../src/game/sim/dialogue";
 import { placeGlyph } from "../src/game/sim/ritual";
-import { storageNote } from "../src/game/sim/storage";
 import { propBlocks, actorBoxes, actorBox } from "../src/game/sim/collision";
 import { reachable, nearReached, type Box } from "../src/game/sim/reach";
 import { actorActive } from "../src/game/view/actors";
@@ -400,7 +399,7 @@ test("a fresh game reaches it all with no debug tools: Primer, scans, a storage 
   scanProp(w, "chest@54,4");
   frame(w, { ix: 0, iy: 0, use: false, toggleScan: true });
   for (const id of ["craftbench", "table", "chair", "storage_chest"]) assert.ok(w.flags.has(`analysis.${id}`), id);
-  // planks from the barracks table, then a storage chest; E on it gives an honest note (no storage screen yet)
+  // planks from the barracks table, then a storage chest; E on it opens its storage screen (the host's seam)
   const t = area.prop("table@60.5,18")!;
   pl.x = t.x; pl.y = t.y + 14; pl.facing = "up";
   assert.ok(orderDeconstruct(w, pl, t.id)); finish(w);
@@ -411,7 +410,7 @@ test("a fresh game reaches it all with no debug tools: Primer, scans, a storage 
   assert.ok(chest && chest.inventory?.length === 32 && countItem(pl, "planks") === 0);
   events(w); useOn(w, find(w, (i) => i.propId === chest.id));
   assert.ok(events(w).some((e) => e.t === "openStorage" && e.prop === chest.id));
-  assert.equal(storageNote(area, chest.id), "STORAGE CHEST: EMPTY, 32 SLOTS");
+  assert.equal(chest.inventory!.filter(Boolean).length, 0, "an empty 32-slot chest; its screen is tests/storageScreen.test.ts");
   // the bench: unmake the crown into the High-Grade Ruby, carve the Ruby Golem Core (station knowledge only)
   const flagsBefore = [...w.flags].filter((f) => f.startsWith("analysis.")).sort();
   const bench = area.prop("workbench@13.5,37")!;
@@ -514,24 +513,25 @@ const canvas = () => (globalThis as unknown as { document: { createElement(t: st
 const tick = (g: Game, n = 1) => { for (let i = 0; i < n; i++) g.update(1 / 60); };
 const press = (g: Game, key: string) => { g.keyDown(key); tick(g); g.keyUp(key); };
 
-test("host: C on the golem gives matching in/out feedback, E on it says what C does, E on a chest says what it holds", () => {
+test("host: C on the golem gives matching in/out feedback, E on it opens its management screen, E on a chest its storage screen", () => {
   const g = new Game(canvas(), canvas()), w = newWorld();
   g.resume(w);
   const pl = player(w), wk = actorById(w, WORKER)!;
   addItems(w, pl, "ruby_core", 1);
   standAt(w, npcInteractables(w, currentArea(w)).find((i) => i.actorId === WORKER)!);
   tick(g); press(g, "e"); tick(g, 30);
-  assert.equal(g.note?.text, "C TO SLOT THE RUBY GOLEM CORE");
+  assert.ok(g.screens.is("manage"), "E on the worker opens its management screen (screens/manage.ts)");
+  press(g, "escape"); assert.ok(g.screens.is("play")); tick(g, 30); // the reach that opened it finishes
   press(g, "c"); tick(g, 60);
   assert.ok(powered(wk)); assert.equal(g.note?.text, "RUBY GOLEM CORE SLOTTED - IT POWERS ON");
   press(g, "e"); tick(g, 30);
-  assert.equal(g.note?.text, "IDLE: NO TASK GIVEN. C TAKES ITS CORE");
+  assert.ok(g.screens.is("manage")); press(g, "escape"); tick(g, 30);
   press(g, "c"); tick(g, 60);
   assert.ok(!powered(wk)); assert.equal(g.note?.text, "RUBY GOLEM CORE TAKEN OUT - IT POWERS DOWN");
   assert.equal(countItem(pl, "ruby_core"), 1);
-  // a storage chest standing in the artificery: E gives the note, the seam the storage screen will replace
+  // a storage chest standing in the artificery: E opens its storage screen
   const area = currentArea(w), chest = area.addProp("storage_chest", 11 * TS + 8, 42 * TS + 16);
   standAt(w, find(w, (i) => i.propId === chest.id)); tick(g);
   press(g, "e"); tick(g, 30);
-  assert.ok(g.screens.is("play")); assert.equal(g.note?.text, "STORAGE CHEST: EMPTY, 32 SLOTS");
+  assert.ok(g.screens.is("storage")); press(g, "escape"); assert.ok(g.screens.is("play"));
 });

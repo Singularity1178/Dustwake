@@ -6,13 +6,13 @@ import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/it
 import { hasItem, addItems } from "./sim/inventory";
 import { ensureWorn, golemGlow, runeMarks } from "./sim/gear";
 import { toggleGearKit, learnAllPlans } from "./sim/debug";
-import { storageNote } from "./sim/storage";
-import { coreActionFor, coreCheck } from "./sim/power";
-import { powered } from "./sim/actorStats";
+import { coreCheck } from "./sim/power";
 import { GOLEM_LIGHT } from "./content/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
 import { PackUi } from "./screens/pack";
+import { StorageUi } from "./screens/storage";
+import { ManageUi } from "./screens/manage";
 import { BookUi } from "./screens/book";
 import { SchematicUi } from "./screens/schematic";
 import { DialogueUi } from "./screens/dialogue";
@@ -147,7 +147,7 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "dialogue", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "storage" | "manage" | "dialogue", Screen>;
   /** Feedback line (blocked actions, pack full, rune dark...). */
   note: { text: string; t: number } | null = null;
   /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
@@ -169,6 +169,8 @@ export class Game {
   craftUi!: CraftingUi;
   /** Pack / inventory overlay (screens/pack.ts). */
   packUi!: PackUi;
+  storageUi!: StorageUi;
+  manageUi!: ManageUi;
   /** Book reading screen (screens/book.ts). */
   bookUi!: BookUi;
   /** Schematic overlay (screens/schematic.ts). */
@@ -217,6 +219,8 @@ export class Game {
     this.vision.reset(pl.mode === "scan");
     this.dialogueUi.reset();
     this.packUi.reset();
+    this.storageUi.reset();
+    this.manageUi.reset();
     this.particles = [];
     this.toast = null;
     this.fizzT = 0;
@@ -416,6 +420,8 @@ export class Game {
     this.buildUi = new BuildUi(this);
     this.craftUi = new CraftingUi(this);
     this.packUi = new PackUi(this);
+    this.storageUi = new StorageUi(this);
+    this.manageUi = new ManageUi(this);
     this.bookUi = new BookUi(this);
     this.schemUi = new SchematicUi(this);
     this.dialogueUi = new DialogueUi(this);
@@ -443,6 +449,8 @@ export class Game {
       book: this.bookUi.screen,
       build: this.buildUi.screen,
       crafting: this.craftUi.screen,
+      storage: this.storageUi.screen,
+      manage: this.manageUi.screen,
       dialogue: this.dialogueUi.screen,
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
@@ -567,22 +575,15 @@ export class Game {
       case "openStation":
         if (e.actor === this.world.playerId && this.screens.is("play") && e.station === "crafting") this.craftUi.open(e.station, e.prop);
         break;
-      case "openStorage": {
-        // SEAM: the storage screen replaces this note. Until it exists, E on a chest says what it holds.
-        const text = e.actor === this.world.playerId && this.screens.is("play") ? storageNote(this.area, e.prop) : null;
-        if (text) { this.sfx.open(); this.say(text); }
+      case "openStorage":
+        // E on a storage prop: its screen (pack beside chest). Only the player's own use, from the play screen.
+        if (e.actor === this.world.playerId && this.screens.is("play")) this.storageUi.open(e.prop);
         break;
-      }
-      case "manageActor": {
-        // SEAM: the worker management screen (tasks, runes, inventory) replaces this. Until then the golem
-        // only thinks about a body with no core (content/monologue.ts), and this says what C would do.
-        const a = actorById(this.world, e.target);
-        if (!a || e.actor !== this.world.playerId) break;
-        const act = coreActionFor(pl, a);
-        if (powered(a) && act.op === "remove") this.say("IDLE: NO TASK GIVEN. C TAKES ITS CORE");
-        else if (act.op === "insert") this.say(`C TO SLOT THE ${ITEM_NAMES[act.item]}`);
+      case "manageActor":
+        // E on a worker: its management screen (state, core, orders). The golem's thought about a body with no
+        // core (content/monologue.ts) still fires from this event.
+        if (e.actor === this.world.playerId && this.screens.is("play") && actorById(this.world, e.target)) this.manageUi.open(e.target);
         break;
-      }
       case "coreSlotted": {
         // The core seam's feedback (sim/power.ts), both ways. In: the latch, a hum, embers, the core flaring as it
         // boots before it settles to its faint idle glow. Out: the latch, the hum falling, a puff of dust.
@@ -798,6 +799,8 @@ export class Game {
       if (this.buildUi.pending) { this.buildUi.resumeAfterWork(); if (!this.screens.is("play")) return this.worldFrame(dt); }
       // After crafting at a bench, the bench's plans come back once the work is done.
       if (this.craftUi.pending) { this.craftUi.resume(); if (!this.screens.is("play")) return this.worldFrame(dt); }
+      // After slotting a core in or out from the management screen, the worker's screen comes back once the reach is done.
+      if (this.manageUi.pending) { this.manageUi.resume(); if (!this.screens.is("play")) return this.worldFrame(dt); }
     }
     let ix = 0, iy = 0;
     if (this.has("arrowleft", "a")) ix -= 1;

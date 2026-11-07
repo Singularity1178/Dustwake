@@ -8,7 +8,6 @@ import type { Area, PropInst } from "../world/area";
 import { capacity } from "./inventory";
 import { copySlots, countItem, insertItems, removeItems, roomIn } from "./inventoryOps";
 import { rememberItem } from "./discovery";
-import { RECIPES, recipeForProp } from "../content/build";
 
 export type InventoryRef = { kind: "actor"; id: string } | { kind: "prop"; area: string; id: string };
 export interface InventoryHandle {
@@ -45,6 +44,27 @@ export function transferItems(w: World, from: InventoryRef, to: InventoryRef, it
   const moved = Math.min(n, countItem(src, item), roomIn(dst.inventory, dst.capacity, item));
   if (!moved) return 0;
   removeItems(src, item, moved);
+  insertItems(dst.inventory, dst.capacity, item, moved);
+  src.commit(); dst.commit();
+  return moved;
+}
+
+/**
+ * Move up to `n` of what one slot of `from` holds into `to`, as much as fits.
+ * Unlike `transferItems` it takes from that very slot, so a screen's cursor
+ * stays on the stack it is moving. A refusal or a missing owner changes nothing.
+ */
+export function transferSlot(w: World, from: InventoryRef, to: InventoryRef, slot: number, n: number): number {
+  const same = from.kind === to.kind && from.id === to.id && (from.kind !== "prop" || to.kind !== "prop" || from.area === to.area);
+  if (!Number.isSafeInteger(n) || n <= 0 || same || !Number.isInteger(slot) || slot < 0) return 0;
+  const src = inventoryHandle(w, from), dst = inventoryHandle(w, to);
+  const s = src?.inventory[slot];
+  if (!src || !dst || !s || slot >= src.capacity) return 0;
+  const moved = Math.min(n, s.n, roomIn(dst.inventory, dst.capacity, s.item));
+  if (!moved) return 0;
+  const item = s.item;
+  s.n -= moved;
+  if (!s.n) src.inventory[slot] = null;
   insertItems(dst.inventory, dst.capacity, item, moved);
   src.commit(); dst.commit();
   return moved;
@@ -88,16 +108,4 @@ export function consumeInputs(sources: InventoryHandle[], inputs: readonly { ite
   }
   for (const h of dirty) h.commit();
   return true;
-}
-/**
- * What E on a storage prop says until the storage screen exists: the host's
- * `openStorage` seam shows this note (the screen will replace it). Honest about
- * what is inside; nothing is moved.
- */
-export function storageNote(area: Area, propId: string): string | null {
-  const p = area.prop(propId), slots = p?.inventory;
-  if (!p || !slots) return null;
-  const id = recipeForProp(p.kind), name = id ? RECIPES[id].name : "STORAGE";
-  const used = slots.filter(Boolean).length;
-  return used ? `${name}: ${used} OF ${slots.length} SLOTS IN USE` : `${name}: EMPTY, ${slots.length} SLOTS`;
 }

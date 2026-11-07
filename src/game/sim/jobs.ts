@@ -46,11 +46,53 @@ export function assignJob(w: World, a: Actor, order: JobOrder): boolean {
   return true;
 }
 
-/** Walk-up management command. The future order screen only needs this API. */
-export function setWorkerOrder(w: World, commander: Actor, targetId: string, order: JobOrder | null): boolean {
+/**
+ * Why a walk-up command on `targetId` is refused before the order itself is
+ * looked at (a message for the management screen), or null if the commander can
+ * reach it: a worker, in the commander's area, within reach, in clear sight.
+ */
+export function workerRefusal(w: World, commander: Actor, targetId: string): string | null {
   const target = actorById(w, targetId);
-  if (!target || !capable(target, "worker") || target.area !== commander.area || Math.hypot(target.x - commander.x, target.y - commander.y) > actorDef(target).body.reach + 8) return false;
-  if (!lineOfSight(areaOf(w, commander), commander, target)) return false;
+  if (!target || !capable(target, "worker")) return "THAT IS NOT A WORKER";
+  if (target.area !== commander.area || Math.hypot(target.x - commander.x, target.y - commander.y) > actorDef(target).body.reach + 8) return "STEP UP TO THE WORKER";
+  if (!lineOfSight(areaOf(w, commander), commander, target)) return "NO CLEAR LINE TO THE WORKER";
+  return null;
+}
+
+/** What is wrong with the arguments of an order, in words (the handler's `validate` only says yes or no). */
+function argumentRefusal(order: JobOrder): string {
+  const p = order.args;
+  if (order.kind === "gatherDeposit") {
+    if (!text(p.resource) || !ITEMS[p.resource as ItemId]) return "NO SUCH RESOURCE";
+    if (!text(p.fromArea) || !AREAS[p.fromArea]) return "NO SUCH SOURCE AREA";
+    if (!validRef(p.storage)) return "NO SUCH STORAGE";
+  } else if (order.kind === "craftAt") {
+    if (!validRef(p.station)) return "NO SUCH STATION";
+    if (!CRAFT_RECIPES.some((r) => r.id === p.recipe)) return "NO SUCH RECIPE";
+  } else if (order.kind === "walk") return "THERE IS NOWHERE TO GO";
+  return p.repeat === true || positive(p.amount) ? "THAT ORDER IS NOT VALID" : "THE AMOUNT IS NOT VALID";
+}
+
+/**
+ * Why `setWorkerOrder` would refuse `order` for this commander and worker, in
+ * the screen's words, or null if it would be accepted. Mirrors setWorkerOrder
+ * and assignJob check for check, so the two never disagree (tested).
+ */
+export function orderRefusal(w: World, commander: Actor, targetId: string, order: JobOrder): string | null {
+  const why = workerRefusal(w, commander, targetId);
+  if (why) return why;
+  const target = actorById(w, targetId)!, def = JOB_KINDS[order.kind], handler = JOB_HANDLERS[order.kind];
+  if (!def || !handler) return "THAT KIND OF ORDER IS UNKNOWN";
+  if (!handler.validate(order.args)) return argumentRefusal(order);
+  if (!def.capabilities.every((c) => capable(target, c))) return "IT CANNOT DO THAT WORK";
+  if (target.task && target.task.jobId === undefined) return "IT IS BUSY. TRY AGAIN IN A MOMENT";
+  return null;
+}
+
+/** Walk-up management command (the management screen's only way to order a worker; see commands.ts: giveWorkerOrder). */
+export function setWorkerOrder(w: World, commander: Actor, targetId: string, order: JobOrder | null): boolean {
+  if (workerRefusal(w, commander, targetId)) return false;
+  const target = actorById(w, targetId)!;
   if (order) return assignJob(w, target, order);
   cancelJob(w, target);
   return true;
@@ -230,3 +272,5 @@ export const gatherOrder = (resource: ItemId, fromArea: string, storage: PropRef
 export const craftOrder = (station: PropRef, recipe: string, amount: number, repeat = false): JobOrder => ({
   kind: "craftAt", args: { station: { ...station }, recipe, amount, repeat },
 });
+/** Stand at a spot: the order screen's "go to". The spot should be free (sim/orders.ts: walkOptions picks one). */
+export const walkOrder = (area: string, x: number, y: number): JobOrder => ({ kind: "walk", args: { area, x, y } });

@@ -27,6 +27,8 @@
 | `B` / `Q` (placement or remove) | Back to the build menu |
 | `Esc` (build tools) | Close |
 | `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `E` craft, `Esc` close): planks from wood, cut stone from stone, and runes carved from cut stone (the rune chisel must be in your pack; it is not used up). The golem works at the bench, then the plans come back. It opens greyed out, with no plans shown, until you know how to build |
+| `E` on a storage chest | Open the storage screen: your pack on the left, the chest on the right. Movement keys move the cursor, `A` / `D` off the edge cross to the other side, `E` moves the whole stack under the cursor, `Q` one item, `Esc` / `I` / `Tab` close. As much as fits moves; a full side, an empty slot and the story's undroppable items say so and change nothing |
+| `E` on a worker golem | Open its management screen: power, order, phase and why it is blocked, what it carries and wears. `W` / `S` choose a row, `A` / `D` change a value in a form, `E` confirms, `C` slots a core in or takes it out, `Esc` goes back then closes. Rows: the core (the golem does the swap, then the screen returns), GATHER (resource, source area, storage chest, amount or repeat), CRAFT (bench, recipe, amount or repeat), GO TO, pause / resume / retry, cancel. Only valid targets are offered; a refusal says why |
 | `E` on a teleport rune | Travel to its linked rune |
 | `Space` near a tree, rock or log | Harvest wood / stone: the slam works every tree, rock and log within about a tile of where the fists land, one blow of work each (so one slam can work several at once). They aren't interactable: `E` does nothing on them and the vision mode doesn't highlight them |
 | `Z` | Toggle vision (scan) mode: a scanner sweep from the golem's eye highlights what it can see within its light's radius, each category with its own hologram (gold: important, cyan: interactable, violet: someone, green: buildable). A pulsing diamond marks something still to analyze; a dim, still outline with a check mark means it's already analyzed. `E` on a buildable analyzes its pattern. The top-right readout counts both within sight |
@@ -46,7 +48,7 @@ Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + too
 
 Open with `?debug` and call `window.dustwake.foundations()` in the browser console. A lesser golem gathers six wood in a separate yard, travels through the rune network and deposits it into a 32-slot storage chest. Save/load works while it walks or works. `window.dustwake.order(actorId, order)` uses the walk-up order command; job shapes are in `src/game/sim/jobs.ts`.
 
-This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. Worker/storage screens and recruitment are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
+This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. The worker management and storage screens work on it (`E` on the golem or the chest); recruitment and a job board are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
 
 ## Inner monologue
 
@@ -93,7 +95,7 @@ src/
     world/           Area, World, area registry, save/load (simulated + saved state)
     sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting,
                      runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
-                     stepping, UI commands, debug kits (no DOM)
+                     stepping, UI commands (incl. storage moves and worker orders), jobs, the order screen's option lists (orders.ts), debug kits (no DOM)
     view/            area view: baked background + light registry; zoom model
     ui/              screen stack, shared overlay kit + UiHost (frames, text field),
                      text wrapping, dialogue box geometry/layout, monologue log,
@@ -118,10 +120,10 @@ src/
     circle.ts        rune circle art
     util.ts          canvas helpers
     screens/         screens split out of game.ts, behind ui/kit.ts UiHost: build menu + tools,
-                     crafting, pack, book, schematic, dialogue; the opening cutscene (intro.ts,
+                     crafting, pack, storage, worker management, book, schematic, dialogue; the opening cutscene (intro.ts,
                      behind CutsceneHost); title/end cards (cards.ts)
 tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
-                     crafting and dialogue screens to PNG at 320x180 without a browser;
+                     crafting, storage, worker and dialogue screens to PNG at 320x180 without a browser;
                      tests/support/golemSnapshot.ts renders the golem's poses to PNG)
 docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```

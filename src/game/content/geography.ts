@@ -29,3 +29,6 @@ export const SURFACE_GATE_ZONE = {
   x0: SURFACE_GATE_CORRIDOR.x - 1, x1: SURFACE_GATE_CORRIDOR.x + SURFACE_GATE_CORRIDOR.w,
   y0: SURFACE_GATE_CORRIDOR.y - 1, y1: SURFACE_GATE.y + 1,
 } as const;
+
+/** What the order screens call an area (bitmap font text). Areas without a row read as their id, uppercased. */
+export const AREA_NAMES: Record<string, string> = { dungeon: "DUNGEON", surface: "SURFACE" };
