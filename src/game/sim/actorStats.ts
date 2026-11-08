@@ -20,3 +20,10 @@ export function actorSpeed(w: World, a: Actor): number {
   return powered(a) ? speed * speedMultiplier(w, a) * Math.max(0, 1 + (powerEffects(a)?.speed ?? 0)) : 0;
 }
 export const harvestPower = (a: Actor) => powered(a) ? Math.max(0, actorDef(a).harvestPower * (1 + (powerEffects(a)?.harvest ?? 0))) : 0;
+
+/** The longest name an orderable body may be given. */
+export const ACTOR_NAME_MAX = 14;
+/** What a typed name becomes: upper case, one space between words, trimmed, no longer than ACTOR_NAME_MAX. Empty: no name of its own. */
+export const cleanActorName = (s: string) => s.toUpperCase().replace(/\s+/g, " ").trim().slice(0, ACTOR_NAME_MAX).trim();
+/** What a body is called: its own name in front of its kind ("BOB - WORKER GOLEM"), or just the kind. */
+export const actorLabel = (a: Actor) => (a.name ? `${a.name} - ${actorDef(a).name}` : actorDef(a).name);

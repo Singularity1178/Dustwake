@@ -15,6 +15,7 @@ import { PackUi } from "./screens/pack";
 import { StorageUi } from "./screens/storage";
 import { DebugUi } from "./screens/debug";
 import { ManageUi } from "./screens/manage";
+import { TransferUi } from "./screens/transfer";
 import { BookUi } from "./screens/book";
 import { SchematicUi } from "./screens/schematic";
 import { DialogueUi } from "./screens/dialogue";
@@ -184,6 +185,7 @@ export class Game {
   packUi!: PackUi;
   storageUi!: StorageUi;
   manageUi!: ManageUi;
+  transferUi!: TransferUi;
   /** The Ctrl+0 debug menu (screens/debug.ts). */
   debugUi!: DebugUi;
   /** Book reading screen (screens/book.ts). */
@@ -236,6 +238,7 @@ export class Game {
     this.packUi.reset();
     this.storageUi.reset();
     this.manageUi.reset();
+    this.transferUi.reset();
     this.particles = [];
     this.toast = null;
     this.fizzT = 0;
@@ -460,6 +463,8 @@ export class Game {
     this.packUi = new PackUi(this);
     this.storageUi = new StorageUi(this);
     this.manageUi = new ManageUi(this);
+    this.transferUi = new TransferUi(this, (id) => this.manageUi.open(id));
+    this.manageUi.openTransfer = (id) => this.transferUi.open(id);
     this.debugUi = new DebugUi(this);
     this.bookUi = new BookUi(this);
     this.schemUi = new SchematicUi(this);

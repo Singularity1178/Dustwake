@@ -82,10 +82,34 @@ export const ITEM_ART: Record<ItemId, ItemArt> = {
     p.r(7, 5, 7, 2, "#8a6a3a"); p.r(7, 5, 7, 1, "#a8844a");
     p.r(11, 7, 1, 3, "#7a5a34"); p.r(13, 7, 1, 2, "#7a5a34"); p.p(9, 6, "#4a3418");
   },
+  // The aether core: a free crystal, all light. A tall faceted diamond, tip to tip, lit from the top left: four
+  // quadrant facets (a bright upper left, a deep lower right), a luminous rim, a girdle through the middle and a
+  // glint near the top. No base or stand; every pixel glows.
   core: (p) => {
-    p.r(5, 13, 6, 2, "#1a1a28");
-    p.g(7, 2, 2, 1, "#c0ffff"); p.g(6, 3, 4, 2, "#60e0ff"); p.g(5, 5, 6, 4, "#30a8e8"); p.g(6, 9, 4, 2, "#2080c0"); p.g(7, 11, 2, 2, "#1860a0");
-    p.g(7, 4, 1, 4, "#e0ffff"); p.g(9, 6, 1, 2, "#a0f0ff");
+    const HALF = [1, 2, 3, 3, 4, 5, 6, 6, 5, 4, 3, 3, 2, 1]; // half-width per row, rows 1..14
+    const FACET = {
+      ul: { fill: "#8aeeff", mid: "#6adcfa", rim: "#e4ffff" },
+      ur: { fill: "#3cb4f0", mid: "#4cc4f6", rim: "#8ae4ff" },
+      ll: { fill: "#2a8ee0", mid: "#36a2ea", rim: "#5cc0f4" },
+      lr: { fill: "#1a62b4", mid: "#2276c8", rim: "#3a94dc" },
+    };
+    HALF.forEach((n, i) => {
+      const y = 1 + i, upper = i < 7;
+      for (let d = 0; d < n; d++) {
+        for (const left of [true, false]) {
+          const x = left ? 7 - d : 8 + d;
+          const f = FACET[`${upper ? "u" : "l"}${left ? "l" : "r"}` as keyof typeof FACET];
+          const rim = d === n - 1, centre = d === 0, girdle = i === 6 || i === 7;
+          // the rim is the brightest ring; one step in is the body of the facet; the centre line and a diagonal catch light
+          let c = rim ? f.rim : f.fill;
+          if (!rim && (centre || d === n - 2 || (upper ? (n - 1 - d) === 2 : false))) c = f.mid;
+          if (girdle && !rim) c = upper ? f.rim : f.mid;
+          p.g(x, y, 1, 1, c);
+        }
+      }
+    });
+    p.g(7, 8, 2, 1, "#ffffff"); // the heart where the facets meet
+    p.g(6, 3, 1, 2, "#ffffff"); p.gp(5, 5, "#e8ffff"); p.gp(9, 11, "#a8e8ff");
   },
   schematic: (p) => {
     p.o(1, 4, 14, 8, "#2a4a7a", "#0e1a2e"); p.r(2, 5, 12, 2, "#3a5a9a");

@@ -24,7 +24,7 @@ export interface ActorDef {
 export const ACTORS: Record<string, ActorDef> = {
   golem: {
     name: "MAINTAINER", body: { box: [10, 5], height: 24, reach: 20 }, art: { key: "golem" },
-    speed: 24, speedTiers: [{ requires: { actorFlags: ["golem.arm"] }, speed: 30 }], harvestPower: 1,
+    speed: 48, speedTiers: [{ requires: { actorFlags: ["golem.arm"] }, speed: 60 }], harvestPower: 1,
     inventory: { slots: 8, tiers: CAPACITY_TIERS }, gearSlots: GEAR_SLOTS,
     gearUnlocks: Object.fromEntries(GEAR_SLOT_DEFS.flatMap((d) => d.unlock ? [[d.id, d.unlock]] : [])),
     capabilities: ["move", "harvest", "craft", "build", "travel", "scan", "attack"],

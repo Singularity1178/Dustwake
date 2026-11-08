@@ -16,10 +16,10 @@ import { placement, BLOCK_TEXT, recipeAnchor, deconstructCheck, deconMessage } f
 import { dropSpot } from "./inventory";
 import { actorBoxes } from "./collision";
 import { faceTo } from "./tasks";
-import { wearCheck, takeOffCheck, gearRefusal } from "./gear";
+import { wearCheck, takeOffCheck, gearRefusal, slotsFor } from "./gear";
 import { inventoryHandle, packRef, storageRef, transferSlot } from "./storage";
 import { orderRefusal, pauseJob, resumeJob, setWorkerOrder, workerRefusal } from "./jobs";
-import { powered } from "./actorStats";
+import { powered, cleanActorName, actorLabel } from "./actorStats";
 import { actorMessage } from "./messages";
 import { cleanPropName, defaultPropName, propName } from "./orders";
 import type { JobOrder } from "../world/jobs";
@@ -231,4 +231,90 @@ export function controlWorker(w: World, a: Actor, targetId: string, what: Worker
   if (job.status === "running") return say(false, "IT IS ALREADY WORKING");
   resumeJob(w, target);
   return say(true, powered(target) ? "ORDER RESUMED" : "NO POWER. IT WAITS FOR A CORE");
+}
+
+
+// ---------------------------------------------------------------- naming and transfer
+/**
+ * Give an orderable body (a worker) a name of its own, or clear it (empty). The name goes in front of its kind
+ * everywhere it is shown ("BOB - WORKER GOLEM"). Needs the commander within reach and in sight, as the orders do.
+ */
+export function renameActor(w: World, a: Actor, targetId: string, name: string): OrderOutcome {
+  const say = (ok: boolean, text: string): OrderOutcome => { actorMessage(w, a, text); return { ok, text }; };
+  const why = workerRefusal(w, a, targetId);
+  if (why) return say(false, why);
+  const target = actorById(w, targetId)!, clean = cleanActorName(name);
+  if (clean) target.name = clean; else delete target.name;
+  return say(true, clean ? `NAMED ${actorLabel(target)}` : `NAME CLEARED`);
+}
+
+export interface TransferOutcome { ok: boolean; moved: number; text: string }
+export const TRANSFER_TEXT = {
+  empty: "NOTHING THERE TO MOVE",
+  critical: "TOO IMPORTANT TO GIVE AWAY",
+  theirFull: "ITS PACK IS FULL",
+  packFull: "YOUR PACK IS FULL",
+  noWear: "IT CAN'T WEAR THAT",
+} as const;
+
+/**
+ * The transfer screen's move: up to `n` of what slot `slot` holds goes from the commander's pack to the worker's
+ * (`give`) or from the worker's to the commander's (`take`). As much as fits moves, the rest stays; a refusal
+ * changes nothing. Items the golem can't even drop (the tutorial's) are never given away.
+ */
+export function transferWithActor(w: World, a: Actor, targetId: string, dir: "give" | "take", slot: number, n: number): TransferOutcome {
+  const out = (ok: boolean, moved: number, text: string): TransferOutcome => { actorMessage(w, a, text); return { ok, moved, text }; };
+  const why = workerRefusal(w, a, targetId);
+  if (why) return out(false, 0, why);
+  const target = actorById(w, targetId)!;
+  const from = dir === "give" ? packRef(a) : packRef(target), to = dir === "give" ? packRef(target) : packRef(a);
+  const s = inventoryHandle(w, from)?.inventory[slot];
+  if (!s) return out(false, 0, TRANSFER_TEXT.empty);
+  if (dir === "give" && !isDroppable(s.item)) return out(false, 0, TRANSFER_TEXT.critical);
+  const item = s.item, want = Math.max(1, Math.min(Math.floor(n), s.n));
+  const moved = transferSlot(w, from, to, slot, want), full = dir === "give" ? TRANSFER_TEXT.theirFull : TRANSFER_TEXT.packFull;
+  if (!moved) return out(false, 0, full);
+  const verb = dir === "give" ? "GAVE" : "TOOK";
+  if (moved < want) return out(true, moved, `${verb} ${moved} OF ${want} ${ITEM_NAMES[item]}. ${full}`);
+  return out(true, moved, `${verb} ${moved} ${ITEM_NAMES[item]}`);
+}
+
+/**
+ * Put gear on the worker (a rune into its rune slot). `from` says whose pack slot `slot` is: the commander's (one
+ * of the stack goes across first) or the worker's own. If it can't be worn the item goes back where it came from
+ * and nothing changes.
+ */
+export function equipActor(w: World, a: Actor, targetId: string, from: "pack" | "carry", slot: number): TransferOutcome {
+  const out = (ok: boolean, text: string): TransferOutcome => { actorMessage(w, a, text); return { ok, moved: ok ? 1 : 0, text }; };
+  const why = workerRefusal(w, a, targetId);
+  if (why) return out(false, why);
+  const target = actorById(w, targetId)!;
+  const src = from === "pack" ? a : target, s = src.inventory[slot];
+  if (!s) return out(false, TRANSFER_TEXT.empty);
+  const item = s.item;
+  if (!ITEMS[item].wear || !slotsFor(w, target, item).length) return out(false, TRANSFER_TEXT.noWear);
+  let at = slot;
+  if (from === "pack") {
+    if (!isDroppable(item)) return out(false, TRANSFER_TEXT.critical);
+    if (!transferSlot(w, packRef(a), packRef(target), slot, 1)) return out(false, TRANSFER_TEXT.theirFull);
+    at = target.inventory.findIndex((x) => x?.item === item);
+  }
+  const chk = wearCheck(w, target, at);
+  if (!chk.ok) {
+    if (from === "pack") transferSlot(w, packRef(target), packRef(a), at, 1);
+    return out(false, gearRefusal(chk));
+  }
+  applyEffect(w, target, { op: "wear", slot: at });
+  return out(true, `${actorLabel(target)} WEARS ${ITEM_NAMES[item]}`);
+}
+
+/** Take what the worker wears in `gear` off, into its own pack (refused, changing nothing, if it doesn't fit). */
+export function unequipActor(w: World, a: Actor, targetId: string, gear: GearSlot): TransferOutcome {
+  const out = (ok: boolean, text: string): TransferOutcome => { actorMessage(w, a, text); return { ok, moved: ok ? 1 : 0, text }; };
+  const why = workerRefusal(w, a, targetId);
+  if (why) return out(false, why);
+  const target = actorById(w, targetId)!, chk = takeOffCheck(w, target, gear);
+  if (!chk.ok) return out(false, chk.reason === "empty" ? "NOTHING WORN THERE" : gearRefusal(chk));
+  applyEffect(w, target, { op: "takeOff", gear });
+  return out(true, `TOOK OFF ${ITEM_NAMES[chk.item]}`);
 }

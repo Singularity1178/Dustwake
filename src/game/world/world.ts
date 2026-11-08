@@ -40,6 +40,8 @@ export interface Actor {
   gear: Gear;
   /** Optional dialogue identity. The body and art always come from definition. */
   npc?: string;
+  /** A name the player gave this body (orderable workers): shown ahead of its kind, "BOB - WORKER GOLEM". Saved with the actor. */
+  name?: string;
 }
 
 /** A delayed effect. `area` is where it was scheduled: it always applies there, even if the actor has travelled. */

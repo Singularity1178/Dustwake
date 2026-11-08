@@ -23,18 +23,18 @@
 // world running, like the crafting bench: the screen closes, the work happens,
 // and the host reopens it (`pending` / `resume`) when the reach is done.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
 import { actorDef } from "../content/actors";
 import { ITEM_NAMES } from "../content/items";
 import { slotDef } from "../content/gear";
 import { actorById, type Actor } from "../world/world";
 import { capacity } from "../sim/inventory";
-import { powered } from "../sim/actorStats";
+import { powered, actorLabel, ACTOR_NAME_MAX } from "../sim/actorStats";
 import { wornIn } from "../sim/gear";
 import { CORE_TEXT, coreActionFor } from "../sim/power";
 import { craftReason } from "../sim/crafting";
 import { gatherOrder, craftOrder, walkOrder, workerRefusal } from "../sim/jobs";
-import { controlWorker, giveWorkerOrder, orderCoreSwap } from "../sim/commands";
+import { controlWorker, giveWorkerOrder, orderCoreSwap, renameActor } from "../sim/commands";
 import {
   AMOUNTS, areaName, canTake, craftChoices, gatherRefusal, gatherResources, gatherSources, jobView, powerState, stationOptions,
   storageOptions, walkOptions, workerStatus, type Tone,
@@ -81,6 +81,10 @@ export class ManageUi {
   gather = { res: 0, from: 0, to: 0, amt: 4 };
   craft = { station: 0, recipe: 0, amt: 0 };
   walk = { where: 0 };
+  /** The rename field: active while the worker's name is being typed. */
+  readonly nameField = new TextField(ACTOR_NAME_MAX);
+  /** Opens the transfer screen for a worker (wired by the host; this screen steps aside for it). */
+  openTransfer: ((targetId: string) => void) | null = null;
   private list: Row[] = [];
   private fresh = false;
   private fig: ReturnType<typeof makeCanvas> | null = null;
@@ -90,7 +94,7 @@ export class ManageUi {
   }
 
   /** New session (a world was loaded or restarted): nothing remembered, no swap pending. */
-  reset() { this.targetId = null; this.pending = false; this.view = "main"; this.rows = { main: 0, gather: 0, craft: 0, walk: 0 }; }
+  reset() { this.targetId = null; this.pending = false; this.nameField.active = false; this.nameField.clear(); this.view = "main"; this.rows = { main: 0, gather: 0, craft: 0, walk: 0 }; }
 
   get target(): Actor | undefined { return this.targetId ? actorById(this.g.world, this.targetId) : undefined; }
   get row() { return this.rows[this.view]; }
@@ -101,6 +105,7 @@ export class ManageUi {
   open(targetId: string) {
     if (targetId !== this.targetId) { this.rows = { main: 0, gather: 0, craft: 0, walk: 0 }; }
     this.targetId = targetId; this.view = "main"; this.pending = false;
+    this.nameField.active = false; this.nameField.clear();
     this.refresh();
     this.g.screens.push(this.screen);
     this.g.sfx.open();
@@ -143,6 +148,8 @@ export class ManageUi {
       kindRow("GATHER...", "gatherDeposit", "gather", ["SEND IT TO HARVEST A RESOURCE AND CARRY IT TO A", "STORAGE CHEST, ONCE OR UNTIL TOLD TO STOP."]),
       kindRow("CRAFT...", "craftAt", "craft", ["HAVE IT CRAFT AT A BENCH FROM ITS PACK AND THE", "STORAGE BESIDE THE BENCH, ONCE OR ON REPEAT."]),
       kindRow("GO TO...", "walk", "walk", ["SEND IT SOMEWHERE AND LEAVE IT STANDING THERE."]),
+      { label: "TRANSFER...", ok: true, note: ["SEE YOUR PACK BESIDE ITS PACK: GIVE IT ITEMS, TAKE", "THEM BACK, OR PUT A RUNE ON IT."], act: () => this.openTransfer?.(a.id) },
+      { label: "RENAME...", ok: true, note: [a.name ? `IT IS CALLED ${actorLabel(a)}. GIVE IT A NEW NAME,` : "GIVE IT A NAME OF YOUR OWN. IT GOES BEFORE ITS KIND:", a.name ? "OR LEAVE IT EMPTY TO CLEAR IT." : `${actorDef(a).name} BECOMES BOB - ${actorDef(a).name}.`], act: () => this.startRename() },
       resume
         ? { label: job!.status === "blocked" ? "RETRY ORDER" : "RESUME ORDER", ok: true, note: ["LET IT TRY AGAIN, FROM WHERE IT STANDS."], act: () => this.control("resume") }
         : { label: "PAUSE ORDER", ok: live, note: [live ? "HOLD ITS ORDER WHERE IT IS. NOTHING IS LOST." : "IT HAS NO ORDER TO PAUSE."], act: () => this.control("pause") },
@@ -236,6 +243,26 @@ export class ManageUi {
     this.refresh();
   }
 
+  /** Start typing a new name, the current one as the starting text. */
+  startRename() {
+    const a = this.target;
+    if (!a) return;
+    this.nameField.value = (a.name ?? "").slice(0, ACTOR_NAME_MAX); this.nameField.active = true;
+    this.g.sfx.tone(520, 0.05, "triangle", 0.04);
+  }
+  /** Keep what was typed (empty clears the name). Returns whether the worker took it. */
+  commitRename(): boolean {
+    const g = this.g, f = this.nameField;
+    f.active = false;
+    const r = this.targetId ? renameActor(g.world, g.pl, this.targetId, f.value) : { ok: false, text: "" };
+    f.clear();
+    if (r.ok) g.sfx.tone(420, 0.05, "triangle", 0.04); else g.sfx.thud();
+    g.drainEvents();
+    this.refresh();
+    return r.ok;
+  }
+  cancelRename() { this.nameField.active = false; this.nameField.clear(); }
+
   /** Slot a core in or take it out: the same order the C key gives. The golem does it with the world running, then this screen comes back. */
   swapCore() {
     const g = this.g, a = this.target;
@@ -249,6 +276,14 @@ export class ManageUi {
   private update() {
     const g = this.g;
     const a = this.target;
+    if (this.nameField.active) {
+      // Typing mode: letters go to the field, never to the rows or the core key.
+      if (!a) { this.cancelRename(); g.screens.popToBase(); return; }
+      if (this.nameField.feed(g.typed)) g.sfx.tone(620, 0.02, "square", 0.015);
+      if (g.hit("enter")) this.commitRename();
+      else if (g.hit("escape")) this.cancelRename();
+      return;
+    }
     if (g.hit("i", "tab")) { g.screens.popToBase(); return; }
     if (!a) { g.screens.popToBase(); return; }
     if (g.hit("escape")) { if (this.view === "main") g.screens.popToBase(); else { this.go("main"); g.sfx.tone(400, 0.04, "square", 0.02); } return; }
@@ -259,6 +294,7 @@ export class ManageUi {
     if (`${this.view}:${this.row}` !== before) g.sfx.tone(500, 0.04, "square", 0.02);
     const r = this.current;
     if (g.hit("c")) { this.swapCore(); return; }
+    if (this.view === "main" && g.hit("r")) { this.startRename(); return; }
     if (!r) return;
     const d = g.hit("arrowleft", "a") ? -1 : g.hit("arrowright", "d") ? 1 : 0;
     if (d && r.step) { r.step(d); g.sfx.tone(480, 0.04, "square", 0.02); this.refresh(); return; }
@@ -277,8 +313,11 @@ export class ManageUi {
     panel(ctx, PX, PY, PW, PH);
     if (!a) return;
     const st = workerStatus(g.world, a);
-    drawText(ctx, clipText(actorDef(a).name, 120), LX, PY + 6, UI.title);
-    drawText(ctx, clipText(st.text, 150), PX + PW - 8, PY + 6, TONE[st.tone], 1, "right");
+    if (this.nameField.active) this.nameField.draw(ctx, LX - 1, PY + 3, 150, g.t, "NAME");
+    else {
+      drawText(ctx, clipText(actorLabel(a), 150), LX, PY + 6, UI.title);
+      drawText(ctx, clipText(st.text, 120), PX + PW - 8, PY + 6, TONE[st.tone], 1, "right");
+    }
     this.renderWorker(a);
     this.renderRows();
     this.renderNotes();
@@ -357,7 +396,7 @@ export class ManageUi {
     frame(ctx, bx, by, bw, bh, "#0e0c10", "#2a2630", "#3a3540");
     const r = this.current;
     (r?.note ?? []).slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, bw - 12), bx + 6, by + 5 + i * 7, r!.ok ? "#a89c80" : UI.mid));
-    const keys = this.view === "main" ? "W/S CHOOSE   E SELECT   C CORE   ESC CLOSE" : "W/S CHOOSE   A/D CHANGE   E CONFIRM   C CORE   ESC BACK";
+    const keys = this.nameField.active ? "TYPE A NAME   ENTER KEEP   ESC CANCEL   EMPTY: NO NAME" : this.view === "main" ? "W/S CHOOSE   E SELECT   R RENAME   C CORE   ESC CLOSE" : "W/S CHOOSE   A/D CHANGE   E CONFIRM   C CORE   ESC BACK";
     drawText(ctx, clipText(keys, bw - 12), bx + 6, by + bh - 9, UI.dim);
   }
 }

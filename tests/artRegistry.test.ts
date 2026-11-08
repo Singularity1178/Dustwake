@@ -22,7 +22,7 @@ import type { ItemId } from "../src/game/content/items";
 
 // items: updated deliberately for the crown's retexture (its main stone is the High-Grade Ruby now); with the old
 // crown swapped back in the list still hashes to the previous "6253c0e8", so no other legacy icon moved.
-const GOLDEN = { props: "e4c643ed", items: "fd0c50a0", tiles: "5eb324bb", glyphs: "25b715f1", surface: "c332aec8" };
+const GOLDEN = { props: "e4c643ed", items: "94b2678e", tiles: "5eb324bb", glyphs: "25b715f1", surface: "c332aec8" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

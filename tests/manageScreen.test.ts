@@ -80,7 +80,7 @@ test("shows the worker as it is: switched off, idle, working, paused, blocked on
   until(w, () => wk.job!.status === "blocked", 20000);
   assert.equal(wk.job!.reason, "storageFull");
   b = shot(sh, "manage blocked", "manage-blocked"); has(b, "BLOCKED: STORAGE FULL");
-  assert.equal(ui.menu[4].label, "RETRY ORDER");
+  assert.equal(ui.menu[6].label, "RETRY ORDER");
   // done
   getArea(w, CHEST.area).setInventory(CHEST.prop, []);
   resumeJob(w, wk);
@@ -207,14 +207,15 @@ test("a go-to order from the screen walks there and stands", () => {
 
 test("pause, resume and cancel go through the screen; a paused order holds still and loses nothing", () => {
   const { w, pl, worker: wk, sh, ui } = open();
-  assert.ok(!ui.menu[4].ok && ui.menu[4].label === "PAUSE ORDER" && !ui.menu[5].ok, "nothing to pause or cancel yet");
-  sh.press("s"); sh.press("s"); sh.press("s"); sh.press("s"); sh.press("e");
+  assert.ok(!ui.menu[6].ok && ui.menu[6].label === "PAUSE ORDER" && !ui.menu[7].ok, "nothing to pause or cancel yet");
+  for (let i = 0; i < 6; i++) sh.press("s");
+  sh.press("e");
   assert.equal(last(sh.notes), "IT HAS NO ORDER TO PAUSE");
   assignJob(w, wk, gatherOrder("wood", "debug_yard", { ...CHEST }, 6));
   until(w, () => wk.moving); beside(w, wk);
   choose(sh, ui, "PAUSE ORDER");
   assert.deepEqual([wk.job!.status, wk.job!.reason, last(sh.notes)], ["paused", "manual", "ORDER PAUSED"]);
-  assert.equal(ui.menu[4].label, "RESUME ORDER");
+  assert.equal(ui.menu[6].label, "RESUME ORDER");
   const at = [wk.x, wk.y]; frames(w, 120);
   assert.deepEqual([wk.x, wk.y], at, "it stays where it is");
   choose(sh, ui, "RESUME ORDER");

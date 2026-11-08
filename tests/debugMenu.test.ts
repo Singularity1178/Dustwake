@@ -171,6 +171,7 @@ test("opens on the play screen only, and the toggle closes it", () => {
   assert.ok(sh.host.screens.is("debug"));
   ui.toggle(); assert.ok(sh.host.screens.is("play"));
   ui.toggle(); sh.press("escape"); assert.ok(sh.host.screens.is("play"), "Esc closes");
+  ui.toggle(); assert.ok(sh.host.screens.is("debug")); sh.press("tab"); assert.ok(sh.host.screens.is("play"), "Tab closes");
 });
 
 test("ITEMS: quantity with A / D (Shift x10), E gives, G drops on the ground, X deletes, F wears", () => {

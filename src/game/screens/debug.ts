@@ -229,6 +229,7 @@ export class DebugUi {
       this.refresh();
       return;
     }
+    if (g.hit("tab")) { g.screens.popToBase(); return; }
     if (g.hit("escape")) { if (this.search.value) { this.search.clear(); this.refresh(); } else g.screens.popToBase(); return; }
     // Tabs: Q / R step, 1-5 jump.
     if (g.hit("q")) return this.setTab(this.tab - 1);
@@ -332,7 +333,7 @@ export class DebugUi {
     ctx.fillStyle = "rgba(0,0,0,0.72)"; ctx.fillRect(0, 0, W, H);
     panel(ctx, PX, PY, PW, PH);
     drawText(ctx, "DEBUG MENU", PX + 8, PY + 6, UI.gold);
-    drawText(ctx, "CTRL+0 / ESC CLOSE", PX + PW - 8, PY + 6, UI.dim, 1, "right");
+    drawText(ctx, "CTRL+0 / TAB / ESC CLOSE", PX + PW - 8, PY + 6, UI.dim, 1, "right");
 
     // tabs
     const tw = Math.floor((PW - 16) / TABS.length);

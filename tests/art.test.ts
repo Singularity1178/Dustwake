@@ -31,7 +31,7 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 // items: updated deliberately for the crown's retexture (its main stone is now the High-Grade Ruby, set in the
 // band): with the old crown function swapped back in, this list still hashes to the previous "6cae5365", so
 // no other legacy icon moved.
-const GOLDEN = { props: "9b046139", items: "644c5ccf", bake: "c475d9be" };
+const GOLDEN = { props: "9b046139", items: "7dcab441", bake: "c475d9be" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();
