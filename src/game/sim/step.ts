@@ -1,6 +1,7 @@
 // Per-frame simulation entry points. Deterministic given (world, dt, input)
 // except where noted; no DOM. The host decides which of these run in which
 // screen (e.g. overlays pause the world by simply not calling them).
+import { TS } from "../content/tiles";
 import { RITUAL_SPOTS } from "../content/ritual";
 import { FLAGS } from "../content/flags";
 import { emit, hasFlag, player, areaOf, type Actor, type World } from "../world/world";
@@ -28,6 +29,8 @@ export interface PlayerInput {
   toggleScan?: boolean;
   /** Movement speed multiplier (debug/testing). Defaults to 1. */
   speed?: number;
+  /** Walk through walls and props (debug/testing; the area's edge still holds). */
+  noclip?: boolean;
 }
 export interface PlayerStepResult { target: Interactable | null; ui: InteractUi | null }
 
@@ -43,7 +46,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
     reactToEvents(w);
     return { target: null, ui: null };
   }
-  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, actorSpeed(w, pl) * (input.speed ?? 1));
+  move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, actorSpeed(w, pl) * (input.speed ?? 1), input.noclip);
   const scan = pl.task || pl.mode !== "scan" ? null : findScanTarget(area, pl);
   const target = pl.task ? null : scan ?? findTarget(area, pl, npcInteractables(w, area));
   let ui: InteractUi | null = null;
@@ -94,7 +97,7 @@ export function stepWorld(w: World, dt: number) {
 
 // ---------------------------------------------------------------- locomotion
 /** Limping golem locomotion with wall sliding and corner nudging. */
-export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy: number, base: number) {
+export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy: number, base: number, noclip = false) {
   const mag = Math.hypot(ix, iy);
   if (mag > 0) { ix /= mag; iy /= mag; pl.facing = Math.abs(ix) > Math.abs(iy) ? (ix > 0 ? "right" : "left") : iy > 0 ? "down" : "up"; }
   const limp = 0.55 + 0.6 * Math.abs(Math.sin(pl.phase));
@@ -106,7 +109,9 @@ export function move(w: World, area: Area, pl: Actor, dt: number, ix: number, iy
   pl.moving = sp > 4;
   // Other actors' bodies (NPCs) block like props do.
   const bodies = actorBoxes(w, area.id, pl.id);
-  const boxFree = (a: Area, x: number, y: number) => boxFreeAt(a, x, y, bodies, actorDef(pl).body.box);
+  const boxFree = noclip
+    ? (a: Area, x: number, y: number) => x > 2 && y > 6 && x < a.w * TS - 2 && y < a.h * TS - 1
+    : (a: Area, x: number, y: number) => boxFreeAt(a, x, y, bodies, actorDef(pl).body.box);
   const nx = pl.x + pl.vx * dt;
   if (boxFree(area, nx, pl.y)) pl.x = nx;
   else {

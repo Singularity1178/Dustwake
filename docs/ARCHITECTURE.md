@@ -30,7 +30,7 @@ src/game/
     storage.ts   actor/prop inventory transactions and nearby craft sources
     power.ts     walk-up insertion/removal, tier and family checks, the core slot seam
     analysis.ts  sim scan mode, highlighting projection and recipe gates
-    debug.ts     debug kits (Ctrl+6) as pure sim functions, so tests run them
+    debug.ts     debug kits (Ctrl+6) and the Ctrl+0 debug menu's actions (summon, flags, places, teleport) as pure sim functions, so tests run them
     step.ts      stepPlayer / stepWorld, locomotion
   view/        Area presentation, actor drawing, event audience, vision overlay, browser persistence, zoom
   ui/          screen stack, overlay kit + UiHost, text wrap, dialogue layout,

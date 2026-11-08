@@ -3,15 +3,17 @@
 // entry points; it reacts to the World's events for sound and particles.
 import { TS, T } from "./content/tiles";
 import { ITEMS, ITEM_NAMES, isGlyph, glyphItem, type ItemId } from "./content/items";
-import { hasItem, addItems } from "./sim/inventory";
-import { ensureWorn, golemGlow, runeMarks } from "./sim/gear";
-import { toggleGearKit, learnAllPlans } from "./sim/debug";
+import { hasItem } from "./sim/inventory";
+import { golemGlow, runeMarks } from "./sim/gear";
+import { toggleGearKit, grantStoryKit, grantBuildKit, teleportTo, type DebugPlace } from "./sim/debug";
+import { foundationDemo } from "./sim/debugFoundations";
 import { coreCheck } from "./sim/power";
 import { GOLEM_LIGHT } from "./content/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
 import { PackUi } from "./screens/pack";
 import { StorageUi } from "./screens/storage";
+import { DebugUi } from "./screens/debug";
 import { ManageUi } from "./screens/manage";
 import { BookUi } from "./screens/book";
 import { SchematicUi } from "./screens/schematic";
@@ -136,6 +138,11 @@ export class Game {
   toast: { icon: Sprite; name: string; t: number } | null = null;
   /** Debug/testing state (not saved, not part of the sim). */
   debugSpeed = false;
+  /** The multiplier super speed applies while on (Ctrl+3 uses the default; the debug menu cycles it). */
+  debugSpeedMult = DEBUG_SPEED_MULT;
+  debugNoclip = false;
+  /** Corner readout of the area, position and active debug modes. */
+  debugHud = false;
   debugMsg: { text: string; t: number } | null = null;
   cam = { x: 0, y: 0 };
   shakeT = 0; shakeMag = 0;
@@ -153,7 +160,7 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "storage" | "manage" | "dialogue", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "storage" | "manage" | "dialogue" | "debug", Screen>;
   /** Feedback line (blocked actions, pack full, rune dark...). */
   note: { text: string; t: number } | null = null;
   /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
@@ -177,6 +184,8 @@ export class Game {
   packUi!: PackUi;
   storageUi!: StorageUi;
   manageUi!: ManageUi;
+  /** The Ctrl+0 debug menu (screens/debug.ts). */
+  debugUi!: DebugUi;
   /** Book reading screen (screens/book.ts). */
   bookUi!: BookUi;
   /** Schematic overlay (screens/schematic.ts). */
@@ -347,30 +356,20 @@ export class Game {
   keyUp(k: string) { this.keys.delete(k.toLowerCase()); }
   pointer() { this.pressed.add("click"); }
 
-  /** Debug keybinds (Ctrl+1..6), wired up in App.tsx. */
+  /** Debug keybinds (Ctrl+0..6), wired up in App.tsx. Ctrl+0 opens (or closes) the debug menu. */
   debugKey(n: number) {
     const w = this.world, pl = this.pl;
     const say = (text: string) => { this.debugMsg = { text, t: 0 }; };
-    if (n === 1) {
+    if (n === 0) {
+      this.debugUi.toggle();
+    } else if (n === 1) {
       // Toggle the iron arm.
       if (this.hasArm) { clearFlag(w, FLAGS.golemArm); say("DEBUG: IRON ARM OFF"); }
       else { setFlag(w, FLAGS.golemArm); say("DEBUG: IRON ARM ON"); }
     } else if (n === 2) {
       // Give every rune glyph, the aether core, the rune chisel and the schematic
       // (skipping any already held or already placed).
-      const r = this.area.ritual;
-      const held = (id: ItemId) => hasItem(pl, id);
-      let given = 0;
-      for (let g = 0; g < GLYPHS.length; g++) {
-        const id = glyphItem(g);
-        if (held(id) || r?.sockets.includes(g)) continue;
-        addItems(w, pl, id, 1); given++;
-      }
-      if (!held("core") && !r?.core) { addItems(w, pl, "core", 1); given++; }
-      for (const id of ["chisel", "schematic"] as ItemId[]) {
-        if (held(id)) continue;
-        addItems(w, pl, id, 1); given++;
-      }
+      const given = grantStoryKit(w, pl);
       this.sfx.tone(520, 0.1, "triangle", 0.05);
       say(given ? "DEBUG: RUNES + CORE + TOOLS GRANTED" : "DEBUG: ALREADY HAVE ALL RUNES + CORE + TOOLS");
     } else if (n === 3) {
@@ -380,8 +379,7 @@ export class Game {
       // Building tests: every build knowledge flag (incl. masonry for the brazier),
       // the basket worn on the back (the one in the pack if there is one, else a
       // new one), and enough materials to build one of everything several times.
-      setFlag(w, FLAGS.knowBuild); setFlag(w, FLAGS.knowMasonry); learnAllPlans(w); ensureWorn(w, pl, "basket");
-      for (const id of ["wood", "stone", "planks", "cut_stone"] as ItemId[]) addItems(w, pl, id, 40);
+      grantBuildKit(w, pl);
       say("DEBUG: BUILD + MASONRY + PLANS + BASKET + MATERIALS");
     } else if (n === 6) {
       // Gear and crafting tests (sim/debug.ts): ON grants the crafted and raw materials, the chisel and both runes,
@@ -397,6 +395,40 @@ export class Game {
   }
   has(...k: string[]) { return k.some((x) => this.keys.has(x)); }
   hit(...k: string[]) { return k.some((x) => this.pressed.has(x)); }
+
+  // ---------------------------------------------------------------- debug menu host (screens/debug.ts)
+  /** Set or clear a flag from the debug menu. The mended eye also moves the zoom, as Ctrl+5 does. */
+  debugSetFlag(flag: string, on: boolean) {
+    const w = this.world;
+    if (on) setFlag(w, flag); else clearFlag(w, flag);
+    if (flag === FLAGS.golemEye) {
+      if (on) { this.zoomTo(ZOOM_DEFAULT, 0.6); this.eyeBoost = 1.5; } else this.zoomTo(1, 0.4);
+    }
+  }
+  /** Put the player at a debug place (any area): the view and camera follow at once. False if no free spot is near. */
+  debugTeleport(p: DebugPlace): boolean {
+    const pl = this.pl;
+    if (!teleportTo(this.world, pl, p.area, p.x, p.y)) return false;
+    this.syncView();
+    const a = this.area;
+    this.cam.x = clamp(pl.x - this.vw / 2, 0, Math.max(0, a.w * TS - this.vw));
+    this.cam.y = clamp(pl.y - 12 - this.vh / 2, 0, Math.max(0, a.h * TS - this.vh));
+    this.glight.vx = -999;
+    this.particles = [];
+    this.drainEvents();
+    return true;
+  }
+  /** A fresh world straight in the dungeon, no intro. */
+  debugNewGame() { this.resume(createWorld(newSeed())); this.say("NEW GAME (DEBUG)"); }
+  /** The two-area worker fixture (what window.dustwake.foundations() does). */
+  debugFoundations() { this.resume(foundationDemo()); this.say("FOUNDATION FIXTURE: A WORKER GATHERS THROUGH THE RUNES."); }
+  /** Step the view zoom through ZOOM_STEPS (ascending order, wrapping). */
+  debugZoom() {
+    const cur = this.zoomAnim?.to ?? this.zoom;
+    const steps = [...ZOOM_STEPS].sort((x, y) => x - y);
+    const next = steps.find((z) => z > cur + 1e-6) ?? steps[0];
+    this.zoomTo(next, 0.3);
+  }
 
   // ---------------------------------------------------------------- helpers
   get pl() { return player(this.world); }
@@ -428,6 +460,7 @@ export class Game {
     this.packUi = new PackUi(this);
     this.storageUi = new StorageUi(this);
     this.manageUi = new ManageUi(this);
+    this.debugUi = new DebugUi(this);
     this.bookUi = new BookUi(this);
     this.schemUi = new SchematicUi(this);
     this.dialogueUi = new DialogueUi(this);
@@ -457,6 +490,7 @@ export class Game {
       crafting: this.craftUi.screen,
       storage: this.storageUi.screen,
       manage: this.manageUi.screen,
+      debug: this.debugUi.screen,
       dialogue: this.dialogueUi.screen,
       end: scr("end", true, (dt) => {
         const et = g.S.end.t;
@@ -815,7 +849,7 @@ export class Game {
     if (this.has("arrowup", "w")) iy -= 1;
     if (this.has("arrowdown", "s")) iy += 1;
     // E / Enter interact, Space attacks (the two-arm slam): separate actions, both usable next to anything.
-    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), core: this.hit("c"), toggleScan: this.hit("z"), speed: this.debugSpeed ? DEBUG_SPEED_MULT : 1 });
+    const res = stepPlayer(w, dt, { ix, iy, use: this.hit("e", "enter"), attack: this.hit(" "), core: this.hit("c"), toggleScan: this.hit("z"), speed: this.debugSpeed ? this.debugSpeedMult : 1, noclip: this.debugNoclip });
     this.drainEvents();
     // golem damage sparks
     lk.sparkT -= dt;
@@ -1619,6 +1653,15 @@ export class Game {
       ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
       drawTextS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", 1, "center");
       ctx.globalAlpha = 1;
+    }
+    // debug readout: active modes, and (menu option) where the golem is
+    if (this.debugHud || this.debugNoclip || this.debugSpeed) {
+      const pl = this.pl, modes = [this.debugNoclip ? "NOCLIP" : "", this.debugSpeed ? `SPEED X${this.debugSpeedMult}` : ""].filter(Boolean).join("  ");
+      const lines = [
+        ...(this.debugHud ? [`${pl.area.toUpperCase()}  X ${Math.round(pl.x)}  Y ${Math.round(pl.y)}  TILE ${Math.floor(pl.x / TS)},${Math.floor((pl.y - 3) / TS)}`] : []),
+        ...(modes ? [`DEBUG: ${modes}`] : []),
+      ];
+      lines.forEach((l, i) => drawTextS(ctx, l, 4, H - 8 - (lines.length - 1 - i) * 8, "#ff9a5a", 1, "left", "#000"));
     }
     // toast (the dialogue box draws it above itself)
     if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(H - 26);
