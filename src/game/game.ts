@@ -28,6 +28,7 @@ import { VISION_CATEGORIES } from "./content/vision";
 import { GLYPHS } from "./content/glyphs";
 import { FLAGS, learnedText } from "./content/flags";
 import { propSprite } from "./art/props";
+import { portalById } from "./sim/portals";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite } from "./art/tiles";
 import { itemIcon, glyphPattern } from "./art/items";
 import { makeCanvas, Pen, Sprite, hash2, clamp, lerp, makeSprite } from "./util";
@@ -168,6 +169,8 @@ export class Game {
   tele = { x: 0, y: 0, dur: 4.6, first: true, travelled: false };
   /** White fade after a short rune hop (1 -> 0). */
   arriveFade = 0;
+  /** Stepping through a doorway or along a road into the next area: a short fade up from dark. */
+  doorFade = 0;
   hideGolem = false;
   /**
    * Surface rune override during the arrival cutscene (null: follow its flag).
@@ -245,7 +248,7 @@ export class Game {
     this.shudder = null;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
-    this.note = null; this.arriveFade = 0; this.hideGolem = false; this.runeAnim = null;
+    this.note = null; this.arriveFade = 0; this.doorFade = 0; this.hideGolem = false; this.runeAnim = null;
     this.monologue.reset();
     this.bars = { v: 0, to: 0 };
   }
@@ -791,6 +794,15 @@ export class Game {
         this.screens.set(this.S.tele); this.sfx.teleport();
         break;
       case "areaEntered": break;
+      case "portal": {
+        // Walked through a doorway or out along a road (sim/portals.ts): a latch or a footfall, a short fade up from
+        // dark, and the name of the place arrived in. The old area's particles stay behind.
+        const dest = this.world.areas.get(e.toArea), out = dest && portalById(dest, e.to);
+        this.doorFade = 1; this.particles = [];
+        if (out?.door) this.sfx.open(); else this.sfx.step(true);
+        if (out?.label) this.say(out.label);
+        break;
+      }
       case "dialogue":
         if (this.screens.is("play")) this.dialogueUi.open(e.npc, e.script, e.segment);
         break;
@@ -873,7 +885,8 @@ export class Game {
     this.target = res.target;
     if (res.ui) this.packUi.open("select", res.ui.socket);
     // rumble events
-    if (!this.area.base.outdoor) this.rumbleT -= dt;
+    // the buried halls groan; a lived-in room under a sound roof does not
+    if (!this.area.base.outdoor && !this.area.base.interior) this.rumbleT -= dt;
     if (this.rumbleT <= 0) {
       this.rumbleT = 50 + Math.random() * 50;
       this.sfx.rumble();
@@ -1053,6 +1066,7 @@ export class Game {
     }
     // short-hop arrival
     if (this.arriveFade > 0) { this.arriveFade = Math.max(0, this.arriveFade - dt * 1.4); this.look.z = Math.max(0, this.look.z - dt * 24); }
+    if (this.doorFade > 0) this.doorFade = Math.max(0, this.doorFade - dt * 2.8);
     if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
     this.stepMonologue(dt);
     // drifting leaves on the night wind
@@ -1078,6 +1092,13 @@ export class Game {
       if (Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 50) continue;
       if (Math.random() < dt * fire.embers)
         this.spawn({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + fire.emberDy, z: 14, vx: (Math.random() - 0.5) * 6, vz: 10 + Math.random() * 10, life: 1 + Math.random(), kind: "ember", col: Math.random() < 0.5 ? "#ffb040" : "#ff6a1a", emit: true, g: -4 });
+    }
+    // chimney smoke over the town's roofs (props with a `smoke` row), leaning on the same night wind as the leaves
+    for (const p of area.props) {
+      const sm = propDef(p.kind).smoke;
+      if (!sm || Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 70) continue;
+      if (Math.random() < dt * sm.rate)
+        this.spawn({ x: p.x + sm.dx + (Math.random() - 0.5) * 3, y: p.y, z: sm.z, vx: 3 + Math.random() * 4, vy: (Math.random() - 0.5) * 1.5, vz: 7 + Math.random() * 5, life: 2.2 + Math.random() * 1.8, kind: "smoke", col: Math.random() < 0.5 ? "#6e6a70" : "#585460", g: -1, size: 2, emit: false });
     }
     // ambient dust motes
     if (Math.random() < dt * 8 * this.zoom * this.zoom)
@@ -1648,6 +1669,7 @@ export class Game {
       ctx.fillRect(x - 2, y - 1, 5, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1);
     }
     if (this.arriveFade > 0) { ctx.fillStyle = `rgba(235,240,255,${this.arriveFade})`; ctx.fillRect(0, 0, W, H); }
+    if (this.doorFade > 0) { ctx.fillStyle = `rgba(6,5,9,${this.doorFade})`; ctx.fillRect(0, 0, W, H); }
     this.renderBars();
     // below the letterbox while it is up; it rises with the bars as control is handed over
     const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);

@@ -31,4 +31,16 @@ export const SURFACE_GATE_ZONE = {
 } as const;
 
 /** What the order screens call an area (bitmap font text). Areas without a row read as their id, uppercased. */
-export const AREA_NAMES: Record<string, string> = { dungeon: "DUNGEON", surface: "SURFACE" };
+export const AREA_NAMES: Record<string, string> = {
+  dungeon: "DUNGEON", surface: "SURFACE",
+  // The market town west of the surface and the rooms behind its doors (content/town.ts).
+  town: "WESTWAKE", town_smithy: "BLACK ANVIL", town_armory: "GILDED BUCKLER", town_jeweler: "BRIGHT FACET",
+  town_tailor: "SILVER NEEDLE", town_tavern: "SUNKEN CROWN", town_guild: "GUILD HALL",
+};
+
+/**
+ * The old road west. On the surface it leaves through the thicket at these rows
+ * (tiles); in the town it comes in under the east gate. Both builders read this,
+ * so the two ends of the road always agree.
+ */
+export const WEST_ROAD = { surface: { y0: 33, y1: 35 }, portal: "west_road" } as const;

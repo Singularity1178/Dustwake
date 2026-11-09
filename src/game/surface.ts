@@ -12,9 +12,9 @@
 import { mulberry, hash2 } from "./core/rng";
 import { TS, T, FS } from "./content/tiles";
 import { propDef } from "./content/props";
-import { DUNGEON_TO_SURFACE, SURFACE_GATE, SURFACE_GATE_CORRIDOR, SURFACE_GATE_ZONE } from "./content/geography";
+import { DUNGEON_TO_SURFACE, SURFACE_GATE, SURFACE_GATE_CORRIDOR, SURFACE_GATE_ZONE, WEST_ROAD } from "./content/geography";
 import { reachable, type Box } from "./sim/reach";
-import { buildDungeon, type AreaData, type DecalDef, type LightDef, type LooseItem, type PropDef } from "./map";
+import { buildDungeon, type AreaData, type DecalDef, type Exit, type LightDef, type LooseItem, type Portal, type PropDef } from "./map";
 
 export const SW = 96, SH = 72;
 const SURFACE_SEED = 7331;
@@ -39,7 +39,11 @@ export function vnoise(x: number, y: number, k: number, s: number) {
 /** Three octaves, roughly [0.1, 0.9], mean 0.5. */
 const fbm = (x: number, y: number, s: number) => 0.5 * vnoise(x, y, 13, s) + 0.3 * vnoise(x, y, 6, s + 1) + 0.2 * vnoise(x, y, 3, s + 2);
 
-export function buildSurface(): AreaData {
+/**
+ * `westRoad: false` leaves out the old road to Westwake (the wild exactly as it
+ * was before the town existed; the art regression test bakes that one).
+ */
+export function buildSurface(opts: { westRoad?: boolean } = {}): AreaData {
   const rng = mulberry(SURFACE_SEED);
   const n = SW * SH;
   const grid = new Uint8Array(n).fill(T.FLOOR);
@@ -379,8 +383,55 @@ export function buildSurface(): AreaData {
     }
   }
 
+  // ---- the old road west, to the village the Treasury Guardian remembers (now the
+  // market town of Westwake: town.ts). Cut last, with no rng, so nothing else in
+  // the wild moves: three rows of thicket open into a rutted earth track that runs
+  // off the west edge, the track's line fades a few tiles into the meadow, and a
+  // leaning waymark stands at its mouth. No light: only the rune glows up here.
+  const portals: Portal[] = [], exits: Exit[] = [];
+  if (opts.westRoad !== false) {
+    const { y0, y1 } = WEST_ROAD.surface, mid = (y0 + y1) >> 1;
+    let mouth = SW, far = 1;
+    for (let y = y0; y <= y1; y++) {
+      let x = 1;
+      for (; x < SW - 1 && grid[y * SW + x] === T.THICKET; x++) { grid[y * SW + x] = T.FLOOR; plan[y * SW + x] = T.FLOOR; style[y * SW + x] = y === mid || hash2(x, y, 280) < 0.6 ? FS.EARTH : FS.DIRT; }
+      mouth = Math.min(mouth, x); far = Math.max(far, x);
+    }
+    // the worn line carries on into the open ground (ground style only: no prop is touched)
+    for (let x = mouth; x < far + 9; x++) {
+      const y = mid + Math.round((vnoise(x, 3, 5, 281) - 0.5) * 2.4);
+      for (const yy of [y, y + (hash2(x, y, 282) < 0.5 ? 1 : -1)]) if (inb(x, yy) && grid[yy * SW + x] === T.FLOOR && dRune(x, yy) > 9) style[yy * SW + x] = yy === y ? FS.EARTH : FS.DIRT;
+    }
+    D("ruts", TS, mid * TS + 8, 0, (far + 5) * TS);
+    for (let x = 1; x < far + 6; x++) {
+      if (hash2(x, 7, 283) < 0.5) D("pebbles", x * TS + 8, mid * TS + 4 + hash2(x, 8, 284) * 10, 0);
+      for (const y of [y0, y1]) if (hash2(x, y, 285) < 0.7) D("weeds", x * TS + 3 + hash2(x, y, 286) * 10, y * TS + (y === y0 ? 7 : 15), 0);
+    }
+    // the wood has been closing over the cut for years: ferns and long grass crowd both edges (no rng; nothing blocks)
+    for (let x = 1; x < mouth; x++) for (const y of [y0, y1]) {
+      const h = hash2(x, y, 287);
+      if (h > 0.82) continue;
+      const kind = h < 0.45 ? "fern" : "tallgrass", px = x * TS + 3 + Math.round(hash2(x, y, 288) * 10), py = y === y0 ? y * TS + 6 + Math.round(hash2(x, y, 289) * 4) : (y + 1) * TS - Math.round(hash2(x, y, 289) * 3);
+      const id = `${kind}.road@${x},${y}`;
+      ids.add(id);
+      props.push({ id, kind, x: px, y: py, v: Math.floor(h * 40) % 3 });
+      if (h < 0.3) D("mosspatch", px, y === y0 ? y * TS + 3 : (y + 1) * TS - 3, 1, 10 + Math.floor(h * 30));
+      if (h > 0.5) D("leaves", px + 4, y === y0 ? y * TS + 5 : (y + 1) * TS - 6, 0);
+    }
+    // the waymark stands on ground that was thicket a moment ago, so it can never sit on a tree
+    const wx = Math.max(2, mouth - 1);
+    ids.add("waymark.west");
+    props.push({ id: "waymark.west", kind: "waymark", x: wx * TS + 9, y: y0 * TS + 12, v: 0 });
+    D("mosspatch", wx * TS + 8, y0 * TS + 12, 1, 12);
+    portals.push({
+      id: WEST_ROAD.portal, x: TS, y: y0 * TS, w: TS + 4, h: (y1 - y0 + 1) * TS, dir: "left",
+      to: { area: "town", portal: "east_road" }, arrive: { x: 2 * TS + 10, y: mid * TS + 12 }, label: "THE OLD ROAD",
+    });
+    exits.push({ x: 0, y: mid, label: "WESTWAKE", dir: "w" });
+  }
+
   return {
     id: "surface", w: SW, h: SH, grid, plan, style, tvar, rooms: [], props, decals, lights, loose,
-    start: { x: rc.x, y: rc.y + 4 }, exits: [], drips: [], outdoor: true, ambient: [0.32, 0.31, 0.42],
+    start: { x: rc.x, y: rc.y + 4 }, exits, drips: [], outdoor: true, ambient: [0.32, 0.31, 0.42], portals,
   };
 }

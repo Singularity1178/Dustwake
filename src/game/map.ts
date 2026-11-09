@@ -53,6 +53,36 @@ export interface LooseItem { id: string; item: ItemId; x: number; y: number; /**
 /** An NPC placed by an area builder. Becomes an Actor (kind "npc") the first time the area is instantiated. */
 export interface NpcSpawn { id: string; npc: string; x: number; y: number; facing?: "down" | "up" | "left" | "right" }
 export interface Exit { x: number; y: number; label: string; dir: "n" | "s" | "e" | "w" }
+/**
+ * A walk-through connection to another area: a road running off the map, a
+ * shop door, the way back out (sim/portals.ts). An actor whose feet are inside
+ * the box (px) and who pushes `dir` comes out of portal `to.portal` in area
+ * `to.area`. Pairs are declared on both sides.
+ */
+export interface Portal {
+  id: string;
+  x: number; y: number; w: number; h: number;
+  dir: "up" | "down" | "left" | "right";
+  to: { area: string; portal: string };
+  /** Where someone coming out of this portal stands (px). Default: the middle of the box. They face away from `dir`. */
+  arrive?: { x: number; y: number };
+  /** A door (latch sound) rather than open road. */
+  door?: boolean;
+  /** Shown as a note when someone arrives through this portal: the name of the place they are now in. */
+  label?: string;
+}
+/**
+ * A named standing place, laid out with the area and checked by the tests
+ * (free, reachable), for the systems that come later: where a shopkeeper
+ * stands behind the counter, where a customer faces them, a tavern seat, a
+ * market pitch, a street corner people idle on. Nothing reads these yet.
+ */
+export interface Spot {
+  id: string;
+  kind: "keeper" | "customer" | "seat" | "stall" | "idle" | "work" | "door";
+  x: number; y: number;
+  facing: "down" | "up" | "left" | "right";
+}
 
 /** Static definition of an area. Builders must be deterministic. */
 export interface AreaData {
@@ -72,7 +102,13 @@ export interface AreaData {
   ritual?: { x: number; y: number };
   /** Open sky: no cave rumble/drips; `ambient` light instead of the dungeon's darkness. */
   outdoor?: boolean;
+  /** A lived-in room under a roof: neither the dungeon's rumble and falling grit nor the open sky's leaves and fireflies. */
+  interior?: boolean;
   ambient?: [number, number, number];
+  /** Roads and doorways into other areas (sim/portals.ts). */
+  portals?: Portal[];
+  /** Standing places for future shopkeepers and townsfolk (data only). */
+  spots?: Spot[];
   /** NPCs that live here (spawned as actors on first visit; saved as actors afterwards). */
   npcs?: NpcSpawn[];
   start: { x: number; y: number };

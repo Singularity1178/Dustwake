@@ -3,11 +3,12 @@
 // props (rubble, the cracked wall, pillars, the locked door, gaol bars).
 // Presentation only.
 import type { MapData } from "../map";
-import { TS, T, FS, isWallMassT, isGroundFS } from "../content/tiles";
+import { TS, T, FS, WS, isWallMassT, isGroundFS } from "../content/tiles";
 import { hash2, makeSprite, Sprite, Pen, clamp } from "../util";
 import { S, WD, IR, GD } from "./palette";
 import { cached, stoneBlob } from "./common";
 import { decalBounds, drawDecal } from "./decals";
+import { townFloorPix, townWallFacePix, rampartTopPix } from "./tilesTown";
 
 // ---------------- Background baking ----------------
 /** What background baking reads from an area. */
@@ -20,6 +21,8 @@ function floorPix(style: number, tx: number, ty: number, lx: number, ly: number)
   const wx = tx * TS + lx, wy = ty * TS + ly;
   const n = (hash2(wx, wy, 7) - 0.5) * 12;
   if (isGroundFS(style)) return groundPix(style, tx, ty, wx, wy, n);
+  // the market town's pavings and floors (art/tilesTown.ts)
+  if (style >= FS.SETT) { const c = townFloorPix(style, tx, ty, lx, ly, n); if (c) return c; }
   if (style === FS.MARBLE) {
     if (lx === 15 || ly === 15) return [34 + n * 0.3, 32, 40];
     const light = (tx + ty) & 1;
@@ -193,6 +196,7 @@ function wallFacePix(tx: number, ty: number, lx: number, ly: number): C3 {
 function wallTopPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
   const n = hash2(tx * 16 + lx, ty * 16 + ly, 9) * 4;
   const L = !isWall(m, tx - 1, ty), R = !isWall(m, tx + 1, ty), U = !isWall(m, tx, ty - 1);
+  if (m.style[ty * m.w + tx] === WS.RAMPART) return rampartTopPix(tx, ty, lx, ly, L, R, U);
   const rim = (L && lx === 0) || (R && lx === 15) || (U && ly === 0);
   const rim2 = (L && lx === 1) || (R && lx === 14) || (U && ly === 1);
   if (rim) return [50, 45, 56];
@@ -220,7 +224,7 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
         for (let lx = 0; lx < TS; lx++) {
           let c: C3;
           if (t === T.THICKET) c = thicketPix(tx, ty, lx, ly);
-          else if (wall) c = face ? wallFacePix(tx, ty, lx, ly) : wallTopPix(m, tx, ty, lx, ly);
+          else if (wall) c = face ? (st >= WS.PLASTER ? townWallFacePix(st, tx, ty, lx, ly) : wallFacePix(tx, ty, lx, ly)) : wallTopPix(m, tx, ty, lx, ly);
           else {
             c = floorPix(ground ? warpedGroundStyle(m, st, tx, ty, tx * TS + lx, ty * TS + ly) : st, tx, ty, lx, ly);
             let f = 1;

@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
 installFakeCanvas();
 import { PROP_ART, propSprite } from "../src/game/art/props";
+import { TOWN_PROP_ART } from "../src/game/art/propsTown";
 import { ITEM_ART, itemIcon, glyphPattern } from "../src/game/art/items";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite, bakeRegion } from "../src/game/art/tiles";
 import { GLYPHS } from "../src/game/content/glyphs";
@@ -26,7 +27,9 @@ const GOLDEN = { props: "e4c643ed", items: "94b2678e", tiles: "5eb324bb", glyphs
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();
-  for (const k of Object.keys(PROP_ART)) for (let v = 0; v < 4; v++) for (const alt of [false, true]) propSprite(k, v, alt);
+  // The surface's and the dungeon's sprites, in registry order. The market town's kinds were added after them
+  // (art/propsTown.ts, checked in tests/town.test.ts) and are left out here, so this golden never has to move.
+  for (const k of Object.keys(PROP_ART)) { if (k in TOWN_PROP_ART) continue; for (let v = 0; v < 4; v++) for (const alt of [false, true]) propSprite(k, v, alt); }
   assert.equal(traceHash(), GOLDEN.props);
 });
 
@@ -60,7 +63,9 @@ test("glyph patterns (lit and unlit) are pixel-identical", () => {
 
 test("surface background bake is pixel-identical", () => {
   resetTrace();
-  const s = buildSurface();
+  // The wild as it was before the town: the old road west (cut last in the builder, with no rng) is left out, so
+  // this golden proves that adding the road and the town's tile styles moved no pixel of the existing surface.
+  const s = buildSurface({ westRoad: false });
   const c = makeCanvas(s.w * 16, s.h * 16);
   bakeRegion(c.ctx, s, 0, 0, s.w - 1, s.h - 1);
   assert.equal(traceHash(), GOLDEN.surface);

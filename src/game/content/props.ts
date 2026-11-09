@@ -2,6 +2,8 @@
 // kind); behaviour that used to be scattered `kind === "..."` checks in the game
 // class lives here.
 
+import { SIGNS } from "./town";
+
 export interface PropLightDef {
   dx: number; dy: number; rad: number; col: [number, number, number]; int: number; flick: number;
   /** "lit": only emitted while the prop is lit. "always": emitted unconditionally. */
@@ -37,7 +39,78 @@ export interface PropKindDef {
    * effect asks presentation to open this UI (see content/crafting.ts).
    */
   station?: "crafting";
+  /** Trails smoke (presentation only): a chimney pot. `z` is the height it leaves at, `rate` puffs per second. */
+  smoke?: { dx: number; z: number; rate: number };
 }
+
+/** Light-rune light: blue-white and perfectly steady (it is not a flame). Fire is orange and never still. */
+const RUNE_COL: [number, number, number] = [0.62, 0.8, 1];
+const FIRE_COL: [number, number, number] = [1, 0.64, 0.33];
+
+/**
+ * The market town (Westwake) and the rooms behind its doors. Art: art/propsTown.ts.
+ * Nothing here has gameplay: no shop sells, no bench crafts, nothing stores. The
+ * town reuses the dungeon's furniture where it fits (tables, chairs, racks,
+ * barrels, the wall torch) and the surface's torch post and foliage.
+ */
+const TOWN_PROPS: Record<string, PropKindDef> = {
+  // ---- light runes: the streets and shops that can pay for them
+  rune_lamp: { box: [6, 4], light: { dx: 0, dy: -14, rad: 118, col: RUNE_COL, int: 0.95, flick: 0, when: "always" } },
+  rune_sconce: { wallMounted: true, light: { dx: 0, dy: 8, rad: 124, col: RUNE_COL, int: 0.9, flick: 0, when: "always" } },
+  runestand: { box: [8, 4], light: { dx: 0, dy: -6, rad: 116, col: RUNE_COL, int: 0.85, flick: 0, when: "always" } },
+  // ---- fire: everyone else (plus the dungeon's wall torch and the surface's torch post, as they are)
+  lantern: { wallMounted: true, light: { dx: 0, dy: 8, rad: 96, col: FIRE_COL, int: 0.85, flick: 0.16, when: "always" } },
+  /** An iron stand of tallow candles: what a room burns when it cannot hang a light rune. */
+  candlestand: { box: [6, 4], light: { dx: 0, dy: -6, rad: 104, col: FIRE_COL, int: 0.85, flick: 0.14, when: "always" } },
+  // ---- a window with a light behind it, laid over the painted window (variants: fire / rune, ground floor / upper)
+  winglow: { wallMounted: true, light: { dx: 0, dy: 12, rad: 46, col: [1, 0.68, 0.36], int: 0.5, flick: 0.07, when: "always" } },
+  winglow_rune: { wallMounted: true, art: "winglow", light: { dx: 0, dy: 12, rad: 52, col: RUNE_COL, int: 0.5, flick: 0, when: "always" } },
+  winglow_up: { wallMounted: true, art: "winglow" },
+  // ---- hanging signs: one art, a kind per house so each reads its own line (content/town.ts: SIGNS)
+  shopsign: { wallMounted: true },
+  ...Object.fromEntries(SIGNS.map(([kind, text]) => [kind, { wallMounted: true, art: "shopsign", examine: text } satisfies PropKindDef])),
+  // ---- landmarks: the town's history, in the order it happened
+  well: { box: [20, 10], examine: "THE OLD VILLAGE WELL. THE RIM IS WORN SMOOTH BY MORE HANDS THAN YOU CAN COUNT. THE TOWN GREW OUTWARD FROM HERE." },
+  keepstatue: { box: [18, 10], art: "statue", examine: "A STATUE FROM THE KEEP, HAULED HERE LONG AGO AND SET UPRIGHT. NOBODY REMEMBERS WHO IT WAS. SOMEONE STILL LEAVES FLOWERS." },
+  keepstone: { wallMounted: true, examine: "DRESSED STONE, OLDER THAN THE WALL AROUND IT. THE SAME CUT AS THE HALLS YOU WOKE IN. THE TOWN WAS BUILT FROM WHAT THE KEEP LEFT BEHIND." },
+  marketcross: {
+    box: [26, 12], light: { dx: 0, dy: -22, rad: 132, col: RUNE_COL, int: 1, flick: 0, when: "always" },
+    examine: "THE CHARTER STONE. BY GRANT OF THE ALIGARCH THRONE, WESTWAKE HOLDS MARKET EVERY SEVENTH DAY. THE LIGHT RUNE AT ITS HEAD HAS NEVER GONE OUT.",
+  },
+  noticeboard: { box: [20, 4], examine: "NOTICES. MARKET ON THE SEVENTH DAY. HAULERS FOR HIRE AT THE STONE YARD. LOST: ONE GOAT. THE GUILD PAYS FOR NEWS OF THE OLD RUIN EAST OF TOWN." },
+  tollbar: { box: [6, 50], examine: "THE WEST BAR, DOWN FOR THE NIGHT. BEYOND IT THE ROAD RUNS FOUR DAYS TO ANYWHERE LARGER. THE CAPITAL IS ONLY A NAME HERE." },
+  waymark: { box: [8, 4], examine: "A WAYMARK, LEANING. ITS ARM POINTS WEST ALONG AN OLD ROAD: WESTWAKE. THE CUT LETTERS ARE NEWER THAN THE POST." },
+  milestone: { box: [8, 5], examine: "A MILESTONE. WEST: WESTWAKE. EAST: NOTHING IS CARVED. SOMEONE HAS SCRATCHED BELOW IT: RUINS. KEEP OUT." },
+  // ---- labour: what the golems that haul and lift leave behind (there are none here to see)
+  golempad: { flat: true, examine: "A GOLEM STAND: A SLAB WORN INTO TWO FLAT HOLLOWS, AN IRON RING FOR THE TETHER. LABOUR GOLEMS ARE STOOD HERE WHEN THERE IS NOTHING TO HAUL. IT IS EMPTY." },
+  yokerack: { box: [24, 5], examine: "CARRYING YOKES AND A STONE HOD, CUT FAR TOO WIDE FOR HUMAN SHOULDERS. THE GRIPS ARE WORN TO THE SHAPE OF BROAD, FINGERLESS HANDS." },
+  tallyboard: { box: [12, 4], examine: "A TALLY SLATE. STAND 1: STONE, 40 LOADS. STAND 2: TIMBER. STAND 3: OUT ON HIRE. NO NAMES, ONLY NUMBERS." },
+  stonestack: { box: [24, 9], examine: "CUT STONE, STACKED TWO HIGH. EACH BLOCK HAS AN IRON LIFTING RING, POLISHED BRIGHT. NO MAN LIFTS THESE." },
+  scaffold: { box: [36, 5], examine: "A HOUSE GOING UP. THE BEAMS WAITING BELOW ARE TOO HEAVY FOR A WORK GANG. THE TOWN IS STILL GROWING." },
+  crane: { box: [22, 9], examine: "A HOIST. ITS CAPSTAN BARS ARE SET CHEST-HIGH TO SOMETHING TALLER THAN A MAN, AND WORN SMOOTH WHERE IT PUSHES." },
+  timberstack: { box: [32, 8] },
+  // ---- streets, market, yards
+  stall: { box: [34, 9] }, wagon: { box: [34, 10] }, haybale: { box: [14, 7] }, trough: { box: [20, 6] }, hitchpost: { box: [18, 3] },
+  woodpile: { box: [20, 7] }, fence: { box: [16, 4] }, fence_v: { box: [4, 16] }, planter: { box: [14, 5] }, coop: { box: [18, 7] },
+  laundry: { sway: true }, chimney: { smoke: { dx: 0, z: 5, rate: 2.2 } },
+  /** The Throne's colours on a pole: outside the Guild, the Reeve's Hall and the gate, so nobody forgets whose town this is. */
+  bannerpole: { box: [4, 3], sway: true },
+  /** A town tree: the surface's tree to look at, but nobody's timber (not harvestable). */
+  towntree: { box: [10, 6], art: "tree", sway: true },
+  // ---- shop fittings (interiors)
+  counter: { box: [46, 9] }, bar: { box: [78, 10] }, goodshelf: { wallMounted: true }, displaycase: { box: [14, 7] },
+  mannequin: { box: [10, 5] }, clothrack: { box: [28, 6] }, loom: { box: [28, 9] }, mirror: { wallMounted: true }, screen: { box: [24, 5] },
+  kegrack: { box: [32, 9] }, roundtable: { box: [18, 9] }, stool: { box: [6, 4] }, stairs_up: { box: [20, 12] }, dummy: { box: [8, 4] },
+  roundtable_lit: { box: [18, 9], art: "roundtable", light: { dx: 0, dy: -8, rad: 70, col: FIRE_COL, int: 0.6, flick: 0.12, when: "always" } },
+  fireplace: { box: [38, 8], light: { dx: 0, dy: 4, rad: 168, col: [1, 0.56, 0.26], int: 0.95, flick: 0.24, when: "always" } },
+  smithforge: { box: [34, 12], light: { dx: 0, dy: 2, rad: 160, col: [1, 0.48, 0.2], int: 0.95, flick: 0.28, when: "always" } },
+  quench: { box: [16, 7] }, toolrack: { wallMounted: true }, coalbin: { box: [14, 7] }, ingots: { box: [12, 5] }, grindstone: { box: [12, 6] },
+  shieldwall: { wallMounted: true }, armordisplay: { box: [10, 5] }, gembench: { box: [28, 9] }, trophy: { wallMounted: true },
+  bellows: { box: [18, 8], examine: "THE GREAT BELLOWS. ITS CRANK IS SET HIGH AND STIFF, AND THE FLAGSTONE UNDER IT IS WORN INTO TWO FLAT HOLLOWS. NO APPRENTICE TURNS THIS." },
+  cellarhatch: { flat: true, examine: "THE CELLAR HATCH, CUT WIDE. THE RAMP BELOW IS SCORED BY SOMETHING HEAVY AND FLAT-FOOTED THAT CARRIES THE KEGS UP." },
+  crownplaque: { wallMounted: true, examine: "A CROWN OF BEATEN TIN, NAILED OVER THE HEARTH. THE REAL ONE, THEY SAY, WENT DOWN WITH THE KEEP." },
+  questboard: { wallMounted: true, examine: "CONTRACTS, PINNED THREE DEEP. ESCORTS. WOLF BOUNTIES. A CELLAR OF RATS. ONE SHEET HAS YELLOWED UNCLAIMED: SURVEY THE SUNKEN KEEP." },
+};
 
 export const PROPS: Record<string, PropKindDef> = {
   bookshelf: { box: [16, 8] }, shelfrow: { box: [16, 10] }, shelf_fallen: { box: [28, 10] }, table: { box: [28, 10] },
@@ -102,6 +175,7 @@ export const PROPS: Record<string, PropKindDef> = {
   runesite: { rune: true },
   runecircle: { rune: true },
   chains: { wallMounted: true },
+  ...TOWN_PROPS,
 };
 
 const NONE: PropKindDef = {};

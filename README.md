@@ -30,6 +30,7 @@
 | `E` on a storage chest | Open the storage screen: your pack on the left, the chest on the right. Movement keys move the cursor, `A` / `D` off the edge cross to the other side, `E` moves the whole stack under the cursor, `Q` one item, `R` renames the chest (type, `Enter` keeps, `Esc` cancels, empty goes back to the default name), `Esc` / `I` / `Tab` close. A chest is named as the orders call it (DUNGEON CHEST 1, DUNGEON CHEST 2) until renamed; the name is saved and shown in orders. As much as fits moves; a full side, an empty slot and the story's undroppable items say so and change nothing |
 | `E` on a worker golem | While it has never had a core in it, nothing opens: the golem only thinks INTEGRITY INTACT, MISSING POWER SOURCE (slot a core in with `C`). Once a core has been slotted in, this opens its management screen, even after the core is taken out again: power, order, phase and why it is blocked, what it carries and wears. `W` / `S` choose a row, `A` / `D` change a value in a form, `E` confirms, `C` slots a core in or takes it out, `Esc` goes back then closes. The worker golem is a small clay body that animates by what it is doing: slot a core in and it boots up and stands, left idle it settles back into a dormant crouch, take the core out and it powers down (and turns its head aside as it sags), give it work and it stands and swings, walks and hauls. Going through a rune it does nothing of its own: it walks up to the rune and the rune's teleport effect lifts it away. Rows: the core (the golem does the swap, then the screen returns), GATHER (resource, source area, storage chest, amount or repeat), CRAFT (bench, recipe, amount or repeat), GO TO, TRANSFER (your pack beside its pack and what it wears: `E` gives / takes a stack, `Q` one item, `F` equips the item under the cursor, e.g. a rune into its rune slot, `E` on a worn slot takes it off into its pack, `Esc` back), RENAME (`R` too: type, `Enter` keeps, `Esc` cancels, empty clears; the name goes before its kind, e.g. BOB - WORKER GOLEM), pause / resume / retry, cancel. Only valid targets are offered; a refusal says why |
 | `E` on a teleport rune | Travel to its linked rune |
+| Walk into a shop door, or on along a road that runs off the map | Go through. No key: keep pushing the way you are going. Doors open into the room behind them (walk down onto the sill at the bottom of a room to leave); the old road at the west edge of the surface leads to the market town of Westwake, and the town's east gate leads back |
 | `Space` near a tree, rock or log | Harvest wood / stone: the slam works every tree, rock and log within about a tile of where the fists land, one blow of work each (so one slam can work several at once). They aren't interactable: `E` does nothing on them and the vision mode doesn't highlight them |
 | `Z` | Toggle vision (scan) mode: a scanner sweep from the golem's eye highlights what it can see within its light's radius, each category with its own hologram (gold: important, cyan: interactable, violet: someone, green: buildable). A pulsing diamond marks something still to analyze; a dim, still outline with a check mark means it's already analyzed. `E` on a buildable analyzes its pattern. The top-right readout counts both within sight |
 | `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
@@ -53,6 +54,20 @@ Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + too
 Open with `?debug` and call `window.dustwake.foundations()` in the browser console. A lesser golem gathers six wood in a separate yard, travels through the rune network and deposits it into a 32-slot storage chest. Save/load works while it walks or works. `window.dustwake.order(actorId, order)` uses the walk-up order command; job shapes are in `src/game/sim/jobs.ts`.
 
 This opts into the chest, inverse recipes and Ruby core recipe fixtures. They are not added to the normal game's catalogs or dungeon spawns. The normal building progression is unchanged; the fixture chest proves analysis gating. The worker management and storage screens work on it (`E` on the golem or the chest); recruitment and a job board are deferred. See `docs/ARCHITECTURE.md` for the v10 schema and migration decisions.
+
+## Westwake (the market town)
+
+The Treasury Guardian remembers "a village west of here". Follow the overgrown track that leaves the surface through the thicket on its west side (a leaning waymark stands at its mouth) and it ends at the east gate of **Westwake**: the same village, a long time later, grown into a provincial market town of the Aligarch Empire. To jump straight there while testing: `Ctrl+0`, TELEPORT, any `WESTWAKE` row.
+
+For now the town is appearance only: there are no townsfolk, shopkeepers or golems, and nothing can be bought, stored or crafted there. It is laid out for them, though (see `docs/ARCHITECTURE.md`, "The market town").
+
+- **How it reads.** Oldest first: the *old quarter* in the north-west (thatch and daub round the village well, a keep statue set up as a keepsake); the *market square* and the *High Street* (the charter years: the Charter Stone, dressed stone, slate, the Guild's chapter house); *Low Street* and the lanes behind it (where the work is: smithy, tavern, stable, the stone yard). The town wall and gate towers are built from the sunken keep's own stone.
+- **Light is the map.** Steady blue-white *light runes* stand along the paved streets and hang in the shops that can pay for them; everyone else burns fire, or sits in the dark. The line runs along the south side of the square. High-end (rune-lit): the Adventurers' Guild, the Gilded Buckler (armoury), the Bright Facet (jeweller), the Silver Needle (tailor). Ordinary (fire-lit): the Black Anvil (blacksmith) and the Sunken Crown (tavern).
+- **Six doors open.** Blacksmith, armoury, jeweller, tailor, tavern and the Adventurers' Guild each have a full interior. Other houses are just houses.
+- **Labour golems, by their absence.** Only plain hauling golems exist here, and none are in view: look for the numbered stands in the stone yard, yokes cut too wide for a man, hauler doors on the stable and the market store, broad flat tracks along the haul road, the bellows crank in the smithy, the tavern's cellar hatch.
+- Most signs and landmarks can be read with `E`.
+
+Developer preview: `node scripts/townPreview.mjs` renders the town at night, every interior, the surface's west road and a sheet of every town sprite to `.preview/town/*.png` without a browser (real bake, real sprites, real light tracing).
 
 ## Inner monologue
 
@@ -95,7 +110,9 @@ src/
                      NPC definitions, dialogue scripts + beats, inner-monologue lines,
                      cutscene scripts (data)
     map.ts           tutorial dungeon area builder
-    surface.ts       surface area builder (ruins above the buried dungeon)
+    surface.ts       surface area builder (ruins above the buried dungeon; the old road west)
+    town.ts          Westwake area builder (streets, buildings, street light, yards, standing places)
+    townInteriors.ts the six shop interiors (one small area each)
     world/           Area, World, area registry, save/load (simulated + saved state)
     sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting,
                      runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
@@ -112,6 +129,9 @@ src/
       common.ts        sprite cache, registry types, shared stone blob
       tiles.ts         background bake (floors, walls, ground) + tile sprites (rubble, pillars, door, bars)
       decals.ts        decals painted into the bake
+      tilesTown.ts     the town's pavings, floors and wall materials (per pixel)
+      town.ts          the town's buildings (roof + street front, painted once and cached) and ground decals
+      propsTown.ts     town prop sprites: light runes, signs, market, yards, shop fittings
       props.ts         PROP_ART registry + propSprite (draw functions in propsSurface.ts / propsDungeon.ts)
       items.ts         ITEM_ART registry, itemIcon, glyph patterns
       slots.ts         faint silhouettes for empty gear slots

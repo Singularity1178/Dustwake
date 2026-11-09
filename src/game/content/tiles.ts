@@ -7,6 +7,12 @@ export const T = {
   /** Surface: impassable undergrowth at the edge of the world. */
   THICKET: 7,
   // 8 was PIT (surface sinkholes into the dungeon); retired, the dungeon is hidden now.
+  /**
+   * Town: the street-level storey of a building front. Solid like a wall, but it
+   * does not block light, so a lamp in the street lights the whole of a
+   * two-storey front (the wall mass behind it still stops the light).
+   */
+  FRONT: 9,
 } as const;
 export type TileId = (typeof T)[keyof typeof T];
 
@@ -23,6 +29,32 @@ export const FS = {
   MUD: 10,
   /** Bare, packed earth (heaped soil over the buried halls; spilled earth below ground). */
   EARTH: 11,
+  // ---- the market town (pixels in art/tilesTown.ts)
+  /** Dressed stone setts: the lit, well-kept streets and the market square's border. */
+  SETT: 12,
+  /** Basket-weave brick paving: the market square. */
+  WEAVE: 13,
+  /** Broad, waxed floorboards (the tavern, the tailor). */
+  BOARD: 14,
+  /** Pale glazed tiles with dark insets (the high-end shops). */
+  TILE: 15,
+} as const;
+
+/**
+ * Wall styles: the `style` of a WALL tile picks what its face (and, for the
+ * rampart, its top) is built of. Anything below 20 is the dungeon's masonry.
+ */
+export const WS = {
+  /** Limewashed plaster over a timber wainscot. */
+  PLASTER: 20,
+  /** Warm dressed ashlar. */
+  STONE: 21,
+  /** Dark oak panelling. */
+  PANEL: 22,
+  /** Soot-stained brick. */
+  BRICK: 23,
+  /** The town wall, outdoors: a mossy ashlar face and a paved wall-walk on top. */
+  RAMPART: 24,
 } as const;
 
 /** Natural ground styles: they bake with organic, noise-warped borders between each other. */
@@ -32,7 +64,7 @@ export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>
   t === T.WALL || t === T.RUBBLE || t === T.CRACKED || t === T.LOCKED || t === T.PILLAR || t === T.THICKET;
 /** Tiles that read as wall mass when baking the background (rims, faces, AO). */
-export const isWallMassT = (t: number) => t === T.WALL || t === T.LOCKED;
+export const isWallMassT = (t: number) => t === T.WALL || t === T.LOCKED || t === T.FRONT;
 
 /**
  * Tiles the golem can interact with. Interaction anchors are offsets from the

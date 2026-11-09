@@ -86,6 +86,8 @@ export type SimEvent =
   | { t: "openStation"; actor: string; prop: string; station: string }
   | { t: "learned"; flag: string }
   | { t: "areaEntered"; actor: string; area: string }
+  /** `actor` walked through portal `from` of `fromArea` (a road, a doorway) and came out of `to` in `toArea`. */
+  | { t: "portal"; actor: string; fromArea: string; from: string; toArea: string; to: string }
   /** `actor` addressed NPC actor `npc`; presentation opens `segment` of `script`. */
   | { t: "dialogue"; actor: string; npc: string; script: string; segment: string }
   /** An NPC woke or went dormant (reversible state). */

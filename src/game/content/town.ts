@@ -1,0 +1,183 @@
+// Westwake, the market town west of the surface (data). Pure; no DOM.
+//
+// What the Treasury Guardian remembers as "a village west of here, above these
+// halls" has had a long time to grow. The keep sank and was forgotten; its
+// service village was not. It took the keep's dressed stone for its own walls,
+// a road found it, and the Aligarch Throne granted it a market. It is an
+// ordinary provincial town, days from anywhere that matters: mostly human,
+// built by hand and by hired labour golems (the plain kind that haul and lift
+// and are stood in a yard at night; nothing here thinks that is not a person).
+//
+// The town reads in layers, oldest first:
+//   - the OLD QUARTER (north-west): the original village. Thatch and daub
+//     around the old well, a keep statue hauled home as a keepsake.
+//   - the MARKET SQUARE and the HIGH STREET: the charter years. Stone and
+//     slate, the Guild's chapter house, the shops that sell what nobody needs.
+//     Paved in dressed setts and lit by light runes that never go out.
+//   - LOW STREET and the lanes behind it (south): where the work is. The
+//     smithy, the tavern, the stable, the stone yard and the golem stands.
+//     Cobbles giving way to mud; torches, where there is any light at all.
+//
+// The lighting is the town's map of itself: steady blue-white rune light means
+// money (the square, the High Street, the Guild, armoury, jeweller, tailor and
+// the houses of the people who own them); flickering orange means everyone
+// else. The line between the two runs along the square's south side.
+//
+// This file is the one place the builder (town.ts), the painter (art/town.ts)
+// and the interiors (townInteriors.ts) agree on what stands where.
+
+export const TOWN_ID = "town";
+export const TOWN_W = 96, TOWN_H = 66;
+export const TOWN_NAME = "WESTWAKE";
+
+/** Height (px) of a building's street front: the two bottom rows of its footprint. */
+export const FRONT_H = 32;
+/** Ground-floor windows: frame size and its top edge below the top of the front (px). */
+export const WIN = { w: 10, h: 9, top: 14 } as const;
+/** Upper-floor windows, tucked under the eave. */
+export const UPWIN = { w: 6, h: 7, top: 3 } as const;
+/** Door leaf sizes by kind (px). A hauler door is cut for something much wider than a man. */
+export const DOOR = { plain: { w: 12, h: 19 }, double: { w: 20, h: 21 }, hauler: { w: 28, h: 24 } } as const;
+
+export type WallKind = "timber" | "stone" | "brick" | "plank" | "daub" | "frame" | "tower" | "bays";
+export type RoofKind = "slate" | "tile" | "thatch" | "shingle" | "flat";
+export type DoorKind = keyof typeof DOOR;
+/** How a house is lit after dark: light runes (money), fire (everyone else), or not at all. */
+export type LightTier = "rune" | "torch" | "none";
+
+export interface Building {
+  id: string;
+  /** Tile rect of the footprint. The bottom two rows are the front; the rest is roof. */
+  x: number; y: number; w: number; h: number;
+  wall: WallKind; roof: RoofKind;
+  /** "ew": the long slope faces the street (default). "ns": a gable is turned to it. */
+  ridge?: "ew" | "ns";
+  /** Palette variant: plaster, paint on doors and shutters, the roof's weathering. */
+  tint: number;
+  /** Door column (tiles from x). A hauler door spans this column and the next. */
+  door?: { col: number; kind?: DoorKind };
+  /** Ground-floor window columns, and which of them show a light at night. */
+  win?: number[];
+  lit?: number[];
+  light: LightTier;
+  /** Dormer columns on the long slope (the big civic roofs); each has a window, lit like the rest of the house. */
+  dormers?: number[];
+  /** Chimney column (smokes). */
+  chimney?: number;
+  /** Prop kind of the hanging sign beside the door. */
+  sign?: string;
+  /** Area behind the door, for the six that can be entered. */
+  interior?: string;
+  /** Name shown on arriving inside. */
+  name?: string;
+}
+
+const B = (id: string, x: number, y: number, w: number, h: number, wall: WallKind, roof: RoofKind, tint: number, light: LightTier, o: Partial<Building> = {}): Building =>
+  ({ id, x, y, w, h, wall, roof, tint, light, ...o });
+
+/** Streets, as the builder lays them (tile rows / columns, inclusive). */
+export const STREETS = {
+  /** East gate -> market square -> west bar. */
+  high: { y0: 30, y1: 32 },
+  square: { x0: 37, y0: 27, x1: 57, y1: 37 },
+  oldLane: { y0: 15, y1: 16 },
+  low: { y0: 45, y1: 47 },
+  back: { y0: 58, y1: 60 },
+  /** The east wall (columns) and the gate through it (rows). */
+  wall: { x0: 88, x1: 89, gateY0: 30, gateY1: 32 },
+} as const;
+
+export const BUILDINGS: Building[] = [
+  // ---- the old quarter and the north row (fronts on Old Lane)
+  B("cot_well_w", 8, 9, 6, 6, "daub", "thatch", 0, "torch", { door: { col: 2 }, win: [0, 4], lit: [4], chimney: 4 }),
+  B("cot_well_e", 15, 9, 6, 6, "daub", "thatch", 1, "none", { door: { col: 3 }, win: [1, 5], chimney: 1 }),
+  B("cot_old", 31, 9, 6, 6, "timber", "thatch", 2, "torch", { door: { col: 2 }, win: [0, 4], lit: [0] }),
+  B("bakery", 39, 9, 7, 6, "timber", "tile", 3, "torch", { door: { col: 3 }, win: [1, 5], lit: [1, 5], chimney: 5, sign: "sign_bakery" }),
+  B("house_n", 48, 9, 6, 6, "timber", "tile", 0, "torch", { door: { col: 2 }, win: [0, 4], lit: [4], chimney: 1 }),
+  B("townhouse_w", 56, 8, 7, 7, "stone", "slate", 1, "rune", { ridge: "ns", door: { col: 3 }, win: [1, 5], lit: [1, 5] }),
+  B("townhouse_e", 65, 8, 7, 7, "timber", "slate", 4, "rune", { door: { col: 3 }, win: [1, 5], lit: [5], chimney: 1 }),
+  B("reeve", 74, 7, 11, 8, "stone", "slate", 2, "rune", { door: { col: 5, kind: "double" }, win: [1, 3, 7, 9], lit: [3, 7], chimney: 9, dormers: [2, 5, 8], sign: "sign_reeve" }),
+  // ---- the bright side: north of the square and the High Street
+  B("tailor", 35, 20, 6, 7, "timber", "slate", 5, "rune", { ridge: "ns", door: { col: 2 }, win: [0, 4], lit: [0, 4], sign: "sign_tailor", interior: "town_tailor", name: "THE SILVER NEEDLE" }),
+  B("guild", 42, 18, 11, 9, "stone", "slate", 0, "rune", { door: { col: 5, kind: "double" }, win: [1, 3, 7, 9], lit: [1, 3, 7, 9], chimney: 9, dormers: [2, 5, 8], sign: "sign_guild", interior: "town_guild", name: "ADVENTURERS' GUILD" }),
+  B("jeweler", 54, 20, 6, 7, "stone", "slate", 3, "rune", { ridge: "ns", door: { col: 2 }, win: [0, 4], lit: [0, 4], sign: "sign_jeweler", interior: "town_jeweler", name: "THE BRIGHT FACET" }),
+  B("house_w1", 10, 24, 6, 6, "timber", "shingle", 1, "torch", { door: { col: 3 }, win: [1, 5], lit: [1], chimney: 0 }),
+  B("house_w2", 17, 24, 6, 6, "timber", "tile", 4, "none", { door: { col: 2 }, win: [0, 4] }),
+  B("apothecary", 25, 23, 7, 7, "timber", "tile", 2, "torch", { ridge: "ns", door: { col: 3 }, win: [1, 5], lit: [1, 5], chimney: 6, sign: "sign_apothecary" }),
+  B("armory", 63, 22, 7, 8, "stone", "slate", 4, "rune", { door: { col: 3 }, win: [1, 5], lit: [1, 5], dormers: [1, 5], sign: "sign_armory", interior: "town_armory", name: "THE GILDED BUCKLER" }),
+  B("townhouse_h", 72, 24, 6, 6, "timber", "slate", 0, "rune", { door: { col: 2 }, win: [0, 4], lit: [0, 4] }),
+  B("watch", 80, 24, 6, 6, "stone", "slate", 1, "rune", { door: { col: 3 }, win: [1, 5], lit: [1], sign: "sign_watch" }),
+  // ---- the low side: fronts on Low Street
+  B("stable", 9, 38, 10, 7, "plank", "shingle", 0, "none", { door: { col: 4, kind: "hauler" }, win: [1, 8], sign: "sign_stable" }),
+  B("house_l1", 24, 39, 6, 6, "timber", "shingle", 3, "torch", { door: { col: 2 }, win: [0, 4], lit: [4], chimney: 5 }),
+  B("house_l2", 31, 39, 4, 6, "daub", "thatch", 2, "none", { door: { col: 1 }, win: [3] }),
+  B("tavern", 36, 38, 10, 7, "timber", "tile", 1, "torch", { door: { col: 4, kind: "double" }, win: [1, 2, 7, 8], lit: [1, 2, 7, 8], chimney: 8, dormers: [2, 6], sign: "sign_tavern", interior: "town_tavern", name: "THE SUNKEN CROWN" }),
+  B("smithy", 50, 38, 8, 7, "brick", "shingle", 0, "torch", { door: { col: 3 }, win: [1, 6], lit: [1, 6], chimney: 6, sign: "sign_smithy", interior: "town_smithy", name: "THE BLACK ANVIL" }),
+  B("house_l3", 64, 39, 6, 6, "timber", "tile", 4, "torch", { door: { col: 3 }, win: [1, 5], lit: [1] }),
+  B("house_l4", 71, 39, 6, 6, "timber", "shingle", 0, "none", { ridge: "ns", door: { col: 2 }, win: [0, 4], chimney: 4 }),
+  B("cooper", 78, 39, 5, 6, "plank", "shingle", 1, "torch", { door: { col: 2, kind: "double" }, win: [0, 4], lit: [0], sign: "sign_cooper" }),
+  // ---- the back lane: cottages, a house going up, the warehouse, the golem stands
+  B("cot_s1", 9, 52, 6, 6, "daub", "thatch", 1, "torch", { door: { col: 2 }, win: [4], lit: [4] }),
+  B("cot_s2", 16, 52, 5, 6, "daub", "thatch", 0, "none", { door: { col: 2 }, win: [0], chimney: 4 }),
+  B("cot_s3", 24, 52, 6, 6, "daub", "shingle", 2, "torch", { door: { col: 3 }, win: [1], lit: [1] }),
+  B("cot_s4", 31, 52, 5, 6, "timber", "thatch", 3, "none", { door: { col: 2 }, win: [4] }),
+  B("site", 38, 51, 6, 7, "frame", "flat", 0, "none"),
+  B("warehouse", 50, 50, 10, 8, "plank", "shingle", 2, "none", { door: { col: 4, kind: "hauler" }, win: [1, 8], sign: "sign_warehouse" }),
+  B("stands", 72, 49, 10, 5, "bays", "shingle", 0, "none"),
+  // ---- the east gate's two towers (the wall between and beyond them is tiles)
+  B("gate_n", 87, 25, 4, 5, "tower", "flat", 0, "rune"),
+  B("gate_s", 87, 33, 4, 5, "tower", "flat", 1, "rune"),
+];
+
+export const building = (id: string): Building => {
+  const b = BUILDINGS.find((x) => x.id === id);
+  if (!b) throw new Error(`no building "${id}"`);
+  return b;
+};
+
+/** Roof geometry shared by the painter and the builder (px, measured from the top of the footprint). */
+export const roofH = (b: Building) => b.h * 16 - FRONT_H;
+export const ridgeY = (b: Building) => Math.max(5, Math.round(roofH(b) * 0.28));
+/** Top-centre of a building's chimney stack (px, absolute), if it has one. */
+export function chimneyPx(b: Building): { x: number; y: number } | null {
+  if (b.chimney === undefined) return null;
+  const y = b.ridge === "ns" ? Math.round(roofH(b) * 0.3) : Math.max(1, ridgeY(b) - 8);
+  return { x: (b.x + b.chimney) * 16 + 8, y: b.y * 16 + y };
+}
+
+/** A dormer's window: centre x and the y of its sill (px, absolute). The painter and the builder both use this. */
+export const dormerPx = (b: Building, col: number) => ({ x: (b.x + col) * 16 + 8, y: b.y * 16 + roofH(b) - 9 });
+
+/** Centre x (px) of a building's door, and the y (px) of the ground line at its foot. */
+export function doorPx(b: Building): { x: number; y: number; kind: DoorKind } {
+  const kind = b.door?.kind ?? "plain", col = b.door?.col ?? 0;
+  return { x: (b.x + col) * 16 + (kind === "hauler" ? 16 : 8), y: (b.y + b.h) * 16, kind };
+}
+
+/** The six establishments that can be entered, in the order the brief lists them. */
+export const ESTABLISHMENTS = ["smithy", "armory", "jeweler", "tailor", "tavern", "guild"] as const;
+export type Establishment = (typeof ESTABLISHMENTS)[number];
+export const interiorId = (e: Establishment) => `town_${e}`;
+
+/**
+ * Which of them count as high-end. These are lit by light runes inside and
+ * out; the other two burn fire like the rest of the town.
+ */
+export const HIGH_END: Record<Establishment, boolean> = { smithy: false, armory: true, jeweler: true, tailor: true, tavern: false, guild: true };
+
+/** Hanging signs: what the golem reads when it looks up at one (prop kind -> text). The art variant is the index. */
+export const SIGNS: [kind: string, text: string][] = [
+  ["sign_smithy", "A BLACK ANVIL ON A HANGING BOARD. THE BLACK ANVIL: HARROW AND SONS, SMITHS."],
+  ["sign_armory", "A GILT SHIELD, FRESHLY PAINTED. THE GILDED BUCKLER: ARMS AND HARNESS, FITTED TO ORDER."],
+  ["sign_jeweler", "A CUT GEM IN A BRASS RING. THE BRIGHT FACET: STONES SET, WEIGHED AND VALUED."],
+  ["sign_tailor", "A NEEDLE AND A LOOP OF SILVER THREAD. THE SILVER NEEDLE: CLOTHIERS."],
+  ["sign_tavern", "A CROWN, HALF UNDER A WAVY LINE. THE SUNKEN CROWN. ALE, STEW, BEDS."],
+  ["sign_guild", "A SWORD LAID OVER A COMPASS ROSE. ADVENTURERS' GUILD, WESTWAKE CHAPTER. CHARTERED BY THE ALIGARCH THRONE."],
+  ["sign_bakery", "A ROUND LOAF. THE OVEN BEHIND THIS WALL IS STILL WARM."],
+  ["sign_apothecary", "A MORTAR AND PESTLE. DRIED HERBS HANG IN THE WINDOW."],
+  ["sign_reeve", "THE REEVE'S HALL. TOLLS, TITHES AND GRIEVANCES, IN THAT ORDER."],
+  ["sign_watch", "THE GATE WATCH. A SLATE BY THE DOOR LISTS WHO CAME IN TODAY, AND WHAT THEY HAULED."],
+  ["sign_stable", "A HORSESHOE. STABLING BY THE NIGHT. THE BIG DOOR IS CUT FOR MORE THAN HORSES."],
+  ["sign_cooper", "A BARREL HOOP AND A WHEEL. COOPER AND WHEELWRIGHT."],
+  ["sign_warehouse", "MARKET STORE. THE DOORS ARE TWICE A MAN'S WIDTH, AND THE SILL IS WORN DOWN IN TWO FLAT TRACKS."],
+];

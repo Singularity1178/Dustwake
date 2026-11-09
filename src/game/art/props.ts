@@ -6,6 +6,7 @@ import { makeSprite, Sprite, Pen, Rng } from "../util";
 import { spriteCache, type PropArt } from "./common";
 import { SURFACE_PROP_ART } from "./propsSurface";
 import { DUNGEON_PROP_ART } from "./propsDungeon";
+import { TOWN_PROP_ART } from "./propsTown";
 import { propDef } from "../content/props";
 export type { PropArt } from "./common";
 
@@ -19,8 +20,8 @@ export function propSprite(kind: string, v: number, alt: boolean): Sprite | null
   return s;
 }
 
-/** Prop sprite registry: kind -> draw function. Adding a prop kind = adding an entry (surface kinds first, then dungeon). */
-export const PROP_ART: Record<string, PropArt> = { ...SURFACE_PROP_ART, ...DUNGEON_PROP_ART };
+/** Prop sprite registry: kind -> draw function. Adding a prop kind = adding an entry (surface kinds first, then dungeon, then the town). */
+export const PROP_ART: Record<string, PropArt> = { ...SURFACE_PROP_ART, ...DUNGEON_PROP_ART, ...TOWN_PROP_ART };
 
 function makeProp(kind: string, v: number, alt: boolean): Sprite | null {
   const seed = kind.length * 101 + v * 13 + (alt ? 7 : 0);

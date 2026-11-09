@@ -5,6 +5,7 @@
 import type { DecalDef } from "../map";
 import { hash2, Pen, Rng, mulberry } from "../util";
 import { S, WD, IR, CL, GD, BN } from "./palette";
+import { drawTownDecal, townDecalExtent } from "./town";
 
 /**
  * Pixel bounds [left, top, right, bottom] of a decal relative to its (x, y),
@@ -13,6 +14,8 @@ import { S, WD, IR, CL, GD, BN } from "./palette";
  */
 function decalExtent(dc: DecalDef): [number, number, number, number] | null {
   const w = dc.w ?? 0, h = dc.h ?? 0;
+  const town = townDecalExtent(dc);
+  if (town) return town;
   switch (dc.kind) {
     case "tuft": return [-4, -5, 4, 1];
     case "flowers": return [-6, -4, 5, 4];
@@ -66,6 +69,8 @@ export function drawDecal(p: Pen, dc: DecalDef) {
   const r = mulberry(Math.floor(dc.x * 13 + dc.y * 7 + dc.v));
   const x = Math.round(dc.x), y = Math.round(dc.y);
   p.ox = 0; p.oy = 0;
+  // the market town's buildings, rugs, ruts and the rest (art/town.ts)
+  if (drawTownDecal(p, dc, r)) return;
   switch (dc.kind) {
     case "tuft": {
       const cols = ["#4e7a3a", "#628e44", "#3a5e2c"];
