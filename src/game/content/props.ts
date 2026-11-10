@@ -3,6 +3,7 @@
 // class lives here.
 
 import { SIGNS } from "./town";
+import type { LightHabit } from "./daycycle";
 
 export interface PropLightDef {
   dx: number; dy: number; rad: number; col: [number, number, number]; int: number; flick: number;
@@ -22,6 +23,12 @@ export interface PropKindDef {
   /** Which state selects the alternate sprite. Default "open". */
   alt?: "lit" | "taken" | "open";
   light?: PropLightDef;
+  /**
+   * How this light is kept where people live (content/daycycle.ts: LightHabit): lit and put out with the day. Only
+   * areas marked `tended` follow it. The same torch burns on untended in the halls, and whatever the golem builds is
+   * the golem's to keep lit.
+   */
+  habit?: LightHabit;
   /** Fire visuals while lit. */
   fire?: { big: boolean; embers: number; emberDy: number };
   /** Horizontal offset of an item icon resting on the prop. */
@@ -55,17 +62,17 @@ const FIRE_COL: [number, number, number] = [1, 0.64, 0.33];
  */
 const TOWN_PROPS: Record<string, PropKindDef> = {
   // ---- light runes: the streets and shops that can pay for them
-  rune_lamp: { box: [6, 4], light: { dx: 0, dy: -14, rad: 118, col: RUNE_COL, int: 0.95, flick: 0, when: "always" } },
-  rune_sconce: { wallMounted: true, light: { dx: 0, dy: 8, rad: 124, col: RUNE_COL, int: 0.9, flick: 0, when: "always" } },
+  rune_lamp: { box: [6, 4], habit: "rune", light: { dx: 0, dy: -14, rad: 118, col: RUNE_COL, int: 0.95, flick: 0, when: "always" } },
+  rune_sconce: { wallMounted: true, habit: "rune", light: { dx: 0, dy: 8, rad: 124, col: RUNE_COL, int: 0.9, flick: 0, when: "always" } },
   runestand: { box: [8, 4], light: { dx: 0, dy: -6, rad: 116, col: RUNE_COL, int: 0.85, flick: 0, when: "always" } },
   // ---- fire: everyone else (plus the dungeon's wall torch and the surface's torch post, as they are)
-  lantern: { wallMounted: true, light: { dx: 0, dy: 8, rad: 96, col: FIRE_COL, int: 0.85, flick: 0.16, when: "always" } },
+  lantern: { wallMounted: true, habit: "fire", light: { dx: 0, dy: 8, rad: 96, col: FIRE_COL, int: 0.85, flick: 0.16, when: "always" } },
   /** An iron stand of tallow candles: what a room burns when it cannot hang a light rune. */
   candlestand: { box: [6, 4], light: { dx: 0, dy: -6, rad: 104, col: FIRE_COL, int: 0.85, flick: 0.14, when: "always" } },
   // ---- a window with a light behind it, laid over the painted window (variants: fire / rune, ground floor / upper)
-  winglow: { wallMounted: true, light: { dx: 0, dy: 12, rad: 46, col: [1, 0.68, 0.36], int: 0.5, flick: 0.07, when: "always" } },
-  winglow_rune: { wallMounted: true, art: "winglow", light: { dx: 0, dy: 12, rad: 52, col: RUNE_COL, int: 0.5, flick: 0, when: "always" } },
-  winglow_up: { wallMounted: true, art: "winglow" },
+  winglow: { wallMounted: true, habit: "window", light: { dx: 0, dy: 12, rad: 46, col: [1, 0.68, 0.36], int: 0.5, flick: 0.07, when: "always" } },
+  winglow_rune: { wallMounted: true, art: "winglow", habit: "window", light: { dx: 0, dy: 12, rad: 52, col: RUNE_COL, int: 0.5, flick: 0, when: "always" } },
+  winglow_up: { wallMounted: true, art: "winglow", habit: "window" },
   // ---- hanging signs: one art, a kind per house so each reads its own line (content/town.ts: SIGNS)
   shopsign: { wallMounted: true },
   ...Object.fromEntries(SIGNS.map(([kind, text]) => [kind, { wallMounted: true, art: "shopsign", examine: text } satisfies PropKindDef])),
@@ -78,7 +85,7 @@ const TOWN_PROPS: Record<string, PropKindDef> = {
     examine: "THE CHARTER STONE. BY GRANT OF THE ALIGARCH THRONE, WESTWAKE HOLDS MARKET EVERY SEVENTH DAY. THE LIGHT RUNE AT ITS HEAD HAS NEVER GONE OUT.",
   },
   noticeboard: { box: [20, 4], examine: "NOTICES. MARKET ON THE SEVENTH DAY. HAULERS FOR HIRE AT THE STONE YARD. LOST: ONE GOAT. THE GUILD PAYS FOR NEWS OF THE OLD RUIN EAST OF TOWN." },
-  tollbar: { box: [6, 48], examine: "THE WEST BAR, DOWN FOR THE NIGHT. BEYOND IT THE ROAD RUNS FOUR DAYS TO ANYWHERE LARGER. THE CAPITAL IS ONLY A NAME HERE." },
+  tollbar: { box: [6, 48], examine: "THE WEST BAR, DOWN AND CHAINED. BEYOND IT THE ROAD RUNS FOUR DAYS TO ANYWHERE LARGER. THE CAPITAL IS ONLY A NAME HERE." },
   waymark: { box: [8, 4], examine: "A WAYMARK, LEANING. ITS ARM POINTS WEST ALONG AN OLD ROAD: WESTWAKE. THE CUT LETTERS ARE NEWER THAN THE POST." },
   milestone: { box: [8, 5], examine: "A MILESTONE. WEST: WESTWAKE. EAST: NOTHING IS CARVED. SOMEONE HAS SCRATCHED BELOW IT: RUINS. KEEP OUT." },
   // ---- labour: what the golems that haul and lift leave behind (there are none here to see)
@@ -126,12 +133,12 @@ export const PROPS: Record<string, PropKindDef> = {
   storage_chest: { box: [14, 8], storage: { slots: 32 }, art: "chest" },
   sack: { box: [10, 5] }, parts: { box: [16, 5] },
   brazier: {
-    box: [12, 6], alt: "lit",
+    box: [12, 6], alt: "lit", habit: "fire",
     light: { dx: 0, dy: -4, rad: 96, col: [1, 0.58, 0.3], int: 0.9, flick: 0.2, when: "lit" },
     fire: { big: true, embers: 4, emberDy: 0 },
   },
   torch: {
-    wallMounted: true, alt: "lit",
+    wallMounted: true, alt: "lit", habit: "fire",
     light: { dx: 0, dy: 6, rad: 84, col: [1, 0.62, 0.32], int: 0.85, flick: 0.22, when: "lit" },
     fire: { big: false, embers: 1.5, emberDy: 1 },
   },
@@ -141,7 +148,7 @@ export const PROPS: Record<string, PropKindDef> = {
   tree: { box: [10, 6], alt: "taken", sway: true },
   rock: { box: [16, 8], alt: "taken" },
   torch_post: {
-    box: [6, 4], alt: "lit",
+    box: [6, 4], alt: "lit", habit: "fire",
     light: { dx: 0, dy: -14, rad: 96, col: [1, 0.62, 0.32], int: 0.9, flick: 0.22, when: "lit" },
     fire: { big: false, embers: 1.5, emberDy: -2 },
   },

@@ -11,6 +11,8 @@ import { actorDef, capable } from "../content/actors";
 import type { Point } from "../world/jobs";
 import { powered } from "./actorStats";
 import { actorMessage } from "./messages";
+import { advanceDayTo } from "./daytime";
+import { FIRST_ARRIVAL_HOUR } from "../content/daycycle";
 
 export const runeActive = (w: World, n: RuneNode) => hasFlag(w, n.flag);
 
@@ -46,7 +48,12 @@ export function travel(w: World, a: Actor, area: Area, propId: string, destinati
   }
   enterArea(w, a, to.area, spot.x, spot.y);
   a.facing = to.arrive.facing;
-  if (a.id === w.playerId) setFlag(w, FLAGS.tutorialDone);
+  if (a.id === w.playerId) {
+    // The first crossing is not instant: the far anchor has to be rewritten on the way (the cutscene shows it), and
+    // the golem comes up in the last dark before dawn however long the halls took. Later hops take no time.
+    if (!hasFlag(w, FLAGS.tutorialDone)) advanceDayTo(w, FIRST_ARRIVAL_HOUR);
+    setFlag(w, FLAGS.tutorialDone);
+  }
   emit(w, { t: "travelled", actor: a.id, from: from.id, to: to.id, rune: to.prop });
   return true;
 }

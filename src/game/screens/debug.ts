@@ -6,7 +6,7 @@
 //   PLAYER     arm, eye, speed, noclip, gear slots, kits, pack tools
 //   FLAGS      every progression flag, rune site, plan and NPC state, toggled
 //   TELEPORT   any area, room, rune site or NPC
-//   WORLD      save / load / new game, the fixture, HUD, zoom, unlock everything
+//   WORLD      save / load / new game, the fixture, HUD, zoom, the clock, unlock everything
 //
 // Layout (320x180, nothing here is bigger than the panel): a tab row, a
 // scrolling list on the left (with a search field on the tabs that have many
@@ -28,6 +28,7 @@ import {
 import { countItem } from "../sim/inventory";
 import { ensureWorn, wears } from "../sim/gear";
 import { setFlag } from "../world/world";
+import { clockText, hourOf, phaseAt } from "../content/daycycle";
 
 /** What the menu needs from the host (Game): the debug toggles it owns, and the few things only the host can do. */
 export interface DebugHost extends UiHost {
@@ -46,6 +47,10 @@ export interface DebugHost extends UiHost {
   debugNewGame(): void;
   debugFoundations(): void;
   debugZoom(): void;
+  /** The calendar clock's speed (1: normal). */
+  debugClock: number;
+  /** Move the clock on to the next mark of the day; returns what it now reads. */
+  debugAdvanceTime(): string;
   saveGame(): void;
   loadGame(): boolean;
 }
@@ -161,6 +166,8 @@ export class DebugUi {
     return [
       { key: "hud", label: "COORDINATE HUD", ...onOff(g.debugHud), desc: "SHOW THE AREA, THE GOLEM'S POSITION AND TILE, AND THE ACTIVE DEBUG MODES IN THE CORNER." },
       { key: "zoom", label: "ZOOM", value: `X${g.zoom.toFixed(2)}`, vcol: UI.amber, desc: "CYCLE THE VIEW ZOOM THROUGH ITS STEPS (WORKS WITHOUT THE MENDED EYE)." },
+      { key: "time", label: "TIME OF DAY", value: `${clockText(hourOf(w.day))} ${phaseAt(hourOf(w.day)).toUpperCase()}`, vcol: UI.amber, desc: "MOVE THE CLOCK ON TO THE NEXT MARK OF THE DAY: MIDNIGHT, DAWN, SIX, SUNRISE, NOON, DUSK, EIGHT, NIGHTFALL. THE CLOCK ONLY RUNS FORWARD." },
+      { key: "clock", label: "CLOCK SPEED", value: `X${g.debugClock ?? 1}`, vcol: UI.amber, desc: "HOW FAST THE DAY RUNS: X1 (A DAY IN TWELVE MINUTES), X20 OR X60. FOR WATCHING THE TOWN LIGHT ITS LAMPS AND PUT THEM OUT." },
       { key: "unlock", label: "UNLOCK EVERYTHING", desc: "ARM, EYE, ALL SLOTS, ALL KNOWLEDGE AND PLANS, AND THE GEAR, BUILD AND STORY KITS. STORY, RUNE AND NPC FLAGS ARE LEFT ALONE." },
       { key: "save", label: "SAVE GAME", desc: "WRITE THE ONE LOCALSTORAGE SLOT (K ON THE PLAY SCREEN)." },
       { key: "load", label: "LOAD GAME", desc: "LOAD THE SAVED GAME AND RESUME (L ON THE PLAY SCREEN)." },
@@ -312,6 +319,8 @@ export class DebugUi {
       }
       case "hud": g.debugHud = !g.debugHud; this.tell(`COORDINATE HUD ${g.debugHud ? "ON" : "OFF"}`); chime(g.debugHud); return;
       case "zoom": g.debugZoom(); this.tell("ZOOM CHANGED"); chime(); return;
+      case "time": this.tell(`TIME: ${g.debugAdvanceTime()}`); chime(); return;
+      case "clock": g.debugClock = g.debugClock === 20 ? 60 : g.debugClock === 60 ? 1 : 20; this.tell(`CLOCK SPEED X${g.debugClock}`); chime(g.debugClock > 1); return;
       case "unlock": {
         for (const f of [FLAGS.golemArm, FLAGS.golemEye, FLAGS.knowBuild, FLAGS.knowRepair, FLAGS.knowMasonry, FLAGS.knowSchematic]) if (!flagOn(w, f)) g.debugSetFlag(f, true);
         setFlag(w, FLAGS.tutorialInsight);

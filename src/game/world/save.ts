@@ -59,8 +59,12 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      The dungeon gains its dormant worker golem (actor
   *      `npc.worker.artificery`), once, even for v4 saves that MIGRATIONS[4]
   *      already gave it, and never on top of a player standing there.
+  * v13: the calendar clock (`day`: days since the world began, the fraction
+  *      the time of day). Older worlds were always night: one that has reached
+  *      the surface resumes at its first morning, one still in the halls in
+  *      the night it woke in.
   */
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -82,11 +86,13 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 12;
+  version: 13;
   seed: number;
   rng: number;
   time: number;
   playTime: number;
+  /** The calendar clock (World.day). */
+  day: number;
   flags: string[];
   playerId: string;
   actors: Actor[];
@@ -285,6 +291,8 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     return { ...s, version: 12, flags, actors };
   },
+  // The calendar clock. The hours are frozen here on purpose (content/daycycle.ts may be retuned later).
+  12: (s) => ({ ...s, version: 13, day: typeof s.day === "number" ? s.day : (s.flags ?? []).includes("tutorial.done") ? 6.6 / 24 : 22.5 / 24 }),
 };
 
 /** v12's analysis-gated plans that v10/v11 had open to anyone with know.build (frozen: not the live catalog). */
@@ -313,7 +321,7 @@ export function serialize(w: World): SaveData {
   const areas: Record<string, AreaSave> = {};
   for (const [id, a] of w.areas) areas[id] = diffArea(a);
   return clone({
-    version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime,
+    version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime, day: w.day,
     flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, monologue: w.monologue, areas,
   } as SaveData);
 }
@@ -323,7 +331,7 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
   const rng = new SeededRng(0);
   rng.state = s.rng >>> 0;
   const w: World = {
-    seed: s.seed, rng, time: s.time, playTime: s.playTime, flags: new Set(s.flags),
+    seed: s.seed, rng, time: s.time, playTime: s.playTime, day: s.day, flags: new Set(s.flags),
     areas: new Map(), actors: clone(s.actors), playerId: s.playerId, scheduled: clone(s.scheduled),
     monologue: { said: [...(s.monologue?.said ?? [])], ready: { ...(s.monologue?.ready ?? {}) } }, events: [],
   };

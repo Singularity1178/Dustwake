@@ -27,7 +27,7 @@ import { vnoise } from "./surface";
 import type { AreaData, DecalDef, LightDef, LooseItem, Portal, PropDef, Room, Spot } from "./map";
 
 const TOWN_SEED = 4177;
-/** The night sky is the surface's: the same dusk hangs over both. */
+/** The town's night: the same sky as the surface's. The sun takes it from here (content/daycycle.ts). */
 export const TOWN_AMBIENT: [number, number, number] = [0.3, 0.3, 0.42];
 
 /** Shared scaffolding for the town's builders (the streets here, the rooms in townInteriors.ts). */
@@ -315,6 +315,6 @@ export function buildTown(): AreaData {
   return {
     id: TOWN_ID, w: W, h: H, grid, plan: grid.slice(), style, tvar: k.tvar, rooms, props, decals, lights: k.lights, loose: k.loose,
     start: { x: 85 * TS + 8, y: hs.y0 * TS + 28 }, exits: [{ x: W - 1, y: hs.y0 + 1, label: "THE OLD ROAD", dir: "e" }], drips: [],
-    outdoor: true, ambient: TOWN_AMBIENT, portals: k.portals, spots: k.spots,
+    outdoor: true, tended: true, ambient: TOWN_AMBIENT, portals: k.portals, spots: k.spots,
   };
 }

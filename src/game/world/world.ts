@@ -12,6 +12,7 @@ import { NPCS } from "../content/npcs";
 import type { Job } from "./jobs";
 import type { Slot } from "../content/inventory";
 export type { Slot } from "../content/inventory";
+import { START_HOUR, type DayPhase } from "../content/daycycle";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -106,7 +107,9 @@ export type SimEvent =
   | { t: "openStorage"; actor: string; prop: string }
   | { t: "analyzed"; actor: string; prop: string; flag: string }
   /** `actor` thought line `line` (content/monologue.ts). Presentation shows it; nothing else reacts. */
-  | { t: "thought"; actor: string; line: string };
+  | { t: "thought"; actor: string; line: string }
+  /** The calendar clock crossed into another part of the day (sim/daytime.ts). `day`: the day count it happened on. */
+  | { t: "dayPhase"; phase: DayPhase; day: number };
 
 /**
  * Inner-monologue state (saved, sim/monologue.ts). `said`: one-shot lines already
@@ -119,8 +122,14 @@ export interface World {
   rng: SeededRng;
   /** Simulation clock (seconds). Advances only while the world simulates. */
   time: number;
-  /** Seconds spent in active play (shown on the end screen). */
+  /** Seconds spent in active play (shown on the chapter card that closes the first crossing). */
   playTime: number;
+  /**
+   * The calendar clock: days since the world began. The fraction is the time of
+   * day (0 = midnight, 0.5 = noon). Advances with `time` (sim/daytime.ts); what an
+   * hour means is content/daycycle.ts.
+   */
+  day: number;
   flags: Set<string>;
   areas: Map<string, Area>;
   actors: Actor[];
@@ -133,7 +142,7 @@ export interface World {
 
 export function createWorld(seed: number): World {
   const w: World = {
-    seed, rng: new SeededRng(seed), time: 0, playTime: 0, flags: new Set(),
+    seed, rng: new SeededRng(seed), time: 0, playTime: 0, day: START_HOUR / 24, flags: new Set(),
     areas: new Map(), actors: [], playerId: "golem", scheduled: [], monologue: { said: [], ready: {} }, events: [],
   };
   const dungeon = getArea(w, "dungeon");

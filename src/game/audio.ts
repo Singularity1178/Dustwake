@@ -186,6 +186,26 @@ export class Sfx {
     if (powered) { this.tone(180, 0.8, "sawtooth", 0.03, 50, 0.06); this.tone(70, 0.2, "sine", 0.2, 40, 0.8); }
   }
 
+  // ---- the sky (content/daycycle.ts): the open air sounds different by day and by night
+  /** A songbird somewhere in the trees: a few quick rising notes. */
+  bird(vol = 1) {
+    const f = 2200 + Math.random() * 1400, n = 2 + ((Math.random() * 3) | 0);
+    for (let i = 0; i < n; i++) this.tone(f * (1 + i * 0.06), 0.07, "sine", 0.012 * vol, f * (1.18 + Math.random() * 0.2), i * (0.09 + Math.random() * 0.03));
+  }
+  /** A cricket in the grass: a short dry trill. */
+  cricket(vol = 1) {
+    const f = 4200 + Math.random() * 600;
+    for (let i = 0; i < 5; i++) this.tone(f, 0.022, "square", 0.004 * vol, f * 0.98, i * 0.045);
+  }
+  /** The town's bell, far off and soft: twice at dawn, twice at dusk. */
+  bell() {
+    for (let i = 0; i < 2; i++) { this.tone(392, 2.4, "sine", 0.03, 388, i * 1.3); this.tone(784, 1.6, "sine", 0.008, undefined, i * 1.3); this.tone(1176, 0.9, "triangle", 0.004, undefined, i * 1.3); }
+  }
+  /** First light: a slow warm chord opening upward (the crossing's dawn). */
+  dawn() { [196, 247, 294, 392].forEach((f, i) => this.tone(f, 3.2, "sine", 0.03, undefined, i * 0.5)); this.tone(98, 4.5, "sine", 0.03, 98); }
+  /** The crossing stalls: the far anchor does not answer. */
+  stall() { this.tone(220, 0.5, "sawtooth", 0.04, 70); this.noise(0.4, 0.12, "bandpass", 500, 2, 0, 160); this.tone(55, 0.8, "sine", 0.2, 40, 0.05); }
+
   setHum(level: number) {
     const c = this.ctx; if (!c || !this.master) return;
     if (!this.hum) {

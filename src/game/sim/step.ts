@@ -19,6 +19,7 @@ import { toggleScan } from "./analysis";
 import { reactToEvents } from "./monologue";
 import { coreKey } from "./commands";
 import { portalAt, walkThrough } from "./portals";
+import { stepDay } from "./daytime";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -78,7 +79,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   return { target, ui };
 }
 
-/** Active-play time stat (shown on the end screen). */
+/** Active-play time stat (shown on the chapter card that closes the first crossing). */
 export function addPlayTime(w: World, dt: number) { w.playTime += dt; }
 
 /** Advance everything that runs on world time: clock, scheduled effects, non-player actors, area features. */
@@ -88,6 +89,7 @@ export function addPlayTime(w: World, dt: number) { w.playTime += dt; }
 // carry the area they were scheduled in.
 export function stepWorld(w: World, dt: number) {
   w.time += dt;
+  stepDay(w, dt);
   runScheduled(w);
   for (const a of [...w.actors].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     reconcileGear(w, a);

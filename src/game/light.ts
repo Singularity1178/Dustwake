@@ -1,5 +1,6 @@
 import { TS, isOpaqueT } from "./content/tiles";
 import type { GolemLight } from "./content/gear";
+import type { LightHabit } from "./content/daycycle";
 
 /** Anything with a tile grid and its dimensions (an Area). */
 export interface TileGrid { grid: Uint8Array; w: number; h: number }
@@ -17,6 +18,12 @@ export interface Light {
   vx: number; vy: number;
   /** Strength multiplier on top of `cur` (the golem's glow: a rune of glow burns brighter). Absent: 1. */
   glow?: number;
+  /** The prop that emits this light and how its kind is tended (set only in `tended` areas): the host dims it by the hour. */
+  owner?: string; habit?: LightHabit;
+  /** Sky light: the colour it was authored with (its night colour). The host recolours it by the hour. */
+  sky?: [number, number, number];
+  /** Strength multiplier from the time of day (a tended lamp put out, a sunbeam's gain). Absent: 1. */
+  day?: number;
 }
 
 export function makeLight(x: number, y: number, rad: number, col: [number, number, number], int: number, flick: number, id?: string): Light {
@@ -90,13 +97,13 @@ export class Lighting {
     const { W, H, ar, ag, ab } = this;
     ar.fill(0); ag.fill(0); ab.fill(0);
     for (const L of lights) {
-      if (!L.on || L.cur <= 0.01) continue;
+      const k = L.cur * (L.glow ?? 1) * (L.day ?? 1);
+      if (!L.on || L.cur <= 0.01 || k <= 0.004) continue;
       const rad = L.rad, rad2 = rad * rad;
       const x0 = Math.max(0, Math.floor(L.x - rad - camX)), x1 = Math.min(W - 1, Math.ceil(L.x + rad - camX));
       const y0 = Math.max(0, Math.floor(L.y - rad - camY)), y1 = Math.min(H - 1, Math.ceil(L.y + rad - camY));
       if (x0 > x1 || y0 > y1) continue;
       const n = L.n, vis = L.vis, ox = L.ox, oy = L.oy;
-      const k = L.cur * (L.glow ?? 1);
       const lr = L.r * k, lg = L.g * k, lb = L.b * k;
       for (let sy = y0; sy <= y1; sy++) {
         const wy = sy + camY;
@@ -130,16 +137,17 @@ export class Lighting {
     }
   }
 
-  compose(scene: Uint8ClampedArray, emit: Uint8ClampedArray, out: Uint8ClampedArray, amb: [number, number, number], steps = 6) {
+  /** `gain` scales every light against the ambient (daylight: a lamp at noon adds little; content/daycycle.ts: lampGain). */
+  compose(scene: Uint8ClampedArray, emit: Uint8ClampedArray, out: Uint8ClampedArray, amb: [number, number, number], steps = 6, gain = 1) {
     const { W, H, ar, ag, ab } = this;
     for (let y = 0; y < H; y++) {
       const brow = (y & 3) * 4;
       for (let x = 0; x < W; x++) {
         const i = y * W + x, o = i * 4;
         const b = BAYER[brow + (x & 3)];
-        let qr = Math.floor((amb[0] + ar[i]) * steps + b) / steps;
-        let qg = Math.floor((amb[1] + ag[i]) * steps + b) / steps;
-        let qb = Math.floor((amb[2] + ab[i]) * steps + b) / steps;
+        let qr = Math.floor((amb[0] + ar[i] * gain) * steps + b) / steps;
+        let qg = Math.floor((amb[1] + ag[i] * gain) * steps + b) / steps;
+        let qb = Math.floor((amb[2] + ab[i] * gain) * steps + b) / steps;
         if (qr > 1.5) qr = 1.5; if (qg > 1.5) qg = 1.5; if (qb > 1.5) qb = 1.5;
         out[o] = scene[o] * qr + emit[o];
         out[o + 1] = scene[o + 1] * qg + emit[o + 1];

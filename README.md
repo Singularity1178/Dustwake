@@ -39,15 +39,48 @@
 | `Esc` / `I` / `Tab` | Close menu |
 | `K` | Save the game (one slot, kept in the browser's localStorage) |
 | `L` | Load the saved game (also on the title screen, to continue) |
-| `R` | Wake again (restart) |
+| `Esc` (during a cutscene) | Skip it: the opening, and the first jump through the translocation rune (any time from lift-off to the chapter card). The hint sits in the lower black bar. The world ends up the same as if you had watched: the same hour, the same thoughts on record |
+| `R` | Wake again (restart): at the chapter card that closes the first crossing to the surface |
 
-Click or press any key on the title screen to begin. The opening plays by itself: the golem wakes, runs its diagnostics and reports. You have control once the black bars slide away (about 12 seconds in).
+Click or press any key on the title screen to begin. The opening plays by itself: the golem wakes, runs its diagnostics and reports. You have control once the black bars slide away (about 12 seconds in). `Esc` skips it.
 
 Worker golem sprites: `node scripts/preview.mjs` renders pose sheets and animation strips (boot, settle, shutdown, wake, blows) to `.preview/*.png` without a browser.
 
-Debug menu (testing only): `Ctrl+0` opens (and closes) a tabbed menu over the play screen; the world is paused behind it. `Q` / `R` or `1`-`5` switch tab, `W` / `S` (or `PgUp` / `PgDn`) move, `Esc` / `Tab` closes. **ITEMS**: every item in the game; `A` / `D` set the quantity (`Shift` for tens, `M` for a full stack), `E` summons it into the pack (what does not fit lands on the ground; the iron arm installs itself), `G` drops it on the ground in front, `X` deletes from the pack, `F` wears it (gear), `/` searches. **PLAYER**: iron arm, mended eye, super speed (off / x3 / x6 / x12), noclip, all gear slots, the gear / build / story kits, learn all plans, fill materials, wear a basket, clear the pack. **FLAGS**: every progression flag, rune site, build plan and NPC awake state, toggled with `E` (searchable). **TELEPORT**: any area's start, room, rune site, circle or NPC (searchable; an area you have not visited yet is entered at its start). **WORLD**: coordinate HUD, zoom, unlock everything, save, load, a new game without the intro, the foundation fixture. The logic is in `src/game/sim/debug.ts` (tested in `tests/debugMenu.test.ts`), the screen in `src/game/screens/debug.ts`.
+Debug menu (testing only): `Ctrl+0` opens (and closes) a tabbed menu over the play screen; the world is paused behind it. `Q` / `R` or `1`-`5` switch tab, `W` / `S` (or `PgUp` / `PgDn`) move, `Esc` / `Tab` closes. **ITEMS**: every item in the game; `A` / `D` set the quantity (`Shift` for tens, `M` for a full stack), `E` summons it into the pack (what does not fit lands on the ground; the iron arm installs itself), `G` drops it on the ground in front, `X` deletes from the pack, `F` wears it (gear), `/` searches. **PLAYER**: iron arm, mended eye, super speed (off / x3 / x6 / x12), noclip, all gear slots, the gear / build / story kits, learn all plans, fill materials, wear a basket, clear the pack. **FLAGS**: every progression flag, rune site, build plan and NPC awake state, toggled with `E` (searchable). **TELEPORT**: any area's start, room, rune site, circle or NPC (searchable; an area you have not visited yet is entered at its start). **WORLD**: coordinate HUD, zoom, time of day (`E` steps the clock to the next mark of the day), clock speed (x1 / x20 / x60), unlock everything, save, load, a new game without the intro, the foundation fixture. The logic is in `src/game/sim/debug.ts` (tested in `tests/debugMenu.test.ts`), the screen in `src/game/screens/debug.ts`.
 
 Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, the basket worn on the golem's back (the one in the pack if it has one), 40 each of wood, stone, planks and cut stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom, `Ctrl+6` toggle the gear kit: build + masonry knowledge, the basket worn, the rune chisel, wood, stone, planks and cut stone topped up to 40, both runes (Swift, Glow; one of each, never a second), and every locked gear slot unlocked (the left arm and the other three rune slots); press again to lock them (what they hold goes back to the pack).
+
+## Day and night
+
+The world keeps a clock. A full day is 12 minutes of play (30 seconds to the hour): night until 05:00, dawn to 07:00, day to 19:00, dusk to 21:00. The golem wakes at 22:30. The clock runs whenever the world does (it stops behind the pack, menus and the debug menu) and is saved with the game. The hour shows bottom right, with a sun, a moon or the sun on the horizon, whenever the golem is under the open sky, and everywhere once it has first been up (before that it has no way to know).
+
+What follows the hour:
+
+- **The sky.** Under the open sky the light goes from the old night look through a rose dawn to full daylight and back through an amber dusk. Lamps count for less against daylight: the golem's own glow is a pool of light at night and barely there at noon. The rooms behind the town's doors get the day through their windows and door, more dimly, and the doorway shows daylight instead of the night. The halls underground do not change at all.
+- **Westwake's lights**, each kind in its own way:
+  - light runes (street lamps, door sconces) sense the dark: they wake by themselves as the sun fails and sleep as it returns, a ripple down the street within minutes;
+  - fire (torch posts, lanterns, wall torches, the watch braziers) is lit by hand some time after dusk and doused some time after dawn, one by one over an hour or so;
+  - windows light when the house comes home, go dark at bedtime (some early, some past one in the morning), and a few are up again before dawn;
+  - the charter stone's rune in the market square never goes out, as its inscription says.
+
+  Chimneys smoke thickest at breakfast and supper, and the town bell sounds at dawn and at dusk.
+- **The halls' broken roof.** The shaft of light in the throne room is moonlight by night and a sunbeam by day.
+- **The wild.** Fireflies and crickets by night; pollen, butterflies and birdsong by day.
+- **The golem** remarks on its first dusk.
+
+Only the town is tended. Torches in the halls keep no hours, and whatever the golem builds itself stays lit until it is taken down.
+
+Testing: the debug menu's WORLD tab has TIME OF DAY (`E` steps the clock to the next mark: midnight, dawn, 06:00, sunrise, noon, dusk, 20:00, nightfall) and CLOCK SPEED (x1 / x20 / x60, for watching the town light up and go dark). `node scripts/dayPreview.mjs` renders the town, the surface, the roof crack and a room at four hours, plus the crossing cutscene, to `.preview/day/*.png` through the real game without a browser. The maths is `src/game/content/daycycle.ts`, the clock `src/game/sim/daytime.ts`, the tests `tests/daycycle.test.ts`.
+
+## The crossing (the first rune jump)
+
+Stepping onto the charged translocation circle for the first time plays a cutscene in three acts after the lift-off (`Esc` skips it at any point):
+
+1. **Transit.** A cross-section of the earth. The golem rises in the rune's column of light out of the translocation room, through the keep's masonry, the rock with the upper halls fallen into it, clay, roots and topsoil, and stalls just under the grass. The rune it is bound for has lain under the forest for an age: DESTINATION ANCHOR: DEGRADED. It rewrites the anchor from the pattern it left by.
+2. **Arrival.** That same rewrite seen from the surface: the overgrown rune redraws itself, summons the golem, and it lands.
+3. **First light.** It looks about (ON RECORD: THE UPPER HALLS. OBSERVED: FOREST.), and the night ends while it stands there. This is the real clock: the first crossing always comes up at 04:00, the cutscene runs it on to about 06:40, and that dawn is the morning you then play in. A chapter card (title, time, relics) closes it: any key to walk on, `R` to wake again; left alone it hands over by itself.
+
+Skipped or watched, the world is left the same: the far rune restored, the clock at the first morning, the golem's lines on record.
 
 ## Foundation fixture
 
@@ -148,7 +181,7 @@ src/
     util.ts          canvas helpers
     screens/         screens split out of game.ts, behind ui/kit.ts UiHost: build menu + tools,
                      crafting, pack, storage, worker management, book, schematic, dialogue; the opening cutscene (intro.ts,
-                     behind CutsceneHost); title/end cards (cards.ts)
+                     behind CutsceneHost); title, transit and chapter cards (cards.ts)
 tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
                      crafting, storage, worker and dialogue screens to PNG at 320x180 without a browser;
                      tests/support/golemSnapshot.ts renders the golem's poses to PNG)

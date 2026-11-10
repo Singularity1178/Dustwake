@@ -47,6 +47,8 @@ export interface LightDef {
   x: number; y: number; rad: number; col: [number, number, number]; int: number; flick: number; id?: string;
   /** Prop that emits this light; the light follows that prop's state. */
   owner?: string;
+  /** Sky light reaching in (a roof crack, a doorway): moonlight by night, a sunbeam by day (content/daycycle.ts: skyLight). */
+  sky?: boolean;
 }
 export interface Room { num: number; name: string; x: number; y: number; w: number; h: number }
 export interface LooseItem { id: string; item: ItemId; x: number; y: number; /** Stack size (default 1). */ n?: number }
@@ -104,6 +106,9 @@ export interface AreaData {
   outdoor?: boolean;
   /** A lived-in room under a roof: neither the dungeon's rumble and falling grit nor the open sky's leaves and fireflies. */
   interior?: boolean;
+  /** People live here and keep the lights: props with a `habit` (content/props.ts) are lit and put out with the day. */
+  tended?: boolean;
+  /** The area's light with no sun in it: its night under the open sky (content/daycycle.ts adds the day), or simply its light underground. */
   ambient?: [number, number, number];
   /** Roads and doorways into other areas (sim/portals.ts). */
   portals?: Portal[];
@@ -253,8 +258,9 @@ export function buildMap(seed: number): MapData {
   P("brazier", 33, 12);
   P("brazier", 38, 12, { v: 1 });
   loose.push({ id: "crown", item: "crown", x: 33 * TS + 2, y: 6 * TS + 4 });
-  lights.push({ x: 31 * TS, y: 10 * TS, rad: 84, col: [0.55, 0.68, 1], int: 1.0, flick: 0.02, id: "moon" });
-  lights.push({ x: 46 * TS + 8, y: 10 * TS + 16, rad: 30, col: [0.55, 0.68, 1], int: 0.35, flick: 0.02 });
+  // the sky through the broken roof: moonlight as authored, a sunbeam by day (`sky`)
+  lights.push({ x: 31 * TS, y: 10 * TS, rad: 84, col: [0.55, 0.68, 1], int: 1.0, flick: 0.02, id: "moon", sky: true });
+  lights.push({ x: 46 * TS + 8, y: 10 * TS + 16, rad: 30, col: [0.55, 0.68, 1], int: 0.35, flick: 0.02, sky: true });
   for (let i = 0; i < 14; i++) D("debris", 31 * TS + (rng() - 0.5) * 48, 10 * TS + (rng() - 0.5) * 40, (rng() * 4) | 0);
   D("bones", 41 * TS, 12 * TS, 0);
 

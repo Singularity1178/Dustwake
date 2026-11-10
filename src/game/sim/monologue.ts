@@ -37,6 +37,8 @@ export function thoughtSubject(c: ThoughtContext): Actor | undefined {
  * weak-core line (the guardian given the ruby core).
  */
 export const THOUGHT_CONDITIONS: Record<string, ThoughtCondition> = {
+  /** The thinker stands under the open sky. */
+  underSky: (c) => !!c.w.areas.get(c.a.area)?.base.outdoor,
   /** The subject has a body that needs power and no core in it. */
   subjectNoPower: (c) => { const s = thoughtSubject(c); return !!s && !!actorDef(s).power && !s.powerCore; },
   /** The subject holds a core of its family that is too weak for its body. */

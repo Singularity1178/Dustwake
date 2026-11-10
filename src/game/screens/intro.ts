@@ -5,12 +5,12 @@
 // go through the sim's `think` command like any other monologue line. The
 // world steps underneath (as before), but the player is never stepped: input
 // does nothing until the `control` beat, where the letterbox opens, a soft
-// tone plays and the play screen takes over.
+// tone plays and the play screen takes over. Esc skips straight to that beat.
 import type { Screen } from "../ui/screens";
 import type { UiHost } from "../ui/kit";
 import type { MonologueLog } from "../ui/monologue";
 import { INTRO, type Cutscene, type CutsceneTracks } from "../content/cutscenes";
-import { beatsCrossed, trackAt } from "../ui/cutscene";
+import { beatsCrossed, timeline, trackAt } from "../ui/cutscene";
 import { playerThinks } from "../sim/monologue";
 import { BASE_W as W, BASE_H as H } from "../view/zoom";
 
@@ -29,7 +29,12 @@ export interface CutsceneHost extends UiHost {
   startPlay(): void;
   /** Draw the lit world scene and HUD (the monologue, the letterbox) on both layers. */
   renderScene(): void;
+  /** "ESC - SKIP" in the lower bar (`t`: seconds the cutscene has run). */
+  renderSkipHint(t: number): void;
 }
+
+/** A cutscene can be skipped once it has run this long (the key that started it is long up by then). */
+export const SKIP_AFTER = 0.25;
 
 /** Cue table: what each `cues` name in a script does. Adding a cue is a row here. */
 export const CUTSCENE_CUES: Record<string, (g: CutsceneHost) => void> = {
@@ -70,7 +75,7 @@ export class IntroCutscene {
     this.screen = { id: "intro", opaque: true, t: 0, update: (dt) => this.update(dt), render: () => this.render() };
   }
 
-  /** Begin (title -> intro, or R after the end card on a fresh world). */
+  /** Begin (title -> intro, or R at the crossing's chapter card, on a fresh world). */
   start() {
     const g = this.g;
     g.screens.set(this.screen);
@@ -80,18 +85,11 @@ export class IntroCutscene {
 
   private update(dt: number) {
     const g = this.g, c = this.script, t = this.screen.t, t0 = t - dt;
+    if (t > SKIP_AFTER && g.hit("escape")) { this.skip(dt); return; }
     for (const b of beatsCrossed(c, t0, t)) {
       for (const cue of b.cues ?? []) CUTSCENE_CUES[cue]?.(g);
       if (b.think) playerThinks(g.world, b.think);
-      if (b.control) {
-        // control: the letterbox opens, the list starts to fade, the play screen takes input from the next frame
-        g.worldFrame(dt);
-        g.letterbox(false);
-        g.monologue.release();
-        g.sfx.online();
-        g.startPlay();
-        return;
-      }
+      if (b.control) { this.handOver(dt); return; }
     }
     const lk = lookFor(c, t);
     g.look.core = lk.core; g.look.eye = lk.eye; g.look.dormant = lk.dormant;
@@ -100,11 +98,35 @@ export class IntroCutscene {
     g.worldFrame(dt);
   }
 
+  /** Control: the letterbox opens, the list starts to fade, the play screen takes input from the next frame. */
+  private handOver(dt: number) {
+    const g = this.g;
+    g.worldFrame(dt);
+    g.letterbox(false);
+    g.monologue.release();
+    g.sfx.online();
+    g.startPlay();
+  }
+
+  /**
+   * Esc: straight to control. The world ends up exactly as if the opening had
+   * played: the golem is up and lit, and every line it would have thought is
+   * thought (recorded as said, so nothing repeats later), only never shown.
+   */
+  skip(dt = 0) {
+    const g = this.g, t = this.screen.t;
+    for (const b of timeline(this.script)) if (b.at > t && b.think) playerThinks(g.world, b.think);
+    g.drainEvents();
+    g.monologue.reset();
+    g.look.core = 1; g.look.eye = 1; g.look.dormant = 0;
+    this.handOver(dt);
+  }
+
   /** Drawn after the host's world scene and HUD: the fade from black. */
   renderFade() {
     const t = this.screen.t, f = this.script.fadeIn;
     if (t < f) { this.g.ctx.fillStyle = `rgba(0,0,0,${1 - t / f})`; this.g.ctx.fillRect(0, 0, W, H); }
   }
 
-  private render() { this.g.renderScene(); this.renderFade(); }
+  private render() { this.g.renderScene(); this.renderFade(); this.g.renderSkipHint(this.screen.t); }
 }

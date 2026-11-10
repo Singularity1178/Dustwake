@@ -256,7 +256,7 @@ function asV4(w: World, chestOpened: boolean) {
 }
 
 test("v4 -> v5: a save without the core gets a dormant guardian who still gives it", () => {
-  assert.equal(SAVE_VERSION, 12); // v12: the production rollout
+  assert.equal(SAVE_VERSION, 13); // v13: the calendar clock (tests/daycycle.test.ts)
   const w0 = newWorld(11), pl0 = player(w0);
   addItems(w0, pl0, "chisel", 1);
   pl0.x = 56 * TS; pl0.y = 7 * TS;

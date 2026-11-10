@@ -13,7 +13,8 @@
 //     around the old well, a keep statue hauled home as a keepsake.
 //   - the MARKET SQUARE and the HIGH STREET: the charter years. Stone and
 //     slate, the Guild's chapter house, the shops that sell what nobody needs.
-//     Paved in dressed setts and lit by light runes that never go out.
+//     Paved in dressed setts and lit by light runes nobody has to tend:
+//     they wake at dusk and sleep at sunrise by themselves (the charter stone's alone never sleeps).
 //   - LOW STREET and the lanes behind it (south): where the work is. The
 //     smithy, the tavern, the stable, the stone yard and the golem stands.
 //     Cobbles giving way to mud; torches, where there is any light at all.

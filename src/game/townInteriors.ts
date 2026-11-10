@@ -59,8 +59,8 @@ function buildRoom(e: Establishment, s: RoomSpec): AreaData {
     id: "door", x: dx * TS + 1, y: dy * TS + 6, w: s.doorW * TS - 2, h: 11, dir: "down", door: true,
     to: { area: TOWN_ID, portal: `door.${e}` }, arrive: { x: mid, y: dy * TS - 3 }, label: b.name,
   });
-  // the night outside leaks a little way in over the sill
-  k.lights.push({ x: mid, y: dy * TS + 10, rad: 44, col: [0.5, 0.6, 0.95], int: 0.3, flick: 0 });
+  // the sky outside leaks a little way in over the sill: the night as authored, daylight by day (`sky`)
+  k.lights.push({ x: mid, y: dy * TS + 10, rad: 44, col: [0.5, 0.6, 0.95], int: 0.3, flick: 0, sky: true });
   const room: Room = {
     w: s.w, h: s.h,
     Q: (kind, cx, cy, o = {}) => k.Pt(kind, rx + cx, ry + cy, o),

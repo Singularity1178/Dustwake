@@ -20,9 +20,11 @@ import { BookUi } from "./screens/book";
 import { SchematicUi } from "./screens/schematic";
 import { DialogueUi } from "./screens/dialogue";
 import { IntroCutscene } from "./screens/intro";
+import { CrossingCutscene } from "./screens/crossing";
+import { ARRIVE } from "./content/cutscenes";
 import { MonologueLog, drawMonologue } from "./ui/monologue";
-import { reactToEvents } from "./sim/monologue";
-import { renderTitle, renderEnd } from "./screens/cards";
+import { reactToEvents, playerThinks } from "./sim/monologue";
+import { renderTitle } from "./screens/cards";
 import { propDef } from "./content/props";
 import { VISION_CATEGORIES } from "./content/vision";
 import { GLYPHS } from "./content/glyphs";
@@ -32,7 +34,7 @@ import { portalById } from "./sim/portals";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite } from "./art/tiles";
 import { itemIcon, glyphPattern } from "./art/items";
 import { makeCanvas, Pen, Sprite, hash2, clamp, lerp, makeSprite } from "./util";
-import { drawGolem, GolemPose, slamPose } from "./golem";
+import { drawGolem, GolemPose, slamPose, type Facing } from "./golem";
 import { SLAM_HIT } from "./content/tasks";
 import { Light, makeLight, computeVis, applyGlow, Lighting } from "./light";
 import { Sfx } from "./audio";
@@ -59,6 +61,8 @@ import type { Target } from "./content/tasks";
 import { isAwake, npcActor } from "./sim/dialogue";
 import { saveToStorage, loadFromStorage } from "./view/persistence";
 import type { Actor } from "./world/world";
+import { DAY_SECONDS, ambientAt, lampGain, skyLight, litLevel, sunLevel, clockText, phaseAt, hearthSmoke, type DayPhase, type RGB } from "./content/daycycle";
+import { worldHour, exposureOf, advanceDay, advanceDayTo } from "./sim/daytime";
 
 /** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
 const DEBUG_SPEED_MULT = 3;
@@ -66,6 +70,10 @@ const DEBUG_SPEED_MULT = 3;
 /** Base logical size. HUD and overlay screens are laid out for it (they draw on a base-size UI layer). */
 export const W = BASE_W, H = BASE_H;
 export { ZOOM_STEPS, ZOOM_DEFAULT, viewSize };
+/** The crossing's arrival timings (content/cutscenes.ts), re-exported for the host's callers. */
+export { ARRIVE };
+/** An area with no `ambient` of its own: the dark of the buried halls. */
+const BURIED_AMBIENT: RGB = [0.05, 0.045, 0.065];
 
 /** Presentation state of one NPC (eased pose, eye, flare). Not saved: derived from flags on load. */
 interface NpcLook {
@@ -73,29 +81,6 @@ interface NpcLook {
   /** A worker body's animation sequencer (workerAnim.ts), the px a rune holds it off the ground, when it was last stepped, and whether it just arrived through a rune. */
   worker?: WorkerAnim; lift: number; seen: number; arrived: boolean;
 }
-
-/**
- * First arrival on the surface, in seconds since the arrive screen opened. The
- * overgrown rune wakes: its surviving carvings glow, the glow sweeps round the
- * circle redrawing what eroded while the plants over it wither away, the
- * circle pulses to full power, and then the golem is summoned onto it. The
- * player can't act until END (the arrive screen never steps the player).
- */
-export const ARRIVE = {
-  /** Fade in from black. */
-  FADE: 1.0,
-  /** The surviving carvings begin to glow; a low hum starts. */
-  GLOW: 1.3,
-  /** The redraw sweep runs SWEEP -> SWEEP_END; the hum rises. */
-  SWEEP: 2.9,
-  SWEEP_END: 6.3,
-  /** Full activation pulse ends. */
-  PULSE_END: 7.1,
-  /** Summon: converging motes and a light column build until FLASH, which reveals the golem. */
-  FLASH: 8.3,
-  /** Back to play. */
-  END: 9.8,
-} as const;
 
 interface Particle {
   x: number; y: number; z: number; vx: number; vy: number; vz: number;
@@ -109,7 +94,7 @@ interface GolemLook { eye: number; core: number; dormant: number; sparkT: number
 const newSeed = () => (Math.random() * 4294967296) >>> 0;
 
 export class Game {
-  /** Base-size (W x H) UI layer: HUD, overlays, title and end cards. */
+  /** Base-size (W x H) UI layer: HUD, overlays, title and chapter cards. */
   ctx: CanvasRenderingContext2D;
   /** World layer: the lit scene, sized to the current view (vw x vh). */
   wctx: CanvasRenderingContext2D;
@@ -129,7 +114,9 @@ export class Game {
   private lastAnalyzed = { prop: "", t: -1 };
   sfx = new Sfx();
   circle: CircleArt = buildCircle();
+  /** The sky through the throne room's broken roof: a shaft of moonlight, and the same shaft as a sunbeam. */
   shaft: Sprite;
+  sunShaft: Sprite;
 
   world!: World;
   view!: AreaView;
@@ -162,7 +149,7 @@ export class Game {
   target: Interactable | null = null;
   outImg: ImageData;
   private uiTimers: { at: number; fn: () => void }[] = [];
-  private S!: Record<"title" | "intro" | "play" | "tele" | "end" | "arrive" | "inv" | "schem" | "book" | "build" | "crafting" | "storage" | "manage" | "dialogue" | "debug", Screen>;
+  private S!: Record<"title" | "intro" | "play" | "tele" | "crossing" | "inv" | "schem" | "book" | "build" | "crafting" | "storage" | "manage" | "dialogue" | "debug", Screen>;
   /** Feedback line (blocked actions, pack full, rune dark...). */
   note: { text: string; t: number } | null = null;
   /** Current rune jump: where the effect plays, how long, and whether it's the first (cinematic) one. */
@@ -203,6 +190,14 @@ export class Game {
   monologue = new MonologueLog();
   /** Cutscene letterbox: current amount 0..1 and where it is easing to. */
   bars = { v: 0, to: 0 };
+  /** The first crossing to the surface (screens/crossing.ts, script in content/cutscenes.ts). */
+  crossingUi!: CrossingCutscene;
+  /** Which way a cutscene has the golem drawn facing (null: as the sim says). Presentation only. */
+  gaze: Facing | null = null;
+  /** Debug: the calendar clock runs this many times faster (1: normal). Not saved. */
+  debugClock = 1;
+  /** Under the open sky: seconds until the next bird or cricket. */
+  private skyT = 3;
   /** Printable characters typed this frame (raw case) and "\b" for Backspace: text fields read these. */
   typed: string[] = [];
 
@@ -212,7 +207,8 @@ export class Game {
     this.ctx = uiCanvas.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
     this.outImg = this.wctx.createImageData(W, H);
-    this.shaft = this.buildShaft();
+    this.shaft = this.buildShaft(["#1c2638", "#121a28", "#26324a"]);
+    this.sunShaft = this.buildShaft(["#4a3a1c", "#33280f", "#5e4a22"]);
     this.makeScreens();
     this.reset();
     this.screens.set(this.S.title);
@@ -248,7 +244,7 @@ export class Game {
     this.shudder = null;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
-    this.note = null; this.arriveFade = 0; this.doorFade = 0; this.hideGolem = false; this.runeAnim = null;
+    this.note = null; this.arriveFade = 0; this.doorFade = 0; this.hideGolem = false; this.runeAnim = null; this.gaze = null; this.skyT = 3;
     this.monologue.reset();
     this.bars = { v: 0, to: 0 };
   }
@@ -332,7 +328,7 @@ export class Game {
     this.sfx.tone(next > cur ? 420 : 560, 0.05, "triangle", 0.03);
   }
 
-  buildShaft(): Sprite {
+  buildShaft(cols: [string, string, string]): Sprite {
     return makeSprite(80, 110, 40, 100, 1, (p) => {
       for (let y = 0; y < 110; y++) {
         const t = y / 100;
@@ -341,10 +337,10 @@ export class Game {
           const d = Math.abs(x - cx) / hw;
           if (y > 100) {
             const e = ((x - 40) / 26) ** 2 + ((y - 102) / 7) ** 2;
-            if (e < 1 && (x + y) % 2 === 0) p.g(x, y, 1, 1, "#26324a");
+            if (e < 1 && (x + y) % 2 === 0) p.g(x, y, 1, 1, cols[2]);
             continue;
           }
-          if (d < 1 && (x + y) % 2 === 0 && hash2(x, y, 2) > d * 0.8) p.g(x, y, 1, 1, d < 0.5 ? "#1c2638" : "#121a28");
+          if (d < 1 && (x + y) % 2 === 0 && hash2(x, y, 2) > d * 0.8) p.g(x, y, 1, 1, d < 0.5 ? cols[0] : cols[1]);
         }
       }
     });
@@ -473,6 +469,7 @@ export class Game {
     this.schemUi = new SchematicUi(this);
     this.dialogueUi = new DialogueUi(this);
     this.introUi = new IntroCutscene(this);
+    this.crossingUi = new CrossingCutscene(this);
     this.S = {
       title: scr("title", true, (dt) => {
         if (g.hit("l") && g.loadGame()) { g.sfx.init(); return; }
@@ -483,6 +480,8 @@ export class Game {
       intro: this.introUi.screen,
       play: scr("play", true, (dt) => g.updatePlay(dt), () => g.renderWorldScene()),
       tele: scr("tele", true, (dt) => {
+        // the first jump is a cutscene (it runs on into the crossing): Esc skips the whole of it
+        if (g.tele.first && g.S.tele.t > 0.2 && g.hit("escape")) { g.skipCrossing(); return; }
         if (g.updateTele(dt)) return;
         stepPlayer(g.world, dt, { ix: 0, iy: 0, use: false });
         g.drainEvents();
@@ -491,8 +490,9 @@ export class Game {
         g.renderWorldScene();
         const t = g.S.tele.t, w0 = g.tele.dur - 1.6;
         if (t > w0) { g.ctx.fillStyle = `rgba(235,240,255,${clamp((t - w0) / 1.4, 0, 1)})`; g.ctx.fillRect(0, 0, W, H); }
+        if (g.tele.first) g.renderSkipHint(t);
       }),
-      arrive: scr("arrive", true, (dt) => { g.updateArrive(dt); g.worldFrame(dt); }, () => g.renderArrive()),
+      crossing: this.crossingUi.screen,
       book: this.bookUi.screen,
       build: this.buildUi.screen,
       crafting: this.craftUi.screen,
@@ -500,13 +500,6 @@ export class Game {
       manage: this.manageUi.screen,
       debug: this.debugUi.screen,
       dialogue: this.dialogueUi.screen,
-      end: scr("end", true, (dt) => {
-        const et = g.S.end.t;
-        if (et > 5 && g.hit("r")) { g.reset(); g.introUi.start(); }
-        else if ((et > 5 && g.pressed.size) || et > 14) { g.particles = []; g.screens.set(g.S.arrive); }
-        if (Math.random() < 0.2) g.spawn({ x: Math.random() * W, y: H * 0.4 + Math.random() * 60, vy: -3, vx: 4, life: 5, kind: "mote", col: "#ffd8a0", emit: true });
-        g.updateParticles(dt);
-      }, () => renderEnd(g.ctx, g.t, g.S.end.t, g.particles, g.world, g.pl)),
       inv: this.packUi.screen,
       schem: this.schemUi.screen,
     };
@@ -529,6 +522,7 @@ export class Game {
   /** One frame of world simulation plus its presentation. */
   worldFrame(dt: number) {
     stepWorld(this.world, dt);
+    if (this.debugClock > 1) advanceDay(this.world, ((this.debugClock - 1) * dt * 24) / DAY_SECONDS);
     this.drainEvents();
     this.syncView();
     if (this.view.flush()) this.glight.vx = -999;
@@ -792,8 +786,11 @@ export class Game {
       case "teleport":
         this.tele = { x: e.x, y: e.y, dur: pl.task?.dur ?? 4.6, first: e.first, travelled: false };
         this.screens.set(this.S.tele); this.sfx.teleport();
+        // The first jump opens the crossing (screens/crossing.ts): bars in, and the golem's own account of it begins.
+        if (e.first) { this.letterbox(true); this.monologue.pinned = true; playerThinks(this.world, "cross.engage"); }
         break;
       case "areaEntered": break;
+      case "dayPhase": this.onDayPhase(e.phase); break;
       case "portal": {
         // Walked through a doorway or out along a road (sim/portals.ts): a latch or a footfall, a short fade up from
         // dark, and the name of the place arrived in. The old area's particles stay behind.
@@ -896,13 +893,16 @@ export class Game {
     this.worldFrame(dt);
   }
 
-  /** The rune-jump effect (first jump: long, then the duskfall card; later hops: short). Returns true if it ended. */
+  /** The rune-jump effect (first jump: long, and it runs on into the crossing cutscene; later hops: short). Returns true if it ended. */
   updateTele(_dt: number): boolean {
     const t = this.S.tele.t, lk = this.look, tl = this.tele, pl = this.pl;
     if (!pl.task && t > 0.2) {
       this.sfx.setHum(0);
-      if (tl.first && tl.travelled) { this.screens.set(this.S.end); this.particles = []; }
-      else { this.screens.set(this.S.play); this.arriveFade = tl.travelled ? 1 : 0; lk.z = tl.travelled ? 16 : 0; }
+      if (tl.first && tl.travelled) { this.particles = []; this.crossingUi.start(); }
+      else {
+        if (tl.first) { this.letterbox(false); this.monologue.release(); } // the jump failed: there is no crossing to run on into
+        this.screens.set(this.S.play); this.arriveFade = tl.travelled ? 1 : 0; lk.z = tl.travelled ? 16 : 0;
+      }
       return true;
     }
     const lift = tl.dur - 1.6;
@@ -918,6 +918,53 @@ export class Game {
     return false;
   }
 
+  /**
+   * Esc during the first jump's lift-off: let the sim finish the channel at once (it travels), then end the
+   * crossing as if it had played (screens/crossing.ts: the same hour, the same lines thought).
+   */
+  skipCrossing() {
+    const pl = this.pl;
+    for (let i = 0; i < 200 && pl.task; i++) stepPlayer(this.world, 0.1, { ix: 0, iy: 0, use: false });
+    this.drainEvents();
+    this.sfx.setHum(0);
+    this.look.z = 0;
+    if (!this.tele.travelled) { this.letterbox(false); this.monologue.release(); this.screens.set(this.S.play); return; }
+    this.syncView();
+    this.particles = [];
+    this.crossingUi.start();
+    this.crossingUi.skip();
+  }
+
+  // ---------------------------------------------------------------- the hour (content/daycycle.ts)
+  /**
+   * How lit (0..1) a prop is at this hour. Where people keep the lights (`tended` areas) a lamp follows its kind's
+   * habit; anywhere else, and anything the golem built itself, simply stays as it is.
+   */
+  tendedLevel(p: PropInst, hour = worldHour(this.world)): number {
+    if (!this.area.base.tended || p.dyn) return 1;
+    const habit = propDef(p.kind).habit;
+    return habit ? litLevel(habit, p.id, hour) : 1;
+  }
+
+  /** The day turned (sim/daytime.ts). Under the open sky it is said; where people live, the town answers it. */
+  private onDayPhase(phase: DayPhase) {
+    const a = this.area;
+    if (!a.base.outdoor || !this.screens.is("play")) return;
+    const town = !!a.base.tended;
+    if (phase === "dawn") { this.say(town ? "DAWN. THE TOWN PUTS OUT ITS LAMPS." : "DAWN BREAKS."); if (town) this.sfx.bell(); }
+    else if (phase === "dusk") { this.say(town ? "DUSK. THE TOWN LIGHTS ITS LAMPS." : "DUSK. THE LIGHT IS GOING."); if (town) this.sfx.bell(); }
+    else if (phase === "night") this.say("NIGHT FALLS.");
+  }
+
+  /** Debug menu: move the clock on to the next mark of the day. Returns what it now reads. */
+  debugAdvanceTime(): string {
+    const marks = [0, 5, 6, 7, 12, 19, 20, 21], h = worldHour(this.world);
+    advanceDayTo(this.world, marks.find((m) => m > h + 0.01) ?? marks[0]);
+    this.drainEvents();
+    const now = worldHour(this.world);
+    return `${clockText(now)} ${phaseAt(now).toUpperCase()}`;
+  }
+
   /** The surface rune's presentation state: the arrival cutscene's, else its flag's. */
   surfaceRuneState(): { t: number; glow: number; column: number } {
     if (this.runeAnim) return this.runeAnim;
@@ -925,9 +972,9 @@ export class Game {
     return { t: on ? 1 : 0, glow: on ? 0.62 + 0.28 * Math.sin(this.t * 3) : 0, column: 0 };
   }
 
-  /** First arrival on the surface: the overgrown rune wakes and redraws itself, then summons the golem. */
-  updateArrive(dt: number) {
-    const A = ARRIVE, t = this.S.arrive.t, t0 = t - dt, lk = this.look;
+  /** The crossing's arrival act (screens/crossing.ts), `t` seconds in: the overgrown rune wakes and redraws itself, then summons the golem. */
+  arriveStep(t: number, dt: number) {
+    const A = ARRIVE, t0 = t - dt, lk = this.look;
     const rp = this.area.prop("rune.surface");
     const c = rp ?? this.pl;
     const crossed = (at: number) => t >= at && t0 < at;
@@ -975,16 +1022,42 @@ export class Game {
       const a = Math.random() * Math.PI * 2, v = 30 + Math.random() * 70;
       this.spawn({ x: c.x, y: c.y + 4, z: 4 + Math.random() * 20, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5, vz: 20 + Math.random() * 40, life: 0.8 + Math.random() * 0.6, kind: "spark", col: Math.random() < 0.5 ? "#e8e0ff" : "#a070ff", emit: true, g: 90 });
     }
-    const fall = clamp((t - A.FLASH) / 1.2, 0, 1);
+    const fall = clamp((t - A.FLASH) / A.FALL, 0, 1);
     lk.z = 30 * (1 - fall) ** 2;
     lk.eye = 1; lk.core = 1; lk.dormant = 0;
     this.cam.x = clamp(c.x - this.vw / 2, 0, this.area.w * TS - this.vw); this.cam.y = clamp(c.y - 12 - this.vh / 2, 0, this.area.h * TS - this.vh);
-    if (t > A.END) {
-      this.runeAnim = null; this.hideGolem = false; lk.z = 0;
-      this.screens.set(this.S.play);
-      this.say("THE SURFACE. THE WILD HAS SWALLOWED ALL TRACE OF THE HALLS.");
-    }
   }
+
+  /** The arrival is over (played out or skipped): the rune follows its flag again and the golem stands on it, lit. */
+  arriveEnd() {
+    this.runeAnim = null; this.hideGolem = false;
+    this.look.z = 0; this.look.eye = 1; this.look.core = 1; this.look.dormant = 0;
+    this.sfx.setHum(0);
+  }
+
+  /** The golem comes down on the dais: the blow, a ring of dust, the ground answering. */
+  landFx() {
+    const pl = this.pl;
+    this.sfx.slam(); this.shake(0.35, 2.2);
+    for (let i = 0; i < 22; i++) {
+      const ang = Math.random() * Math.PI * 2, v = 16 + Math.random() * 30;
+      this.spawn({ x: pl.x + Math.cos(ang) * 4, y: pl.y + Math.sin(ang) * 2, z: 1, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v * 0.5, vz: 6 + Math.random() * 12, life: 0.7 + Math.random() * 0.6, kind: "dust", col: Math.random() < 0.5 ? "#8a8478" : "#a09a8c", g: 20 });
+    }
+    if (!this.hasArm) this.sparkBurst(6);
+  }
+
+  /** First light from the east during the crossing's dawn: a low gold light across the clearing (0 puts it out). */
+  sunrise(level: number) {
+    if (level <= 0 && !this.view.lights.has("sunrise")) return;
+    const pl = this.pl;
+    const lt = this.view.dynamicLight("sunrise", () => makeLight(pl.x + 190, pl.y - 30, 330, [1, 0.7, 0.4], 0, 0, "sunrise"));
+    lt.int = 0.75 * clamp(level, 0, 1);
+  }
+
+  clearParticles() { this.particles = []; }
+  anyKey() { return this.pressed.size > 0; }
+  /** Wake again: a fresh world and the whole opening (R at the crossing's chapter card). */
+  wakeAgain() { this.reset(); this.introUi.start(); }
 
   /** A clump of plants on the rune withers and blows off as the glow reaches it. */
   witherClump(x: number, y: number, size: number) {
@@ -994,17 +1067,26 @@ export class Game {
     if (Math.random() < 0.6) this.spawn({ x, y, z: 1, vz: 10 + Math.random() * 8, life: 0.8, kind: "rune", col: "#c0a0ff", emit: true, g: -3 });
   }
 
-  renderArrive() {
-    this.renderWorldScene();
-    const A = ARRIVE, t = this.S.arrive.t, ctx = this.ctx;
+  /** Over the arrival's world scene: the cut in from black, and the white of the summoning flash. */
+  arriveOverlay(t: number) {
+    const A = ARRIVE, ctx = this.ctx;
     if (t < A.FADE) { ctx.fillStyle = `rgba(0,0,0,${1 - t / A.FADE})`; ctx.fillRect(0, 0, W, H); }
     if (t > A.FLASH && t < A.FLASH + 1) { ctx.fillStyle = `rgba(235,240,255,${1 - (t - A.FLASH)})`; ctx.fillRect(0, 0, W, H); }
-    const t1 = A.GLOW + 0.3, t2 = A.SWEEP_END;
-    if (t > t1 && t < t2) {
-      ctx.globalAlpha = clamp((t - t1) * 2, 0, 1) * clamp((t2 - t) * 2, 0, 1);
-      drawTextS(ctx, "THE OVERGROWN RUNE STIRS...", W / 2, 20, "#c8b0ff", 1, "center", "#000");
-      ctx.globalAlpha = 1;
-    }
+  }
+
+  /** The cinema dressing alone (letterbox, the golem's thoughts), over a picture a cutscene drew itself. */
+  renderCinema() {
+    this.renderBars();
+    const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
+    drawMonologue(this.ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
+  }
+
+  /** "ESC - SKIP", small in the lower bar of a cutscene that can be skipped (`t`: seconds it has run). */
+  renderSkipHint(t: number) {
+    const ctx = this.ctx;
+    ctx.globalAlpha = clamp((t - 0.6) * 1.5, 0, 1) * 0.85;
+    drawText(ctx, "ESC - SKIP", W - 5, H - 9, "#8a8392", 1, "right");
+    ctx.globalAlpha = 1;
   }
 
   /** Presentation that follows the world each simulated frame. */
@@ -1029,10 +1111,13 @@ export class Game {
     gl.cur = base * this.look.core * (0.95 + 0.05 * Math.sin(this.t * 13) * Math.sin(this.t * 3.1)) + this.eyeBoost * 0.3;
     // NPCs: eased pose and eye, eye light through the light registry
     this.updateNpcLooks(dt);
-    // light flicker
+    // light flicker, and the hour: tended lamps are lit and put out with the day, sky light takes the sky's colour
+    const hour = worldHour(this.world), sun = sunLevel(hour);
     for (const L of this.view.lights.values()) {
       const n = Math.sin(this.t * 9 + L.seed) * 0.5 + Math.sin(this.t * 23.7 + L.seed * 2) * 0.3 + Math.sin(this.t * 3.3 + L.seed) * 0.2;
       L.cur = L.int * (1 - L.flick * (0.5 + 0.5 * n));
+      if (L.habit) L.day = litLevel(L.habit, L.owner!, hour);
+      else if (L.sky) { const s = skyLight(L.sky, hour); L.r = s.col[0]; L.g = s.col[1]; L.b = s.col[2]; L.day = s.gain; }
     }
     // rune
     const r = area.ritual;
@@ -1069,12 +1154,20 @@ export class Game {
     if (this.doorFade > 0) this.doorFade = Math.max(0, this.doorFade - dt * 2.8);
     if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
     this.stepMonologue(dt);
-    // drifting leaves on the night wind
+    // drifting leaves on the wind
     if (area.base.outdoor && Math.random() < dt * 1.5)
       this.spawn({ x: this.cam.x - 20 + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 30 + Math.random() * 40, vx: 8 + Math.random() * 8, vy: (Math.random() - 0.3) * 3, vz: -4 - Math.random() * 3, life: 7, kind: "mote", col: ["#7a5630", "#946a34", "#5a7a34", "#a07c40"][(Math.random() * 4) | 0], emit: false, g: 0 });
-    // fireflies under the open sky
-    if (area.base.outdoor && Math.random() < dt * 3 * this.zoom * this.zoom)
+    // fireflies under the open sky: the night's, thinning out as the sun comes up
+    if (area.base.outdoor && Math.random() < dt * 3 * this.zoom * this.zoom * (1 - sun))
       this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
+    // by day: pollen on the air and the odd butterfly instead
+    if (area.base.outdoor && Math.random() < dt * 1.2 * this.zoom * this.zoom * sun)
+      this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 8 + Math.random() * 18, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 6, life: 5, kind: "mote", col: ["#f0e8c0", "#e8c860", "#d8d0e8", "#e89a5a"][(Math.random() * 4) | 0], emit: false, g: 0 });
+    // and the open air sounds its hour: birds by day, crickets by night, a hush while one hands over to the other
+    if (area.base.outdoor && (this.skyT -= dt) <= 0) {
+      this.skyT = 2.5 + Math.random() * 6;
+      if (sun > 0.6) this.sfx.bird(); else if (sun < 0.25) this.sfx.cricket();
+    }
     // drips
     area.drips.forEach((d, i) => {
       this.dripT[i] -= dt;
@@ -1088,7 +1181,7 @@ export class Game {
     for (const p of area.props) {
       if (!p.lit) continue;
       const fire = propDef(p.kind).fire;
-      if (!fire) continue;
+      if (!fire || this.tendedLevel(p, hour) <= 0.05) continue;
       if (Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 50) continue;
       if (Math.random() < dt * fire.embers)
         this.spawn({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + fire.emberDy, z: 14, vx: (Math.random() - 0.5) * 6, vz: 10 + Math.random() * 10, life: 1 + Math.random(), kind: "ember", col: Math.random() < 0.5 ? "#ffb040" : "#ff6a1a", emit: true, g: -4 });
@@ -1097,7 +1190,7 @@ export class Game {
     for (const p of area.props) {
       const sm = propDef(p.kind).smoke;
       if (!sm || Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 70) continue;
-      if (Math.random() < dt * sm.rate)
+      if (Math.random() < dt * sm.rate * (area.base.tended ? hearthSmoke(hour) : 1)) // thick at breakfast and supper
         this.spawn({ x: p.x + sm.dx + (Math.random() - 0.5) * 3, y: p.y, z: sm.z, vx: 3 + Math.random() * 4, vy: (Math.random() - 0.5) * 1.5, vz: 7 + Math.random() * 5, life: 2.2 + Math.random() * 1.8, kind: "smoke", col: Math.random() < 0.5 ? "#6e6a70" : "#585460", g: -1, size: 2, emit: false });
     }
     // ambient dust motes
@@ -1106,7 +1199,7 @@ export class Game {
     // moonbeam motes
     const moon = this.view.byId("moon");
     if (moon && Math.random() < dt * 5)
-      this.spawn({ x: moon.x - 14 + Math.random() * 30, y: moon.y + 2, z: 10 + Math.random() * 70, vx: (Math.random() - 0.5) * 2, vz: -3 - Math.random() * 3, life: 6, kind: "mote", col: "#a8c0ff", emit: true, g: 0 });
+      this.spawn({ x: moon.x - 14 + Math.random() * 30, y: moon.y + 2, z: 10 + Math.random() * 70, vx: (Math.random() - 0.5) * 2, vz: -3 - Math.random() * 3, life: 6, kind: "mote", col: sun > 0.5 ? "#ffe8b0" : "#a8c0ff", emit: true, g: 0 });
     // item glints
     if (Math.random() < dt * 2) {
       const cands: [number, number][] = [];
@@ -1245,6 +1338,7 @@ export class Game {
     if (this.shakeT > 0) { sx = (Math.random() - 0.5) * this.shakeMag * 2; sy = (Math.random() - 0.5) * this.shakeMag * 2; }
     const camX = Math.round(this.cam.x + sx), camY = Math.round(this.cam.y + sy);
     const W = this.vw, H = this.vh; // the world layer is view-sized (zoom)
+    const hour = worldHour(this.world);
     sc.fillStyle = "#000"; sc.fillRect(0, 0, W, H);
     ec.fillStyle = "#000"; ec.fillRect(0, 0, W, H);
     this.view.prepare(camX, camY, W, H);
@@ -1256,6 +1350,14 @@ export class Game {
       sc.drawImage(s.a, dx, dy);
       ec.drawImage(s.e, dx, dy);
     };
+    // ---- a room's doorway: the threshold is painted with the night beyond it; by day the daylight stands there instead
+    const daylight = sunLevel(hour);
+    if (area.base.interior && daylight > 0) for (const pt of area.base.portals ?? []) {
+      if (!pt.door || pt.dir !== "down") continue;
+      const x = pt.x - 1 - camX, y = pt.y + 4 - camY, ww = pt.w + 2;
+      sc.globalAlpha = daylight; sc.fillStyle = "#cfc49c"; sc.fillRect(x, y, ww, 6); sc.fillStyle = "#f0e8c8"; sc.fillRect(x + 1, y + 2, ww - 2, 3); sc.globalAlpha = 1;
+      ec.globalAlpha = daylight * 0.45; ec.fillStyle = "#a89868"; ec.fillRect(x, y, ww, 6); ec.globalAlpha = 1;
+    }
     // ---- rune circle (floor layer)
     const r = area.ritual;
     if (r) {
@@ -1295,14 +1397,19 @@ export class Game {
         continue;
       }
       const def = propDef(p.kind);
-      const alt = def.alt === "lit" ? !!p.lit : def.alt === "taken" ? p.taken : p.open;
+      // Where people keep the lights, a lamp is as lit as the hour says (content/daycycle.ts): a doused torch shows
+      // its unlit art, a rune or a lantern stops glowing, and a dark window is just the painted window under it.
+      const lvl = def.habit ? this.tendedLevel(p, hour) : 1;
+      const alt = def.alt === "lit" ? !!p.lit && lvl > 0.05 : def.alt === "taken" ? p.taken : p.open;
       const s = propSprite(p.kind, p.v, alt);
       if (!s) continue;
+      if (lvl <= 0.01 && def.habit === "window") continue;
       list.push({
         y: def.wallMounted ? p.y - 0.5 : def.flat ? p.y - 16 : p.y,
         f: () => {
-          if (def.sway && !alt) this.drawSwaying(s, p, camX, camY); else spr(s, p.x, p.y);
-          if (p.lit && def.fire) this.drawFlame(p, def.fire.big, camX, camY);
+          if (lvl < 1 && def.alt !== "lit") this.drawDimmed(s, p, lvl, def.habit === "window", camX, camY);
+          else if (def.sway && !alt) this.drawSwaying(s, p, camX, camY); else spr(s, p.x, p.y);
+          if (p.lit && def.fire && lvl > 0.05) this.drawFlame(p, def.fire.big, camX, camY);
           if (p.item && !p.container && !p.taken && ITEMS[p.item].showOnProp !== false) {
             const ic = itemIcon(p.item);
             const bob = isGlyph(p.item) ? Math.round(Math.sin(this.t * 2) * 0.6) : 0;
@@ -1351,7 +1458,14 @@ export class Game {
     for (const d of list) d.f();
     // moonbeam
     const moon = this.view.byId("moon");
-    if (moon) { const s = this.shaft; ec.globalCompositeOperation = "lighter"; ec.drawImage(s.e, Math.round(moon.x - s.ax - camX), Math.round(moon.y + 2 - s.ay - camY)); ec.globalCompositeOperation = "source-over"; }
+    if (moon) {
+      // moonlight through the broken roof by night, the same shaft as a sunbeam by day
+      const sun = daylight, mx = Math.round(moon.x - this.shaft.ax - camX), my = Math.round(moon.y + 2 - this.shaft.ay - camY);
+      ec.globalCompositeOperation = "lighter";
+      if (sun < 1) { ec.globalAlpha = 1 - sun; ec.drawImage(this.shaft.e, mx, my); }
+      if (sun > 0) { ec.globalAlpha = sun; ec.drawImage(this.sunShaft.e, mx, my); }
+      ec.globalAlpha = 1; ec.globalCompositeOperation = "source-over";
+    }
     // floating particles
     for (const p of this.particles) {
       if (p.kind === "debris" || p.kind === "dust" || p.kind === "smoke" || p.kind === "splash") continue;
@@ -1382,7 +1496,9 @@ export class Game {
     const active: Light[] = this.hideGolem ? [] : [this.glight];
     for (const L of this.view.lights.values()) if (L.on) active.push(L);
     this.lighting.accumulate(active, camX, camY);
-    this.lighting.compose(sImg.data, eImg.data, this.outImg.data, area.base.ambient ?? [0.05, 0.045, 0.065]);
+    // the hour: the sky's share of the ambient by how much of it this area sees, and lamps counting for less in daylight
+    const exposure = exposureOf(area);
+    this.lighting.compose(sImg.data, eImg.data, this.outImg.data, ambientAt(area.base.ambient ?? BURIED_AMBIENT, hour, exposure), 6, lampGain(hour, exposure));
     this.wctx.putImageData(this.outImg, 0, 0);
     const eye = this.eyeSpot();
     this.vision.draw(this.wctx, this.pl, camX, camY, W, H, this.t, eye && { x: eye.x + eye.w / 2 - 1, y: eye.y, w: eye.w, show: eye.show });
@@ -1430,6 +1546,17 @@ export class Game {
     ec.globalAlpha = clamp(k * 0.6, 0, 1); ec.fillStyle = "#c0a0ff"; ec.fillRect(x - 14, y - 3, 28, 8);
     ec.globalAlpha = 1;
     ec.globalCompositeOperation = "source-over";
+  }
+
+  /** A tended lamp part-lit or out: its glow at `lvl`. A lit window (`whole`) is nothing but its glow, so all of it fades. */
+  private drawDimmed(s: Sprite, p: PropInst, lvl: number, whole: boolean, camX: number, camY: number) {
+    const dx = Math.round(p.x - s.ax - camX), dy = Math.round(p.y - s.ay - camY);
+    if (dx > this.vw || dy > this.vh || dx + s.w < 0 || dy + s.h < 0) return;
+    const sc = this.scene.ctx, ec = this.emit.ctx;
+    if (whole) sc.globalAlpha = lvl;
+    sc.drawImage(s.a, dx, dy);
+    sc.globalAlpha = 1;
+    if (lvl > 0.01) { ec.globalAlpha = lvl; ec.drawImage(s.e, dx, dy); ec.globalAlpha = 1; }
   }
 
   /** Foliage in the wind: the upper part of the sprite shifts by a pixel now and then. */
@@ -1521,7 +1648,7 @@ export class Game {
       if (a.kind === "slam") ({ lift: slam, dip } = slamPose(k));
     }
     const pose: GolemPose = {
-      facing: pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
+      facing: this.gaze ?? pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.hasArm, dormant: lk.dormant,
       eye: clamp(lk.eye + this.eyeBoost + this.vision.k * 0.35, 0, 1.6), core: lk.core, raise, reach, t: this.t,
       eyeFixed: hasFlag(this.world, FLAGS.golemEye), back: pl.gear.back, runes: runeMarks(this.world, pl), slam, dip,
     };
@@ -1674,7 +1801,7 @@ export class Game {
     // below the letterbox while it is up; it rises with the bars as control is handed over
     const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
     drawMonologue(ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
-    if (this.screens.is("play")) { this.renderNote(); this.vision.drawHud(ctx, W); }
+    if (this.screens.is("play")) { this.renderNote(); this.vision.drawHud(ctx, W); this.renderClock(); }
     // debug message
     if (this.debugMsg) {
       ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
@@ -1692,6 +1819,28 @@ export class Game {
     }
     // toast (the dialogue box draws it above itself)
     if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(H - 26);
+  }
+
+  /**
+   * The hour, bottom right: the sun, the moon, or the sun on the horizon, and the clock. Shown under the open sky, and
+   * anywhere once the golem has been up to see it (it keeps count from then on; before that it has no way to know).
+   */
+  renderClock() {
+    if (!this.area.base.outdoor && !hasFlag(this.world, FLAGS.tutorialDone)) return;
+    const ctx = this.ctx, hour = worldHour(this.world), ph = phaseAt(hour), x = W - 35, y = H - 11;
+    ctx.fillStyle = "rgba(6,5,9,0.6)"; ctx.fillRect(x - 3, y - 2, 36, 11);
+    const px = (c: string, cells: number[][]) => { ctx.fillStyle = c; for (const [cx, cy, w = 1, h = 1] of cells) ctx.fillRect(x + cx, y + cy, w, h); };
+    if (ph === "day") {
+      px("#ffb030", [[3, 0], [3, 6], [0, 3], [6, 3], [1, 1], [5, 1], [1, 5], [5, 5]]);
+      px("#ffd860", [[2, 2, 3, 3]]);
+    } else if (ph === "night") {
+      px("#c8d4f0", [[2, 1, 3, 1], [1, 2, 2, 1], [1, 3, 2, 1], [1, 4, 3, 1], [2, 5, 3, 1]]);
+      px("#7a88b0", [[5, 2], [6, 0]]);
+    } else {
+      px("#ff9a40", [[2, 3, 3, 2], [1, 4, 5, 1], [3, 1], [1, 2], [5, 2]]);
+      px("#8a5a3a", [[0, 5, 7, 1]]);
+    }
+    drawText(ctx, clockText(hour), x + 10, y + 1, ph === "night" ? "#a8b4d8" : ph === "day" ? "#e8d8a0" : "#f0b078");
   }
 
   renderToast(y: number) {

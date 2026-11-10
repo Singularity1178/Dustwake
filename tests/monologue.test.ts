@@ -213,12 +213,12 @@ test("monologue state saves and loads: one-shot lines stay said, cooldowns carry
 });
 
 test("v10 -> v11: the migration adds an empty monologue; a migrated save plays on", () => {
-  assert.equal(SAVE_VERSION, 12); // v12: the production rollout (its migration: tests/rollout.test.ts)
+  assert.equal(SAVE_VERSION, 13); // v13: the calendar clock (tests/daycycle.test.ts)
   const w = newWorld();
   const s: any = serialize(w);
   s.version = 10; delete s.monologue;
   const m: any = migrate(s);
-  assert.equal(m.version, 12);
+  assert.equal(m.version, 13);
   assert.deepEqual(m.monologue, { said: [], ready: {} });
   const w2 = deserialize(s);
   assert.deepEqual(serialize(w2), serialize(w));
@@ -270,10 +270,12 @@ test("the opening plays its lines in order and hands control over at the control
   g.keyDown("d"); for (let i = 0; i < 30; i++) g.update(DT); g.keyUp("d");
   assert.ok(g.pl.x > x0);
 
-  // Wake again (R on the end card): a fresh world, the whole opening again
+  // Wake again (R at the chapter card that ends the crossing): a fresh world, the whole opening again.
+  // (The crossing itself, played through from a real first jump, is tests/daycycle.test.ts.)
   const s = (g as unknown as { S: Record<string, unknown> }).S;
-  g.screens.set(s.end as never);
-  for (let i = 0; i < 60 * 6; i++) g.update(DT);
+  g.crossingUi.start();
+  while (g.crossingUi.screen.t < g.crossingUi.at.chapter + g.crossingUi.script.promptAfter + 0.1) g.update(DT);
+  assert.ok(g.screens.is("crossing"), "the chapter card holds for a key");
   g.keyDown("r"); g.update(DT); g.keyUp("r");
   assert.ok(g.screens.is("intro"));
   g.screens.set(s.title as never);

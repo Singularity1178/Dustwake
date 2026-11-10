@@ -1,14 +1,14 @@
 // Cutscene runner: pure timeline maths over a content/cutscenes.ts script. No
 // DOM, no state of its own: everything is a function of the script and the
 // screen's clock, so a replay (R) starts clean and tests can check timings.
-import type { Cutscene, CutsceneBeat, CutsceneTracks } from "../content/cutscenes";
+import type { BeatScript, Cutscene, CutsceneBeat, CutsceneTracks } from "../content/cutscenes";
 
 export interface TimedBeat extends CutsceneBeat { at: number; index: number }
 
-const cache = new WeakMap<Cutscene, TimedBeat[]>();
+const cache = new WeakMap<BeatScript, TimedBeat[]>();
 
 /** The beats with their absolute start times. */
-export function timeline(c: Cutscene): TimedBeat[] {
+export function timeline(c: BeatScript): TimedBeat[] {
   let tl = cache.get(c);
   if (!tl) {
     let at = 0;
@@ -19,13 +19,13 @@ export function timeline(c: Cutscene): TimedBeat[] {
 }
 
 /** When control is handed over (the `control` beat, else the last beat). */
-export function controlAt(c: Cutscene): number {
+export function controlAt(c: BeatScript): number {
   const tl = timeline(c);
   return (tl.find((b) => b.control) ?? tl[tl.length - 1])?.at ?? 0;
 }
 
 /** Beats starting in (t0, t]: what a frame from t0 to t must fire, in order. */
-export function beatsCrossed(c: Cutscene, t0: number, t: number): TimedBeat[] {
+export function beatsCrossed(c: BeatScript, t0: number, t: number): TimedBeat[] {
   return timeline(c).filter((b) => b.at > t0 && b.at <= t);
 }
 

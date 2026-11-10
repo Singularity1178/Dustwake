@@ -76,3 +76,16 @@ export const THOUGHTS: Record<string, ThoughtLine> = {
 THOUGHTS["town.arrive"] = { text: "ON RECORD: A VILLAGE. OBSERVED: A TOWN.", on: { event: "portal", match: { fromArea: "surface", toArea: "town" } } };
 
 export const thoughtTriggers = (l: ThoughtLine): ThoughtTrigger[] => (!l.on ? [] : Array.isArray(l.on) ? l.on : [l.on]);
+
+// ---- the crossing: the first jump through the rune network (content/cutscenes.ts: CROSSING fires these by id).
+// The far rune is eroded; the golem has to rewrite it from the pattern it left by before it can arrive.
+THOUGHTS["cross.engage"] = { text: "TRANSLOCATION ENGAGED." };
+THOUGHTS["cross.transit"] = { text: "TRANSLOCATING..." };
+THOUGHTS["cross.anchor"] = { text: "DESTINATION ANCHOR: DEGRADED.", tone: "warn" };
+THOUGHTS["cross.rewrite"] = { text: "REWRITING ANCHOR FROM SOURCE..." };
+THOUGHTS["cross.arrived"] = { text: "ANCHOR RESTORED. ARRIVAL CONFIRMED." };
+THOUGHTS["cross.observed"] = { text: "ON RECORD: THE UPPER HALLS. OBSERVED: FOREST." };
+THOUGHTS["cross.light"] = { text: "LIGHT LEVEL RISING.", tone: "void", pace: 0.7 };
+
+// ---- the sky. The first dusk the golem stands under (the first dawn is the crossing's).
+THOUGHTS["sky.dusk"] = { text: "LIGHT LEVEL FALLING. NIGHT CYCLE.", on: { event: "dayPhase", match: { phase: "dusk" } }, if: ["underSky"] };

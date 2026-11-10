@@ -18,6 +18,7 @@ import { bakeRegion } from "../art/tiles";
 import { makeCanvas } from "../util";
 import { computeVis, makeLight, type Light } from "../light";
 import { unionRect, type Area, type TileRect } from "../world/area";
+import type { LightHabit } from "../content/daycycle";
 
 interface LightWant { key: string; make: () => Light }
 export const CH = 8;
@@ -121,11 +122,22 @@ export class AreaView {
   private wantedLights(): LightWant[] {
     const a = this.area, out: LightWant[] = [];
     a.lights.forEach((l, i) => {
+      // Where people keep the lights (`tended`), a prop's light carries its kind's habit: the host dims it by the hour.
+      let habit: LightHabit | undefined;
       if (l.owner) {
         const p = a.prop(l.owner);
         if (!p || (propDef(p.kind).light?.when === "lit" && !p.lit)) return;
+        if (a.base.tended) habit = propDef(p.kind).habit;
       }
-      out.push({ key: "area" + i, make: () => makeLight(l.x, l.y, l.rad, l.col, l.int, l.flick, l.id) });
+      out.push({
+        key: "area" + i,
+        make: () => {
+          const L = makeLight(l.x, l.y, l.rad, l.col, l.int, l.flick, l.id);
+          if (habit) { L.owner = l.owner; L.habit = habit; }
+          if (l.sky) L.sky = [l.col[0], l.col[1], l.col[2]];
+          return L;
+        },
+      });
     });
     for (const p of a.props) {
       const g = p.item && !p.container && !p.taken ? ITEMS[p.item].glow : undefined;
