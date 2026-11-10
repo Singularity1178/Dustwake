@@ -193,10 +193,28 @@ function wallFacePix(tx: number, ty: number, lx: number, ly: number): C3 {
   return [66 + t + n, 60 + t + n, 70 + t + n];
 }
 
+/** A town-wall tile showing its south face (the tile below it is open ground). */
+const isRampartFace = (m: BakeSource, x: number, y: number) =>
+  x >= 0 && y >= 0 && x < m.w && y < m.h && m.grid[y * m.w + x] === T.WALL && m.style[y * m.w + x] === WS.RAMPART && !isWall(m, x, y + 1);
+/**
+ * Which of a wall-walk tile's eight neighbours drop away from it: open ground,
+ * or the wall's own south face. Those sides (and inner corners) get a parapet.
+ * Bits as tilesTown.ts RAMPART_OPEN. Memoised: the bake visits a tile's pixels together.
+ */
+const RAMP_N: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+let rampM: BakeSource | null = null, rampTx = -1, rampTy = -1, rampOpen = 0;
+function rampartOpen(m: BakeSource, tx: number, ty: number): number {
+  if (m !== rampM || tx !== rampTx || ty !== rampTy) {
+    rampM = m; rampTx = tx; rampTy = ty; rampOpen = 0;
+    RAMP_N.forEach(([dx, dy], k) => { if (!isWall(m, tx + dx, ty + dy) || isRampartFace(m, tx + dx, ty + dy)) rampOpen |= 1 << k; });
+  }
+  return rampOpen;
+}
+
 function wallTopPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
   const n = hash2(tx * 16 + lx, ty * 16 + ly, 9) * 4;
+  if (m.style[ty * m.w + tx] === WS.RAMPART) return rampartTopPix(tx, ty, lx, ly, rampartOpen(m, tx, ty));
   const L = !isWall(m, tx - 1, ty), R = !isWall(m, tx + 1, ty), U = !isWall(m, tx, ty - 1);
-  if (m.style[ty * m.w + tx] === WS.RAMPART) return rampartTopPix(tx, ty, lx, ly, L, R, U);
   const rim = (L && lx === 0) || (R && lx === 15) || (U && ly === 0);
   const rim2 = (L && lx === 1) || (R && lx === 14) || (U && ly === 1);
   if (rim) return [50, 45, 56];
@@ -215,9 +233,10 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
       const wall = t === T.WALL;
       const face = wall && !isWall(m, tx, ty + 1);
       const st = m.style[ty * MW + tx];
-      const aoU = !wall && isWall(m, tx, ty - 1);
-      const aoL = !wall && isWall(m, tx - 1, ty);
-      const aoR = !wall && isWall(m, tx + 1, ty);
+      // (the edge of the map casts no shadow: where ground runs to it, the tiles simply end)
+      const aoU = !wall && ty > 0 && isWall(m, tx, ty - 1);
+      const aoL = !wall && tx > 0 && isWall(m, tx - 1, ty);
+      const aoR = !wall && tx < MW - 1 && isWall(m, tx + 1, ty);
       const dirty = t === T.RUBBLE || t === T.CRACKED;
       const ground = t === T.FLOOR && isGroundFS(st) && groundBorder(m, st, tx, ty);
       for (let ly = 0; ly < TS; ly++)

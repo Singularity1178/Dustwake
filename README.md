@@ -65,9 +65,12 @@ For now the town is appearance only: there are no townsfolk, shopkeepers or gole
 - **Light is the map.** Steady blue-white *light runes* stand along the paved streets and hang in the shops that can pay for them; everyone else burns fire, or sits in the dark. The line runs along the south side of the square. High-end (rune-lit): the Adventurers' Guild, the Gilded Buckler (armoury), the Bright Facet (jeweller), the Silver Needle (tailor). Ordinary (fire-lit): the Black Anvil (blacksmith) and the Sunken Crown (tavern).
 - **Six doors open.** Blacksmith, armoury, jeweller, tailor, tavern and the Adventurers' Guild each have a full interior. Other houses are just houses.
 - **Labour golems, by their absence.** Only plain hauling golems exist here, and none are in view: look for the numbered stands in the stone yard, yokes cut too wide for a man, hauler doors on the stable and the market store, broad flat tracks along the haul road, the bellows crank in the smithy, the tavern's cellar hatch.
+- **Walled all round.** The town wall is a closed ring with a gate at each end of the High Street: the east gate (the way in from the ruins) and the West Bar, whose toll bar is down for the night and spans the passage between its towers, so there is no way round it. Outside the wall the land simply runs to the edge of the map and stops: there is no hedge or thicket border, the camera stops at the last tile and so does the golem.
 - Most signs and landmarks can be read with `E`.
 
 Developer preview: `node scripts/townPreview.mjs` renders the town at night, every interior, the surface's west road and a sheet of every town sprite to `.preview/town/*.png` without a browser (real bake, real sprites, real light tracing).
+
+Layout audit: `node scripts/townAudit.mjs` checks the town and its six interiors for the mistakes that are easy to make by hand: a prop whose collision box sits in a wall or off the map, two solid props in each other, something hung on a wall that is not there, a light buried in masonry, a standing place that is blocked or cannot be walked to, ground sealed off from everywhere, something on a doorstep or drawn across a door, a ground decal painted over a roof. It prints what it finds (and exits 1); `node scripts/townAudit.mjs map` prints an ASCII plan of the tiles, and `node scripts/townAudit.mjs shot name=town:x,y,w,h,scale,flat,grid` renders a gridded close-up (tile coordinates) to `.preview/audit/name.png`. The same audit runs in the test suite (`tests/townWall.test.ts`), so the town stays clean.
 
 ## Inner monologue
 

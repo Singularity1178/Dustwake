@@ -40,6 +40,8 @@ class TCanvas extends RCanvas {
   }
 }
 const canvas = (w: number, h: number) => { const c = new TCanvas(w, h); c.getContext(); return c; };
+/** Stand in for the browser's document, so sprites and bakes can be made in Node. */
+export function installDom() { (globalThis as any).document = { createElement: () => new TCanvas() }; }
 
 /** One area, as the game would draw it with nobody in it: [lit, unlit albedo]. */
 export function renderArea(id: string): { lit: RCanvas; flat: RCanvas; area: Area } {
@@ -73,7 +75,7 @@ export function renderArea(id: string): { lit: RCanvas; flat: RCanvas; area: Are
   return { lit: out, flat, area };
 }
 
-function crop(src: RCanvas, x: number, y: number, w: number, h: number): RCanvas {
+export function crop(src: RCanvas, x: number, y: number, w: number, h: number): RCanvas {
   const c = canvas(w, h);
   (c.getContext() as any).drawImage(src, x, y, w, h, 0, 0, w, h);
   return c;
@@ -95,7 +97,7 @@ export function spriteSheet(): RCanvas {
 }
 
 export function run(dir = ".preview/town") {
-  (globalThis as any).document = { createElement: () => new TCanvas() };
+  installDom();
   mkdirSync(dir, { recursive: true });
   const save = (name: string, c: RCanvas, scale = 1) => writeFileSync(`${dir}/${name}.png`, png(c, scale));
   if (!Object.keys(PROP_ART).length) throw new Error("no art");
@@ -105,6 +107,7 @@ export function run(dir = ".preview/town") {
   const views: [string, number, number, number, number][] = [
     ["square", 32, 16, 30, 24], ["high", 58, 14, 34, 22], ["oldquarter", 4, 4, 36, 24], ["low", 30, 34, 36, 16],
     ["yard", 58, 44, 32, 20], ["back", 4, 44, 44, 20], ["westroad", 4, 20, 34, 28], ["north_east", 52, 3, 38, 18],
+    ["westbar", 0, 22, 24, 18], ["eastgate", 74, 22, 22, 18], ["wall_nw", 0, 0, 30, 14], ["wall_se", 66, 54, 30, 14],
   ];
   for (const [name, x, y, w, h] of views) { save(`town_${name}`, crop(t.lit, x * TS, y * TS, w * TS, h * TS), 2); }
   save("town_square_flat", crop(t.flat, 32 * TS, 16 * TS, 30 * TS, 24 * TS), 2);

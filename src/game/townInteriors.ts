@@ -94,37 +94,38 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("torch", 7.2, -1, { lit: true }); Q("toolrack", 9.2, -1); Q("goodshelf", 12, -1, { v: 2 }); Q("torch", 14.2, -1, { lit: true });
       Q("weaponrack", 11.8, 0.4); Q("barrel", 14.1, 0.7, { v: 1 });
       counter(11.6, 4, 0);
-      Q("ingots", 0.3, 6.4); Q("ingots", 0.5, 7.2); Q("grindstone", 2, 7.8); Q("crate", 13.6, 7.8, { v: 1 }); Q("crate", 14.2, 6.9); Q("sack", 12.4, 7.9); Q("armorstand", 9.4, 7.9, { v: 0 });
+      Q("ingots", 0.3, 6.4); Q("ingots", 0.5, 7.2); Q("grindstone", 2, 7.8); Q("crate", 13.6, 7.8, { v: 1 }); Q("crate", 14, 6.9); Q("sack", 12.4, 7.9); Q("armorstand", 9.4, 7.9, { v: 0 });
       D("scorch", 2, 2.2); D("stain", 3, 3.6, 0, 70, 44); D("stain", 0.8, 3, 0, 24, 18); D("golemtrack", 5, 2.4, 0, 30);
       for (let i = 0; i < 5; i++) D("debris", 1 + i * 0.9, 4.2 + (i % 2) * 0.5, i % 4);
-      Q("candlestand", 8.6, 7.8); Q("candlestand", 14.4, 4.4); Q("lantern", 10.6, -1);
+      Q("candlestand", 8.6, 7.8); Q("candlestand", 14.1, 4.4); Q("lantern", 10.6, -1);
       spot("work.anvil", "work", 3, 4, "up"); spot("work.bellows", "work", 6.3, 2.2, "left"); spot("idle.browse", "idle", 10, 6.6, "right");
     },
   },
   // The Gilded Buckler. Finished arms for people with coin: dressed stone, a runner to the counter,
   // harness on stands down both walls, everything under clean rune light.
   armory: {
-    w: 14, h: 9, floor: FS.FLAG, wall: WS.STONE, door: 6, doorW: 1,
+    w: 15, h: 9, floor: FS.FLAG, wall: WS.STONE, door: 7, doorW: 1,
     dress: ({ Q, D, spot, counter }) => {
-      Q("rune_sconce", 2.6, -1); Q("shieldwall", 4.6, -1); Q("goodshelf", 6.9, -1, { v: 3 }); Q("shieldwall", 9.4, -1); Q("rune_sconce", 11.4, -1);
-      Q("weaponrack", 1, 0.4); Q("weaponrack", 12, 0.4);
-      counter(6.5, 2.4, 3);
-      for (const [x, y, v] of [[0.3, 3.4, 0], [0.3, 5.2, 1], [0.3, 7, 3], [13.6, 3.4, 2], [13.6, 5.2, 0], [13.6, 7, 1], [4.6, 7.9, 2], [8.6, 7.9, 3]]) Q("armordisplay", x, y, { v });
-      Q("runestand", 3.4, 4.6); Q("runestand", 9.6, 4.6); Q("dummy", 2.6, 7.6); Q("chest", 11.4, 7.8, { v: 2 }); Q("crate", 12.6, 7.9, { v: 1 });
-      D("rug", 5.5, 3.6, 0, 32, 84);
-      spot("idle.stands.w", "idle", 1.6, 5.6, "left"); spot("idle.stands.e", "idle", 12.2, 5.6, "right");
+      // everything mirrors about the door's column (7): door, runner, counter and shelf share one axis
+      Q("rune_sconce", 2.6, -1); Q("shieldwall", 4.6, -1); Q("goodshelf", 7, -1, { v: 3 }); Q("shieldwall", 9.4, -1); Q("rune_sconce", 11.4, -1);
+      Q("weaponrack", 1, 0.4); Q("weaponrack", 13, 0.4);
+      counter(7, 2.4, 3);
+      for (const [x, y, v] of [[0.3, 3.4, 0], [0.3, 5.2, 1], [0.3, 7, 3], [13.7, 3.4, 2], [13.7, 5.2, 0], [13.7, 7, 1], [4.6, 7.9, 2], [9.4, 7.9, 3]]) Q("armordisplay", x, y, { v });
+      Q("runestand", 3.4, 4.6); Q("runestand", 10.6, 4.6); Q("dummy", 2.6, 7.6); Q("chest", 11.6, 7.8, { v: 2 }); Q("crate", 12.7, 7.9, { v: 1 });
+      D("rug", 6.5, 3.6, 0, 32, 84);
+      spot("idle.stands.w", "idle", 1.6, 5.6, "left"); spot("idle.stands.e", "idle", 12.4, 5.6, "right");
     },
   },
   // The Bright Facet. The smallest room in town and the most expensive: oak panelling, glazed tile,
   // glass cases, a strongbox behind the counter, and more light runes than it needs.
   jeweler: {
-    w: 12, h: 8, floor: FS.TILE, wall: WS.PANEL, door: 5, doorW: 1,
+    w: 12, h: 8, floor: FS.TILE, wall: WS.PANEL, door: 6, doorW: 1,
     dress: ({ Q, D, spot, counter }) => {
       Q("rune_sconce", 0.6, -1); Q("goodshelf", 3, -1, { v: 4 }); Q("mirror", 5.5, -1); Q("goodshelf", 8, -1, { v: 4 }); Q("rune_sconce", 10.4, -1);
       Q("gembench", 1.4, 0.6); Q("chest", 10.6, 0.5, { v: 1 });
       counter(5.5, 2.4, 1);
       Q("displaycase", 0.4, 4.4, { v: 0 }); Q("displaycase", 0.4, 6.4, { v: 1 }); Q("displaycase", 10.6, 4.4, { v: 2 }); Q("displaycase", 10.6, 6.4, { v: 0 });
-      Q("displaycase", 2.8, 6.8, { v: 2 }); Q("displaycase", 8.2, 6.8, { v: 1 }); Q("runestand", 2.2, 3.6); Q("runestand", 8.8, 3.6); Q("pot", 11.2, 2.4, { v: 1 });
+      Q("displaycase", 2.8, 6.8, { v: 2 }); Q("displaycase", 8.2, 6.8, { v: 1 }); Q("runestand", 2.2, 3.6); Q("runestand", 8.8, 3.6); Q("pot", 10.8, 2.4, { v: 1 });
       D("rug", 3.5, 3.7, 1, 80, 40);
       spot("work.bench", "work", 1.6, 1.3, "up"); spot("idle.cases.w", "idle", 1.6, 5.4, "left"); spot("idle.cases.e", "idle", 9.4, 5.4, "right");
     },
@@ -134,12 +135,12 @@ const ROOMS: Record<Establishment, RoomSpec> = {
   tailor: {
     w: 13, h: 8, floor: FS.BOARD, wall: WS.PLASTER, door: 6, doorW: 1,
     dress: ({ Q, D, spot, counter }) => {
-      Q("rune_sconce", 0.5, -1); Q("goodshelf", 2.5, -1, { v: 1 }); Q("goodshelf", 4.8, -1, { v: 1 }); Q("rune_sconce", 7, -1); Q("mirror", 9, -1); Q("rune_sconce", 12.4, -1);
+      Q("rune_sconce", 0.5, -1); Q("goodshelf", 2.5, -1, { v: 1 }); Q("goodshelf", 4.8, -1, { v: 1 }); Q("rune_sconce", 7, -1); Q("mirror", 9, -1); Q("rune_sconce", 11.5, -1);
       counter(3.4, 2.4, 2);
       Q("screen", 10.9, 1.5); Q("mannequin", 8.9, 1.2, { v: 3 });
       Q("mannequin", 6.2, 4.5, { v: 0 }); Q("mannequin", 7.8, 4.9, { v: 2 }); Q("mannequin", 0.4, 4.4, { v: 1 });
-      Q("table", 2.6, 5.6, { v: 1 }); Q("loom", 11.2, 5.4); Q("clothrack", 1.5, 7.9); Q("clothrack", 11, 7.9); Q("runestand", 4.6, 7.4);
-      D("rug", 5.1, 3.4, 3, 64, 44); D("paper", 2.2, 4.9, 1); D("paper", 3.1, 5, 0);
+      Q("table", 3, 5.6, { v: 1 }); Q("loom", 11.2, 5.4); Q("clothrack", 0.9, 6.9); Q("clothrack", 11.1, 6.9); Q("runestand", 4.6, 6.9);
+      D("rug", 5.1, 3.4, 3, 64, 44); D("paper", 2.6, 4.9, 1); D("paper", 3.5, 5, 0);
       spot("work.loom", "work", 9.4, 5.6, "right"); spot("work.fitting", "work", 9.9, 2.6, "up"); spot("idle.forms", "idle", 7, 6.2, "up");
     },
   },
@@ -162,11 +163,11 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("roundtable", 7.2, 5.4, { v: 0 }); seat("t2.w", 5.9, 5.2); seat("t2.e", 8.5, 5.2);
       Q("roundtable_lit", 12.6, 6.6, { v: 1 }); seat("t3.w", 11.2, 6.4); seat("t3.e", 14, 6.4);
       Q("roundtable", 17, 5.6, { v: 2 }); seat("t4.w", 15.7, 5.4); seat("t4.e", 18.3, 5.4);
-      Q("longtable", 4.2, 9.2); Q("bench", 4.2, 8.4); Q("bench", 4.2, 10.05);
+      Q("longtable", 4.2, 9.2); Q("bench", 4.2, 8.4); Q("bench", 4.2, 10);
       // the cellar: kegs come up through a hatch cut for something broader than a potboy
-      Q("cellarhatch", 16.4, 9.7); Q("barrel", 19.1, 9.2); Q("barrel", 18.4, 10); Q("crate", 19.1, 8.2, { v: 1 }); D("golemtrack", 14.2, 9.5, 0, 40);
+      Q("cellarhatch", 16.4, 9.7); Q("barrel", 19.1, 9.2); Q("barrel", 18.4, 10); Q("crate", 19, 8.2, { v: 1 }); D("golemtrack", 14.2, 9.5, 0, 40);
       D("straw", 6, 7.6, 0, 70); D("straw", 14, 8, 0, 60); D("stain", 8.6, 6.6, 1, 14, 8); D("stain", 4.6, 4.3, 1, 12, 6);
-      Q("lantern", 0.5, -1); Q("candlestand", 0.3, 4.8); Q("candlestand", 0.3, 10.4); Q("candlestand", 19.5, 7); Q("candlestand", 10.2, 4.2); Q("candlestand", 12.6, 9.8);
+      Q("lantern", 0.5, -1); Q("candlestand", 0.3, 4.8); Q("candlestand", 0.3, 9.9); Q("candlestand", 19.2, 7); Q("candlestand", 10.2, 4.2); Q("candlestand", 12.6, 9.8);
       spot("idle.stairs", "idle", 18.6, 2.4, "up");
     },
   },
@@ -177,20 +178,20 @@ const ROOMS: Record<Establishment, RoomSpec> = {
     dress: ({ Q, D, spot, seat, counter }) => {
       Q("rune_sconce", 0.5, -1); Q("questboard", 3, -1); Q("rune_sconce", 5.5, -1); Q("banner", 6.9, -1, { v: 0 });
       Q("bookshelf", 8.5, 0, { v: 0 }); Q("bookshelf", 9.5, 0, { v: 2 }); Q("bookshelf", 10.5, 0, { v: 1 }); Q("banner", 12.1, -1, { v: 2 });
-      Q("trophy", 13, -1, { v: 1 }); Q("fireplace", 15.7, 0.55); Q("stairs_up", 18.8, 0.75);
+      Q("trophy", 17.6, -1, { v: 1 }); Q("fireplace", 15.7, 0.55); Q("stairs_up", 18.8, 0.75);
       counter(9.5, 2.7, 4);
       D("rug", 9, 4, 0, 32, 122);
       // west: the board, and the table where jobs are planned
       spot("idle.board.1", "idle", 2.2, 1.2, "up"); spot("idle.board.2", "idle", 3.8, 1.4, "up");
       Q("maptable", 3, 5.4); Q("chair", 1.4, 5.2); Q("chair", 4.7, 5.2); D("paper", 2.2, 5.8, 0); D("paper", 4, 6.1, 2);
       Q("armordisplay", 0.3, 3, { v: 1 }); Q("footlocker", 0.3, 8.2); Q("footlocker", 0.3, 9.2); Q("footlocker", 0.3, 10.2); Q("weaponrack", 3.4, 10.9);
-      Q("runestand", 6, 8.4); Q("runestand", 13, 8.4); Q("runestand", 8, 10.9); Q("runestand", 11, 10.9); Q("runestand", 1.6, 7.6); Q("rune_sconce", 13.9, -1.3);
+      Q("runestand", 6, 8.4); Q("runestand", 13, 8.4); Q("runestand", 8, 10.9); Q("runestand", 11, 10.9); Q("runestand", 1.6, 7.6); Q("rune_sconce", 13.5, -1);
       spot("work.maps", "work", 3, 6.4, "up");
       // east: the fire, the tables, a corner to hit things in
       Q("bench", 15.7, 3.3); D("rug", 13.9, 1.5, 2, 60, 24);
       Q("roundtable", 14.6, 5.6, { v: 2 }); seat("t1.w", 13.3, 5.4); seat("t1.e", 15.9, 5.4);
       Q("roundtable_lit", 17.8, 7.4, { v: 1 }); seat("t2.w", 16.5, 7.2); seat("t2.e", 19.1, 7.2);
-      Q("dummy", 18.6, 10.6); Q("dummy", 16.4, 10.8); Q("barrel", 19.2, 9); D("straw", 17.5, 10.4, 0, 50);
+      Q("dummy", 18.6, 10.6); Q("dummy", 16.4, 10.8); Q("barrel", 19.1, 9); D("straw", 17.5, 10.4, 0, 50);
       spot("idle.fire", "idle", 15.7, 4.2, "up"); spot("idle.stairs", "idle", 18.7, 2.4, "up");
     },
   },

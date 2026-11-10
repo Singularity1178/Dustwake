@@ -27,7 +27,7 @@
 // and the interiors (townInteriors.ts) agree on what stands where.
 
 export const TOWN_ID = "town";
-export const TOWN_W = 96, TOWN_H = 66;
+export const TOWN_W = 96, TOWN_H = 68;
 export const TOWN_NAME = "WESTWAKE";
 
 /** Height (px) of a building's street front: the two bottom rows of its footprint. */
@@ -83,8 +83,15 @@ export const STREETS = {
   oldLane: { y0: 15, y1: 16 },
   low: { y0: 45, y1: 47 },
   back: { y0: 58, y1: 60 },
-  /** The east wall (columns) and the gate through it (rows). */
-  wall: { x0: 88, x1: 89, gateY0: 30, gateY1: 32 },
+  /**
+   * The town wall: a closed ring of the sunken keep's stone, two tiles thick
+   * (the north and south runs carry a third row, the south face of the wall).
+   * `x0..x1` is the east run and `westX0..westX1` the west; the High Street
+   * passes through both on rows `gateY0..gateY1`, between a pair of towers
+   * each (the east gate and the West Bar). Inside the ring is the town; outside
+   * it the ground simply runs to the edge of the map and stops.
+   */
+  wall: { x0: 88, x1: 89, westX0: 4, westX1: 5, northY0: 2, northY1: 4, southY0: 63, southY1: 65, gateY0: 30, gateY1: 32 },
 } as const;
 
 export const BUILDINGS: Building[] = [
@@ -100,7 +107,7 @@ export const BUILDINGS: Building[] = [
   // ---- the bright side: north of the square and the High Street
   B("tailor", 35, 20, 6, 7, "timber", "slate", 5, "rune", { ridge: "ns", door: { col: 2 }, win: [0, 4], lit: [0, 4], sign: "sign_tailor", interior: "town_tailor", name: "THE SILVER NEEDLE" }),
   B("guild", 42, 18, 11, 9, "stone", "slate", 0, "rune", { door: { col: 5, kind: "double" }, win: [1, 3, 7, 9], lit: [1, 3, 7, 9], chimney: 9, dormers: [2, 5, 8], sign: "sign_guild", interior: "town_guild", name: "ADVENTURERS' GUILD" }),
-  B("jeweler", 54, 20, 6, 7, "stone", "slate", 3, "rune", { ridge: "ns", door: { col: 2 }, win: [0, 4], lit: [0, 4], sign: "sign_jeweler", interior: "town_jeweler", name: "THE BRIGHT FACET" }),
+  B("jeweler", 54, 20, 6, 7, "stone", "slate", 3, "rune", { ridge: "ns", door: { col: 3 }, win: [1, 5], lit: [1, 5], sign: "sign_jeweler", interior: "town_jeweler", name: "THE BRIGHT FACET" }),
   B("house_w1", 10, 24, 6, 6, "timber", "shingle", 1, "torch", { door: { col: 3 }, win: [1, 5], lit: [1], chimney: 0 }),
   B("house_w2", 17, 24, 6, 6, "timber", "tile", 4, "none", { door: { col: 2 }, win: [0, 4] }),
   B("apothecary", 25, 23, 7, 7, "timber", "tile", 2, "torch", { ridge: "ns", door: { col: 3 }, win: [1, 5], lit: [1, 5], chimney: 6, sign: "sign_apothecary" }),
@@ -127,6 +134,9 @@ export const BUILDINGS: Building[] = [
   // ---- the east gate's two towers (the wall between and beyond them is tiles)
   B("gate_n", 87, 25, 4, 5, "tower", "flat", 0, "rune"),
   B("gate_s", 87, 33, 4, 5, "tower", "flat", 1, "rune"),
+  // ---- and the West Bar's: the same gate at the other end of the High Street
+  B("bar_n", 3, 25, 4, 5, "tower", "flat", 1, "rune"),
+  B("bar_s", 3, 33, 4, 5, "tower", "flat", 0, "rune"),
 ];
 
 export const building = (id: string): Building => {

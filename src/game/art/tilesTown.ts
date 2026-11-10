@@ -120,18 +120,31 @@ export function townWallFacePix(st: number, tx: number, ty: number, lx: number, 
   return [122 + t + n, 112 + t + n, 98 + t * 0.9 + n];
 }
 
-/** The top of the town wall: a paved wall-walk between two parapets. `open*`: that side is not wall. */
-export function rampartTopPix(tx: number, ty: number, lx: number, ly: number, openL: boolean, openR: boolean, openU: boolean): C3 {
-  const wx = tx * TS + lx, wy = ty * TS + ly;
-  const edge = (openL && lx < 4) || (openR && lx > 11) || (openU && ly < 4);
-  if (edge) {
+/** Neighbour bits for rampartTopPix: the sides and corners of a wall-walk tile that drop away from it. */
+export const RAMPART_OPEN = { L: 1, R: 2, U: 4, D: 8, UL: 16, UR: 32, DL: 64, DR: 128 } as const;
+
+/**
+ * The top of the town wall: a paved wall-walk inside its parapets. `open` (RAMPART_OPEN bits) says which
+ * sides are not wall-walk: each gets a 4 px parapet of merlons and gaps, and an inner corner of the ring
+ * (only the diagonal open) gets the block that joins the two runs meeting there.
+ */
+export function rampartTopPix(tx: number, ty: number, lx: number, ly: number, open: number): C3 {
+  const wx = tx * TS + lx, wy = ty * TS + ly, O = RAMPART_OPEN;
+  const l = (open & O.L) !== 0 && lx < 4, r = (open & O.R) !== 0 && lx > 11, u = (open & O.U) !== 0 && ly < 4, d = (open & O.D) !== 0 && ly > 11;
+  if (l || r || u || d) {
     // parapet: merlons and gaps, 4 px each along the run of the wall
-    const along = (openL && lx < 4) || (openR && lx > 11) ? wy : wx;
-    const outer = (openL && lx === 0) || (openR && lx === 15) || (openU && ly === 0);
-    const inner = (openL && lx === 3) || (openR && lx === 12) || (openU && ly === 3);
+    const along = l || r ? wy : wx;
+    const outer = (l && lx === 0) || (r && lx === 15) || (u && ly === 0) || (d && ly === 15);
+    const inner = (l && lx === 3) || (r && lx === 12) || (u && ly === 3) || (d && ly === 12);
     if (outer) return [30, 28, 28];
     if ((along >> 2) & 1) return inner ? [70, 66, 62] : [128, 122, 112];
     return inner ? [48, 45, 44] : [84, 80, 74];
+  }
+  const cx = lx < 4 ? -1 : lx > 11 ? 1 : 0, cy = ly < 4 ? -1 : ly > 11 ? 1 : 0;
+  if (cx && cy && open & (cy < 0 ? (cx < 0 ? O.UL : O.UR) : cx < 0 ? O.DL : O.DR)) {
+    // the corner post where two parapets meet on the inside of the ring
+    const edge = lx === 0 || lx === 15 || ly === 0 || ly === 15, lip = lx === 3 || lx === 12 || ly === 3 || ly === 12;
+    return edge ? [30, 28, 28] : lip ? [70, 66, 62] : [128, 122, 112];
   }
   if (wx % 8 === 7 || wy % 8 === 7) return [52, 49, 47];
   const t = (hash2(wx >> 3, wy >> 3, 88) - 0.5) * 16;

@@ -9,7 +9,7 @@
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
 import { SeededRng } from "../core/rng";
-import { TS } from "../content/tiles";
+import { TS, isSolidT } from "../content/tiles";
 import { RECIPES } from "../content/build";
 import { RUNE_T } from "../surface";
 import type { DecalDef, LooseItem, PropDef } from "../map";
@@ -416,5 +416,37 @@ export interface SaveStorage { getItem(key: string): string | null; setItem(key:
 export function saveToStorage(w: World, storage: SaveStorage) { storage.setItem(KEY, JSON.stringify(serialize(w))); }
 export function loadFromStorage(storage: SaveStorage): World | null {
   const raw = storage.getItem(KEY);
-  return raw ? deserialize(JSON.parse(raw)) : null;
+  return raw ? settle(deserialize(JSON.parse(raw))) : null;
+}
+
+/**
+ * Authored areas change between builds (Westwake grew a wall where there was meadow). Nobody loads a stored
+ * game standing inside masonry: the player is set down on the nearest free ground, or failing that at the
+ * area's start. Only solid tiles count, since nothing the game saves stands in one. `deserialize` itself stays
+ * the exact inverse of `serialize`; this runs on the way in from storage.
+ */
+export function settle(w: World): World {
+  const pl = w.actors.find((a) => a.id === w.playerId), at = pl && w.areas.get(pl.area);
+  if (pl && at && inMasonry(at, pl.x, pl.y)) {
+    let spot: { x: number; y: number } | null = null;
+    for (let r = 1; r <= 16 && !spot; r++) for (let i = -r; i <= r && !spot; i++)
+      for (const [dx, dy] of [[i, r], [i, -r], [r, i], [-r, i]]) if (!spot && standable(at, pl.x + dx * 8, pl.y + dy * 8)) spot = { x: pl.x + dx * 8, y: pl.y + dy * 8 };
+    spot ??= at.base.start;
+    pl.x = spot.x; pl.y = spot.y;
+  }
+  return w;
+}
+
+/** Does a golem-sized box (10x5 px, feet at x, y) reach into a solid tile, or off the map? */
+function inMasonry(a: Area, x: number, y: number): boolean {
+  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
+  for (let ty = Math.floor(y0 / TS); ty <= Math.floor((y1 - 0.01) / TS); ty++)
+    for (let tx = Math.floor(x0 / TS); tx <= Math.floor((x1 - 0.01) / TS); tx++)
+      if (tx < 0 || ty < 0 || tx >= a.w || ty >= a.h || isSolidT(a.grid[ty * a.w + tx])) return true;
+  return false;
+}
+/** Is that box clear of solid tiles and of prop boxes? The rule of sim/collision.ts boxFree, kept local: world does not import sim. */
+function standable(a: Area, x: number, y: number): boolean {
+  const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
+  return !inMasonry(a, x, y) && !a.props.some((p) => p.box && !p.taken && x1 > p.box[0] && x0 < p.box[2] && y1 > p.box[1] && y0 < p.box[3]);
 }
