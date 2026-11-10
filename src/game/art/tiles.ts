@@ -230,7 +230,8 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
   for (let ty = y0; ty <= y1; ty++)
     for (let tx = x0; tx <= x1; tx++) {
       const t = m.grid[ty * MW + tx];
-      const wall = t === T.WALL;
+      // a cracked wall bakes as the wall it is part of; its damage is the tile sprite drawn over it (rubbleSprite)
+      const wall = t === T.WALL || t === T.CRACKED;
       const face = wall && !isWall(m, tx, ty + 1);
       const st = m.style[ty * MW + tx];
       // (the edge of the map casts no shadow: where ground runs to it, the tiles simply end)
@@ -277,16 +278,34 @@ export function rubbleSprite(v: number, cracked: boolean): Sprite {
   return cached(`rub${v}${cracked}`, () =>
     makeSprite(22, 26, 11, 24, 100 + v * 17 + (cracked ? 5 : 0), (p, r) => {
       if (cracked) {
-        stoneBlob(p, 1, 10, 9, 8, r); stoneBlob(p, 12, 11, 9, 8, r);
-        // big slab
-        p.o(2, 2, 18, 20, S.m, S.o);
-        p.r(3, 3, 16, 2, S.h); p.r(3, 5, 2, 16, S.l); p.r(15, 5, 4, 16, S.d);
-        for (let i = 0; i < 6; i++) p.p(5 + ((r() * 10) | 0), 6 + ((r() * 14) | 0), S.d);
-        // glowing cracks (light leaking from behind)
-        const crack = [[10, 3], [10, 4], [9, 5], [9, 6], [10, 7], [11, 8], [11, 9], [10, 10], [9, 11], [9, 12], [8, 13], [8, 14], [9, 15], [10, 16], [10, 17], [11, 18], [11, 19], [12, 20], [12, 21]];
+        // A stretch of the wall itself, as thick as the wall around it and drawn the way the bake draws a
+        // wall seen from above (wallTopPix: the dark top, a rim down each open side), so it sits flush with
+        // the masonry above and below. What marks it as breakable is the damage: capstones jolted out of
+        // line, bites out of the rim, a fissure from end to end with the light of the hall behind it, and
+        // fallen stone along its foot on both sides. The tile fills x 3..18, y 8..23 of the sprite; the
+        // fissure enters and leaves at the same column, so a run of cracked tiles carries one unbroken crack.
+        const TOP = "#110e14", RIM = "#322d38", RIM2 = "#1e1a22";
+        p.r(3, 8, 16, 16, TOP);
+        p.r(3, 8, 1, 16, RIM); p.r(18, 8, 1, 16, RIM); p.r(4, 8, 1, 16, RIM2); p.r(17, 8, 1, 16, RIM2);
+        // the joints between its capstones have sprung open (a sound wall's top shows none)
+        p.r(5, 12, 12, 1, RIM2); p.r(5, 18, 12, 1, RIM2); p.r(7, 8, 1, 4, RIM2); p.r(14, 13, 1, 5, RIM2); p.r(8, 19, 1, 5, RIM2);
+        // bites out of the rim where stones have already gone
+        p.r(17, 9, 2, 3, TOP); p.r(3, 14, 2, 3, TOP); p.r(17, 20, 2, 3, TOP);
+        // capstones heaved out of line: blocks of the wall's own stone, catching the light, one pushed
+        // out past the rim on each side
+        for (const [x, y, w, h] of [[2, 9, 5, 4], [14, 14, 6, 4], [4, 19, 5, 4]]) {
+          p.r(x, y, w, h, S.o); p.r(x, y, w - 1, h - 1, S.m); p.r(x, y, w - 1, 1, S.l); p.p(x, y, S.h);
+        }
+        // and smaller chips lying loose on the top
+        p.r(13, 9, 3, 2, S.d); p.p(13, 9, S.m); p.r(6, 15, 2, 2, S.d); p.p(6, 15, S.m); p.r(13, 21, 2, 2, S.d);
+        // the fissure (light leaking from behind), in a dark gap, with hairline branches
+        const crack = [[11, 8], [11, 9], [10, 10], [10, 11], [9, 12], [10, 13], [11, 14], [11, 15], [12, 16], [12, 17], [11, 18], [10, 19], [10, 20], [9, 21], [10, 22], [11, 23]];
+        for (const [cx, cy] of crack) p.r(cx - 1, cy, 3, 1, S.o);
         for (const [cx, cy] of crack) p.g(cx, cy, 1, 1, "#5a6c9a");
-        for (const [cx, cy] of [[11, 7], [12, 7], [13, 6], [8, 12], [7, 12], [6, 11], [12, 16], [13, 16], [14, 17]]) p.g(cx, cy, 1, 1, "#34405e");
-        stoneBlob(p, 0, 17, 8, 7, r); stoneBlob(p, 14, 18, 8, 6, r); stoneBlob(p, 7, 20, 8, 5, r);
+        for (const [cx, cy] of [[8, 11], [7, 11], [6, 12], [12, 14], [13, 14], [14, 15], [13, 17], [8, 20], [7, 20], [12, 22]]) p.g(cx, cy, 1, 1, "#34405e");
+        // fallen stone along the foot of the wall, on the floor to either side
+        stoneBlob(p, 0, 8, 4, 3, r); stoneBlob(p, 18, 10, 4, 4, r); stoneBlob(p, 0, 17, 4, 4, r); stoneBlob(p, 19, 15, 3, 3, r);
+        stoneBlob(p, 0, 22, 5, 4, r); stoneBlob(p, 17, 21, 5, 4, r);
         return;
       }
       const n = 7 + ((r() * 3) | 0);

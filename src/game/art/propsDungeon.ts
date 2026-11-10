@@ -118,19 +118,41 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       p.o(0, 3, 9, 6, WD.l, WD.o); p.o(8, 1, 6, 8, WD.m, WD.o); p.r(1, 2, 2, 2, WD.o); p.r(5, 1, 2, 2, WD.o);
     });
   },
+  /**
+   * A barracks cot. v bit 0: one nobody made again (the blanket dragged half off, the straw mattress stained
+   * and split, a rail and the footboard cracked): the wear is all inside the frame, which stays whole, so it
+   * never reads as two halves with a gap in the floor between them. v bit 1: the head lies to the south, for
+   * a row along a south wall (its footlocker then stands at its foot, like the north row's).
+   */
   bed: (v, _alt, M) => {
+    const rough = (v & 1) === 1, south = (v & 2) === 2;
     return M(16, 30, (p, r) => {
+      // rows are given head-first (0 = the head end) and turned round for a south-facing bed
+      const R = (x: number, y: number, w: number, h: number, c: string) => p.r(x, south ? 30 - y - h : y, w, h, c);
       p.o(0, 0, 16, 30, WD.m, WD.o);
-      p.r(1, 1, 14, 2, WD.l);
-      p.r(2, 3, 12, 25, "#4a4234");
-      for (let i = 0; i < 20; i++) p.p(2 + ((r() * 12) | 0), 3 + ((r() * 25) | 0), "#3a3428");
-      p.o(3, 3, 10, 5, "#6a6250", "#2a261e");
+      p.r(1, 1, 14, 1, WD.l); p.r(1, 28, 14, 1, WD.d);
+      // headboard and footboard
+      R(1, 1, 14, 2, WD.l); R(1, 1, 14, 1, WD.h); R(1, 27, 14, 2, WD.d);
+      // straw mattress
+      p.r(2, 3, 12, 24, "#4a4234");
+      for (let i = 0; i < 20; i++) p.p(2 + ((r() * 12) | 0), 3 + ((r() * 24) | 0), "#3a3428");
+      // pillow (knocked askew on an unmade bed)
+      const px = rough ? 4 : 3;
+      R(px, 4, 10, 5, "#2a261e"); R(px + 1, 5, 8, 3, "#6a6250"); R(px + 1, 5, 8, 1, "#7c7460");
       for (let y = 11; y < 27; y++) for (let x = 2; x < 14; x++) {
-        if (y > 22 && r() < 0.3) continue;
-        p.p(x, y, (x + y) % 4 === 0 ? "#2a3444" : "#3a4658");
+        const fray = y > 22 && r() < 0.3;
+        // made: the blanket lies square across the bed. Unmade: it has slid to one side and down to the foot.
+        if (rough ? (x - 2) + (y - 11) * 0.8 < 9 : fray) continue;
+        R(x, y, 1, 1, y === 11 && !rough ? "#52607a" : (x + y) % 4 === 0 ? "#2a3444" : "#3a4658");
       }
-      if (v === 1) { p.r(0, 14, 16, 2, WD.o); p.r(2, 15, 12, 1, "#1a1410"); }
-      p.r(1, 28, 14, 1, WD.d);
+      if (rough) {
+        // the bared mattress: an old stain, a split seam with the straw coming out
+        R(4, 12, 4, 3, "#3a3428"); R(5, 13, 3, 1, "#2e2a20");
+        R(3, 17, 5, 1, "#2a261e"); R(4, 16, 1, 1, "#a8945a"); R(6, 18, 1, 1, "#a8945a"); R(5, 17, 2, 1, "#8a7a48"); R(7, 16, 1, 1, "#8a7a48");
+        // a cracked side rail and a split footboard (splinters, not a gap)
+        R(0, 19, 1, 1, WD.h); R(0, 20, 1, 2, WD.d); R(1, 20, 1, 1, WD.h);
+        R(9, 27, 1, 2, WD.o); R(10, 27, 1, 1, WD.h); R(8, 28, 1, 1, WD.l);
+      }
     });
   },
   footlocker: (_v, alt, M) => {
@@ -421,13 +443,30 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       p.o(2, 0, 6, 4, "#6a3e22", "#24140a"); p.r(3, 1, 4, 1, "#1a0e06");
     });
   },
+  /**
+   * An iron fire bowl on a tripod. The legs have to read on every floor, the dark marble and the wet cobbles
+   * included, or the bowl looks as if it were lying on the ground: so each is a bright core inside a dark
+   * outline (one of the two always stands out), they splay to feet wider than the bowl, a brace ties them,
+   * and the bowl's shadow lies on the floor between them. v 1: an old one, with ash spilled at its feet.
+   */
   brazier: (v, alt, M) => {
-    return M(14, 18, (p) => {
-      p.r(2, 9, 1, 8, IR.d); p.r(11, 9, 1, 8, IR.d); p.r(6, 10, 2, 8, IR.d);
-      p.o(0, 4, 14, 6, IR.m, "#121418"); p.r(1, 5, 12, 1, IR.l);
-      if (alt) { p.g(2, 3, 10, 2, "#c84a10"); p.g(3, 3, 3, 1, "#ffb040"); p.g(8, 3, 2, 1, "#ff8020"); }
-      else { p.r(2, 3, 10, 2, "#3a3634"); p.p(5, 3, "#55504c"); }
-      if (v === 1) p.r(0, 16, 14, 2, "rgba(0,0,0,0)");
+    return M(16, 18, (p) => {
+      const K = "#121418";
+      p.r(2, 16, 12, 2, "rgba(0,0,0,0.38)"); p.r(4, 15, 8, 1, "rgba(0,0,0,0.25)");
+      // brace between the legs (behind them)
+      p.r(3, 13, 10, 1, K); p.r(4, 13, 8, 1, IR.m);
+      // side legs, splaying outwards on the way down
+      for (const [x, y, h] of [[3, 10, 2], [2, 12, 2], [1, 14, 3], [12, 10, 2], [13, 12, 2], [14, 14, 3]]) { p.r(x - 1, y, 3, h, K); p.r(x, y, 1, h, x < 8 ? IR.h : IR.l); }
+      // front leg
+      p.r(6, 10, 4, 7, K); p.r(7, 10, 1, 7, IR.h); p.r(8, 10, 1, 7, IR.m);
+      // feet
+      p.r(0, 17, 3, 1, IR.l); p.r(13, 17, 3, 1, IR.m); p.r(6, 17, 4, 1, IR.l);
+      // the bowl: lit rim, body, and a narrower underside so it reads as a dish, not a box
+      p.o(1, 4, 14, 5, IR.m, K); p.r(2, 5, 12, 1, IR.h); p.r(2, 7, 12, 1, IR.d);
+      p.r(2, 9, 12, 1, K); p.r(3, 9, 10, 1, IR.d);
+      if (alt) { p.g(3, 3, 10, 2, "#c84a10"); p.g(4, 3, 3, 1, "#ffb040"); p.g(9, 3, 2, 1, "#ff8020"); }
+      else { p.r(3, 3, 10, 2, "#3a3634"); p.p(6, 3, "#55504c"); p.p(10, 3, "#2a2624"); }
+      if (v === 1) { p.r(10, 16, 2, 1, "#3a3634"); p.p(11, 15, "#55504c"); p.p(4, 16, "#2a2624"); p.p(3, 6, IR.d); p.p(12, 6, IR.d); }
     });
   },
   fountain: (_v, _alt, M) => {

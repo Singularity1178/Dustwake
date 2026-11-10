@@ -23,7 +23,11 @@ import type { ItemId } from "../src/game/content/items";
 
 // items: updated deliberately for the crown's retexture (its main stone is the High-Grade Ruby now); with the old
 // crown swapped back in the list still hashes to the previous "6253c0e8", so no other legacy icon moved.
-const GOLDEN = { props: "e4c643ed", items: "94b2678e", tiles: "5eb324bb", glyphs: "25b715f1", surface: "c332aec8" };
+// props and tiles: updated deliberately for the dungeon audit (docs/ARCHITECTURE.md: "The dungeon audit").
+// Compared pixel for pixel with the art as it was: of the prop sprites only `bed` and `brazier` differ
+// (props was "e4c643ed"), and of the tile sprites only the cracked wall, redrawn as a stretch of the wall it
+// stands in (tiles was "5eb324bb"); rubble, both pillars, the door and the bars are untouched.
+const GOLDEN = { props: "9ff9b39a", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "c332aec8" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

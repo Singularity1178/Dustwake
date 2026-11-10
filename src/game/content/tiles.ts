@@ -63,8 +63,13 @@ export const isGroundFS = (s: number) => s === FS.GRASS || s === FS.DIRT || s ==
 export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>
   t === T.WALL || t === T.RUBBLE || t === T.CRACKED || t === T.LOCKED || t === T.PILLAR || t === T.THICKET;
-/** Tiles that read as wall mass when baking the background (rims, faces, AO). */
-export const isWallMassT = (t: number) => t === T.WALL || t === T.LOCKED || t === T.FRONT;
+/**
+ * Tiles that read as wall mass when baking the background (rims, faces, AO).
+ * A cracked wall is still wall until it is broken: it is as thick as the wall
+ * it stands in, the wall above it shows no face, and the floor beside it is
+ * shaded as beside any wall.
+ */
+export const isWallMassT = (t: number) => t === T.WALL || t === T.LOCKED || t === T.FRONT || t === T.CRACKED;
 
 /**
  * Tiles the golem can interact with. Interaction anchors are offsets from the

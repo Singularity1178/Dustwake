@@ -329,18 +329,24 @@ export class Game {
   }
 
   buildShaft(cols: [string, string, string]): Sprite {
-    return makeSprite(80, 110, 40, 100, 1, (p) => {
-      for (let y = 0; y < 110; y++) {
-        const t = y / 100;
-        const cx = lerp(28, 40, t), hw = lerp(12, 24, t);
+    // The shaft has no top. The roof it falls through is out of sight above the view, so the beam must never
+    // end on an edge: it keeps the same lean and taper as it climbs, and over its upper half it thins out
+    // pixel by pixel until nothing is left of it (FOOT is where it meets the floor: the pool lies below that).
+    const FOOT = 150, FADE = 0.55;
+    return makeSprite(80, FOOT + 10, 40, FOOT, 1, (p) => {
+      for (let y = 0; y < FOOT + 10; y++) {
+        const t = y / FOOT;
+        const cx = lerp(22, 40, t), hw = lerp(7, 24, t);
+        // how much of the beam is there at this height: none at the top, all of it below the fade
+        const k = clamp(t / FADE, 0, 1), dens = k * k * (3 - 2 * k);
         for (let x = 0; x < 80; x++) {
           const d = Math.abs(x - cx) / hw;
-          if (y > 100) {
-            const e = ((x - 40) / 26) ** 2 + ((y - 102) / 7) ** 2;
+          if (y > FOOT) {
+            const e = ((x - 40) / 26) ** 2 + ((y - FOOT - 2) / 7) ** 2;
             if (e < 1 && (x + y) % 2 === 0) p.g(x, y, 1, 1, cols[2]);
             continue;
           }
-          if (d < 1 && (x + y) % 2 === 0 && hash2(x, y, 2) > d * 0.8) p.g(x, y, 1, 1, d < 0.5 ? cols[0] : cols[1]);
+          if (d < 1 && (x + y) % 2 === 0 && hash2(x, y, 2) > d * 0.8 && hash2(x, y, 5) < dens) p.g(x, y, 1, 1, d < 0.5 ? cols[0] : cols[1]);
         }
       }
     });

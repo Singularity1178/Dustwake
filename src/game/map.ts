@@ -189,8 +189,11 @@ export function buildMap(seed: number): MapData {
 
   // ---- Pillars ----
   for (const y of [22, 26, 30, 34, 38]) for (const x of [31, 40]) set(x, y, T.PILLAR);
-  for (const y of [5, 8, 11, 14]) for (const x of [29, 42]) set(x, y, T.PILLAR);
-  for (const [x, y] of [[40, 30], [31, 34], [42, 8], [29, 14]]) tvar[y * MW + x] = 1;
+  // The throne hall's colonnade stands a pillar every fourth row, like the great hall's. A pillar is drawn
+  // three tiles tall, so any closer (they used to stand every third) and each base sits on the capital of
+  // the pillar in front of it: one unbroken stack instead of a row of columns.
+  for (const y of [5, 9, 13]) for (const x of [29, 42]) set(x, y, T.PILLAR);
+  for (const [x, y] of [[40, 30], [31, 34], [42, 9], [29, 13]]) tvar[y * MW + x] = 1;
 
   // ---- Gaol cells ----
   for (let y = 28; y <= 39; y++) set(62, y, T.WALL);
@@ -265,10 +268,12 @@ export function buildMap(seed: number): MapData {
   D("bones", 41 * TS, 12 * TS, 0);
 
   // Great hall
-  P("statue", 29, 28);
-  P("statue", 29, 32, { v: 1 });
-  P("statue", 42, 28);
-  P("statue", 42, 32);
+  // (the four statues stand two pixels clear of the side walls: at the tile's centre their plinths were in the
+  // masonry. Their ids are the ones they have always had.)
+  P("statue", 29.125, 28, { id: "statue@29,28" });
+  P("statue", 29.125, 32, { id: "statue@29,32", v: 1 });
+  P("statue", 41.875, 28, { id: "statue@42,28" });
+  P("statue", 41.875, 32, { id: "statue@42,32" });
   P("brazier", 33, 23, { lit: true });
   P("brazier", 38, 23);
   P("brazier", 33, 39);
@@ -287,12 +292,15 @@ export function buildMap(seed: number): MapData {
   for (let i = 0; i < 12; i++) D("debris", 35.5 * TS + (rng() - 0.5) * 90, 49 * TS + rng() * 14, (rng() * 4) | 0);
 
   // Chapel
-  P("altar", 26, 48, { item: "glyph3", itemZ: 13 });
-  lights.push({ x: 26 * TS + 8, y: 48 * TS + 8, rad: 58, col: [1, 0.7, 0.4], int: 0.6, flick: 0.15 });
+  // One axis: the banner on the wall, the altar under it, the pews facing them. (The altar used to stand a
+  // tile and a half to the east of its pews, against the side door, and the banner a tile and a half to the
+  // west. Both keep the ids they had, which saves and the tests know them by.)
+  P("altar", 24.5, 48, { id: "altar@26,48", item: "glyph3", itemZ: 13 });
+  lights.push({ x: 24.5 * TS + 8, y: 48 * TS + 8, rad: 58, col: [1, 0.7, 0.4], int: 0.6, flick: 0.15 });
   P("pew", 24.5, 50);
   P("pew", 24.5, 52);
   P("statue", 19.5, 52, { v: 1 });
-  P("banner", 23, 46, { v: 0 });
+  P("banner", 24.5, 46, { id: "banner@23,46", v: 0 });
   P("candles", 20, 49);
 
   // Artificery (start)
@@ -357,7 +365,8 @@ export function buildMap(seed: number): MapData {
 
   // Barracks
   for (const x of [54, 57, 60, 63, 68]) P("bed", x, 14, { v: x % 2 });
-  for (const x of [54, 57, 60, 63]) P("bed", x, 23, { v: (x + 1) % 2 });
+  // the south row lies head to the south wall (bed v bit 1), so its footlockers stand at the foot like the north row's
+  for (const x of [54, 57, 60, 63]) P("bed", x, 23, { v: 2 + ((x + 1) % 2) });
   P("footlocker", 54, 15, { container: true });
   P("footlocker", 60, 15, { container: true });
   P("footlocker", 57, 21, { container: true });
@@ -412,10 +421,18 @@ export function buildMap(seed: number): MapData {
 
   // ---- Procedural decals ----
   const G = (x: number, y: number) => (inb(x, y) ? grid[y * MW + x] : T.WALL);
+  // The scatter draws from one rng in reading order, so a tile that starts or stops being floor would re-roll
+  // every crack, bone and cobweb after it. The throne hall's pillars were re-spaced after the scatter was
+  // settled: the pass still walks those ten tiles as they lay before (the rows the pillars left get nothing,
+  // the rows they moved to keep what they had, under the pillar), and the rest of the dungeon stays as it was.
+  const key = (x: number, y: number) => y * MW + x;
+  const wasPillar = new Set([5, 8, 11, 14].flatMap((y) => [key(29, y), key(42, y)]));
+  const nowPillar = new Set([5, 9, 13].flatMap((y) => [key(29, y), key(42, y)]));
   for (let y = 1; y < MH - 1; y++)
     for (let x = 1; x < MW - 1; x++) {
       const t = G(x, y);
-      if (t !== T.FLOOR) continue;
+      const k = key(x, y);
+      if (wasPillar.has(k) || (t !== T.FLOOR && !(nowPillar.has(k) && !wasPillar.has(k)))) continue;
       const bx = x * TS, by = y * TS;
       const r = rng();
       const nearRubble = [G(x - 1, y), G(x + 1, y), G(x, y - 1), G(x, y + 1)].some((n) => n === T.RUBBLE || n === T.CRACKED);
@@ -452,7 +469,9 @@ export function buildMap(seed: number): MapData {
     D("earthspill", cx + 18, top - 26, 2, 30, 18);
     for (let i = 0; i < 16; i++) D("stones", cx + (gr() - 0.5) * 120, top - 6 - gr() * 52, (gr() * 4) | 0);
     for (let i = 0; i < 10; i++) D("debris", cx + (gr() - 0.5) * 100, top - 4 - gr() * 44, (gr() * 4) | 0);
-    for (const [x, y, v] of [[C.x - 1.6, C.y - 0.2, 0], [C.x - 0.4, C.y - 1.1, 1], [C.x + C.w + 0.3, C.y - 0.1, 1], [C.x + C.w - 0.8, C.y - 1.2, 0], [C.x + 1.4, C.y - 2.2, 1]] as const)
+    // (roots trail up to 22 px down from where they are placed: every one starts high enough to stay on the
+    // Vestibule's floor or the gate's rubble, and none runs out across the top of the south wall)
+    for (const [x, y, v] of [[C.x - 1.6, C.y - 1.5, 0], [C.x - 0.4, C.y - 1.45, 1], [C.x + C.w + 0.3, C.y - 1.5, 1], [C.x + C.w - 0.8, C.y - 1.2, 0], [C.x + 1.4, C.y - 2.2, 1]] as const)
       D("rootfall", x * TS, y * TS, v);
     for (let i = 0; i < 5; i++) D("roots", cx + (gr() - 0.5) * 70, top - 18 - gr() * 20, 0);
     const piles: [number, number, number][] = [

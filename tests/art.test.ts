@@ -31,7 +31,15 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 // items: updated deliberately for the crown's retexture (its main stone is now the High-Grade Ruby, set in the
 // band): with the old crown function swapped back in, this list still hashes to the previous "6cae5365", so
 // no other legacy icon moved.
-const GOLDEN = { props: "9b046139", items: "7dcab441", bake: "c475d9be" };
+// props and bake: updated deliberately for the dungeon audit (docs/ARCHITECTURE.md: "The dungeon audit").
+// Compared pixel for pixel with the art and the builder as they were before it:
+//   props (was "9b046139"): of every prop sprite only `bed` (no black band across the unmade cot; two new
+//     variants with the head to the south) and `brazier` (a tripod that shows on dark tiles) differ.
+//   bake (was "c475d9be"): only the cracked wall's two tiles and the six round them differ (it bakes as wall
+//     mass now: tiles 46-48,9-12), and tiles 32-33,48-50 and 38,48-50, where three root decals at the SURFACE
+//     GATE were moved off the top of the south wall. The 667 other decals are where they were: the throne
+//     hall's pillars were re-spaced without disturbing the scatter (map.ts).
+const GOLDEN = { props: "4dffe010", items: "7dcab441", bake: "21fe34d" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();
