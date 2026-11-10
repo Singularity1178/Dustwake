@@ -21,6 +21,14 @@ function floorPix(style: number, tx: number, ty: number, lx: number, ly: number)
   const wx = tx * TS + lx, wy = ty * TS + ly;
   const n = (hash2(wx, wy, 7) - 0.5) * 12;
   if (isGroundFS(style)) return groundPix(style, tx, ty, wx, wy, n);
+  if (style === FS.STAIR) {
+    // A flight climbing south, seen from the south and above, so only treads show: two to a tile, each beginning
+    // at a bright nosing and ending in the line of shadow the next step up drops across it. Worn pale down the middle.
+    const s = ly & 7;
+    const k = s === 0 ? 26 : s === 7 ? -46 : s === 6 ? -16 : hash2(wx >> 1, wy, 11) < 0.05 ? -12 : 0;
+    const v = 84 + k + (Math.abs(lx - 7.5) < 4 ? 5 : 0) + n * 0.6;
+    return [v, v * 0.96, v * 1.06];
+  }
   // the market town's pavings and floors (art/tilesTown.ts)
   if (style >= FS.SETT) { const c = townFloorPix(style, tx, ty, lx, ly, n); if (c) return c; }
   if (style === FS.MARBLE) {

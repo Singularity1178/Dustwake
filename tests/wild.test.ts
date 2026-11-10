@@ -48,13 +48,15 @@ test("surface keeps its size, rune, start, ids and closing thicket edge", () => 
   for (let y = 0; y < s.h; y++) { assert.equal(s.grid[y * s.w], T.THICKET); assert.equal(s.grid[y * s.w + s.w - 1], T.THICKET); }
 });
 
-test("the dungeon is hidden: no grates, no sinkholes, nothing glows but the rune", () => {
+test("the dungeon is hidden: no grates, no sinkholes, nothing glows but the rune (the stair's ward glyph is dark until it is dug out)", () => {
   const s = buildSurface();
   assert.ok(!("grate" in PROPS), "grate kind removed");
   assert.ok(!s.props.some((p) => p.kind === "grate"));
   assert.ok(s.grid.every((t) => t === T.FLOOR || t === T.THICKET), "only open ground and thicket (no PIT / wall / rubble tiles)");
-  assert.deepEqual(s.lights.map((l) => l.id), ["runeglow"]);
-  assert.ok(!s.props.some((p) => propDef(p.kind).light), "no glowing props");
+  assert.deepEqual(s.lights.map((l) => l.id), ["runeglow", "wardglow"]);
+  const ward = s.lights[1], head = s.props.find((p) => p.id === ward.owner)!;
+  assert.equal(head.kind, "buriedgate"); assert.equal(propDef("buriedgate").light!.when, "lit"); assert.ok(!head.lit, "the ward's light is the stair head's, and that is not lit");
+  assert.ok(!s.props.some((p) => { const L = propDef(p.kind).light; return L && (L.when === "always" || p.lit); }), "no glowing props");
 });
 
 test("the wild has variety: several ground styles, overgrowth and a handful of remains", () => {
@@ -96,10 +98,10 @@ test("nothing from the wild overlaps the rune circle's footprint", () => {
 });
 
 // ------------------------------------------------------------------ entrance
-test("one shared offset maps the dungeon's SURFACE GATE onto the surface", () => {
+test("one shared offset maps the dungeon's SURFACE STAIR onto the surface", () => {
   assert.deepEqual(DUNGEON_TO_SURFACE, { dx: 12, dy: 6 });
   const d = buildDungeon();
-  const ex = d.exits.find((e) => e.label === "SURFACE GATE")!;
+  const ex = d.exits.find((e) => e.label === "SURFACE STAIR")!;
   assert.deepEqual({ x: ex.x, y: ex.y }, GATE_EXIT, "schematic exit marker");
   assert.deepEqual(dungeonToSurface(GATE_EXIT.x, GATE_EXIT.y), { x: 48, y: 61 });
   assert.deepEqual(SURFACE_GATE, { x: 48, y: 61 });
@@ -132,8 +134,10 @@ test("the golem walks straight across the buried gate, and the ground sounds hol
   frames(w, 60 * 14, { ix: 0, iy: 1, use: false });
   assert.ok(pl.y > (SURFACE_GATE.y + 1) * TS, `walked from ${y0} to ${pl.y}`);
   events(w);
-  useOn(w, find(w, (i) => i.kind === "examine" && currentArea(w).prop(i.propId!)!.kind === "buriedgate"));
-  assert.ok(events(w).some((e) => e.t === "message" && /HOLLOW/.test(e.text)));
+  // E on it with no shovel head fitted digs nothing: the golem only learns what it would take
+  useOn(w, find(w, (i) => i.kind === "dig" && currentArea(w).prop(i.propId!)!.kind === "buriedgate"));
+  assert.ok(events(w).some((e) => e.t === "message" && /HOLLOW/.test(e.text) && /SHOVEL/.test(e.text)));
+  assert.equal(currentArea(w).props.find((p) => p.kind === "buriedgate")!.dmg, 0);
 });
 
 test("in the dungeon, the SURFACE GATE corridor is solid rock and can't be entered", () => {

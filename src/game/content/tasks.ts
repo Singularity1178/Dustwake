@@ -91,6 +91,8 @@ export type Effect =
   | { op: "deposit"; item: ItemId; n: number }
   /** One blow against a harvestable prop (target.propId): a worker's job. The golem harvests with the slam instead, which needs no target. */
   | { op: "harvest" }
+  /** One stroke at the dig site target.propId (content/digging.ts): re-validates the tool and the reach, clears work, pays what it dug. */
+  | { op: "dig" }
   /** Regrowth hook for harvestables with a `regrow` time (none in v1). */
   | { op: "regrow"; prop: string }
   /** Build a recipe at a tile, consuming its cost from the actor's pack. */

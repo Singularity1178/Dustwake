@@ -47,7 +47,7 @@ import { Game } from "../src/game/game";
 import { events, find, frame, frames, newWorld, propItem, slamAt, standAt, useOn, guardianIt, talkThrough, GUARDIAN } from "./helpers";
 
 const WORKER = ARTIFICERY_WORKER.id;
-const GATED = ["brazier", "chair", "craftbench", "storage_chest", "table", "wall_banner", "wall_torch"];
+const GATED = ["anvil", "brazier", "chair", "craftbench", "smelter", "storage_chest", "table", "wall_banner", "wall_torch"];
 const thoughts = (evs: SimEvent[]) => evs.filter((e) => e.t === "thought").map((e) => (e as { line: string }).line);
 const finish = (w: World) => { let g = 0; while (player(w).task && g++ < 900) frame(w); };
 
@@ -461,11 +461,11 @@ function preRollout(version: 4 | 9 | 10 | 11, knowBuild: boolean, extraFlags: st
 }
 
 test("v9, v10 and v11 saves load with no lost plans and no free ones; storage stays locked; one worker is added", () => {
-  assert.equal(SAVE_VERSION, 13);
+  assert.equal(SAVE_VERSION, 14);
   const LEGACY = ["wall_torch", "brazier", "craftbench", "table", "chair", "wall_banner"];
   for (const v of [9, 10, 11] as const) for (const knows of [true, false]) {
     const raw = preRollout(v, knows, ["analysis.surprise"]), w = deserialize(raw), pl = player(w);
-    assert.equal((migrate(raw) as { version: number }).version, 13);
+    assert.equal((migrate(raw) as { version: number }).version, 14);
     for (const id of LEGACY) assert.equal(w.flags.has(`analysis.${id}`), knows, `v${v} ${knows ? "with" : "without"} know.build: ${id}`);
     assert.equal(w.flags.has("analysis.storage_chest"), false, `v${v}: the storage chest is not grandfathered`);
     assert.ok(w.flags.has("analysis.surprise"), "flags it had are kept");

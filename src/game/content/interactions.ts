@@ -5,7 +5,9 @@
 // sim/interact.ts; everything else is described here.
 import type { ItemId } from "./items";
 import type { Effect, TaskSpec } from "./tasks";
+import type { ToolType } from "./tools";
 import { FLAGS } from "./flags";
+import { DIG_DUR } from "./digging";
 
 export interface Requirement {
   items?: ItemId[];
@@ -14,6 +16,10 @@ export interface Requirement {
   actorFlags?: string[];
   /** Items the actor must be wearing (Actor.gear, any slot), e.g. the basket on its back. */
   worn?: ItemId[];
+  /** Tool types the actor must have working (sim/tools.ts): a head fitted to an arm, of any grade. */
+  tools?: ToolType[];
+  /** Alternatives: at least one of these must be met as well. */
+  any?: Requirement[];
 }
 export interface Rule { when?: Requirement; task: TaskSpec }
 
@@ -50,6 +56,16 @@ export const RULES: Record<string, Rule[]> = {
   // ---- surface
   // Trees, rocks and logs have no row: they aren't interactables. The golem harvests them with the attack (SLAM_RULES' note below).
   examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],
+  // ---- digging (content/digging.ts): the row is picked by the material of the layer reached. A stroke is the
+  // harvesting blow driven into the ground; without the tool the golem only learns what it would take.
+  digDirt: [
+    { when: { tools: ["shovel"] }, task: { kind: "punch", dur: DIG_DUR, effect: { op: "dig" } } },
+    { task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "THE GROUND SOUNDS HOLLOW HERE. DIGGING IT OUT NEEDS A SHOVEL HEAD ON YOUR ARM", cue: "dud" } } },
+  ],
+  digStone: [
+    { when: { tools: ["pickaxe"] }, task: { kind: "punch", dur: DIG_DUR, effect: { op: "dig" } } },
+    { task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "FALLEN STONE UNDER THE EARTH. A SHOVEL WILL NOT MOVE IT. IT NEEDS A PICKAXE HEAD ON YOUR ARM", cue: "dud" } } },
+  ],
   // ---- work stations (props with a `station`, e.g. the crafting bench)
   station: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStation" } } }],
   storage: [{ task: { kind: "reach", dur: 0.35, effect: { op: "useStorage" } } }],

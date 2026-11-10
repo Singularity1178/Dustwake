@@ -3,6 +3,7 @@ import type { ItemId } from "../content/items";
 import type { Area, PropInst } from "../world/area";
 import type { Actor } from "../world/world";
 import { harvestPower } from "./actorStats";
+import { toolBonus } from "./tools";
 
 /**
  * The harvestable props a blow at (x, y) reaches: every standing tree, rock or
@@ -25,7 +26,8 @@ export function harvestReach(area: Area, x: number, y: number, radius: number): 
 
 /** One blow's entitlement, shared by the effect and the job's capacity check. */
 export function harvestStep(a: Actor, p: PropInst) {
-  const def = HARVEST[p.kind], power = harvestPower(a);
+  // The right tool, fitted or wielded, multiplies the blow (content/tools.ts); bare fists do the base work.
+  const def = HARVEST[p.kind], power = harvestPower(a) * (1 + toolBonus(a, def?.tool));
   if (!def || p.taken || !Number.isFinite(power) || power <= 0) return null;
   const before = Math.min(def.hp, p.dmg);
   const after = Math.min(def.hp, Math.round((before + power) * 1e9) / 1e9);

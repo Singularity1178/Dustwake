@@ -17,6 +17,8 @@ import type { Area } from "../world/area";
 import { beginTask, faceTo, strikePoint } from "./tasks";
 import { actorDef, capable } from "../content/actors";
 import { buildRows, scanSpec } from "./analysis";
+import { DIG_SITES, digLayerAt } from "../content/digging";
+import { digRules } from "./digging";
 
 export interface Interactable extends Target {
   r: number;
@@ -48,6 +50,9 @@ function deriveInteractables(area: Area): Interactable[] {
     }
     // Standing trees, rocks and logs are not interactables (so not in the golem's vision either): they are harvested by slamming near them (sim/tasks.ts, op "slam").
     if (HARVEST[p.kind] && !p.taken) continue;
+    // A dig site (the buried stair) is dug with E until it is through; open, it is only walked into (sim/portals.ts).
+    const dig = DIG_SITES[p.kind];
+    if (dig) { if (!p.open && digLayerAt(dig, p.dmg)) I.push({ kind: "dig", x: p.x, y: p.y + dig.dy, r: dig.reach, propId: p.id }); continue; }
     if (def.storage) { I.push({ kind: "storage", x: p.x, y: p.y + 2, r: propReach(p.kind) + 2, propId: p.id }); continue; }
     // A station is used once nothing rests on it: the dungeon workbench hands over its chisel first (the tutorial
     // needs that), then works as a bench. Built benches carry no item, so they are stations straight away.
@@ -158,6 +163,7 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
     if (!filled && a.inventory.some((s) => s && isGlyph(s.item))) return { ui: "selectGlyph", socket: it.socket! };
     rules = filled ? RULES.socketFilled : RULES.socketEmpty;
   }
+  if (it.kind === "dig") { const key = digRules(area, it.propId); rules = key ? RULES[key] : []; }
   let first = false;
   if (it.kind === "rune") {
     const node = runeAt(area.id, it.propId!);

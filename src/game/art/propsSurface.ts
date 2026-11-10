@@ -68,6 +68,21 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       blob(17, 18, 10); blob(10, 22, 7); blob(24, 22, 7); blob(13, 11, 7); blob(22, 12, 6);
     });
   },
+  // A rock veined with iron: rust-red seams through the stone, a few bright specks where it is richest.
+  ironore: (v, alt, M) => {
+    if (alt) return M(18, 8, (p, r) => { for (let i = 0; i < 5; i++) { const x = (r() * 14) | 0, y = 2 + ((r() * 5) | 0); p.r(x, y, 3, 2, S.m); p.p(x, y, i % 2 ? "#a8623a" : S.h); } });
+    return M(22, 18, (p, r) => {
+      p.r(2, 15, 18, 3, "rgba(0,0,0,0.35)");
+      stoneBlob(p, 1, 4 + (v & 1), 20, 13, r);
+      stoneBlob(p, 8 - (v % 3) * 2, 1, 10, 8, r);
+      for (let k = 0; k < 4; k++) {
+        let x = 5 + ((r() * 9) | 0), y = 6 + ((r() * 4) | 0);
+        for (let s = 0; s < 4; s++) { p.p(x, y, s === 1 ? "#c8783e" : "#8e4a2a"); if (r() < 0.7) x++; if (r() < 0.6) y++; }
+      }
+      p.p(7, 9, "#e0a060"); p.p(13, 7, "#e0a060"); p.p(11, 12, "#e0a060"); p.p(5, 3 + (v % 3), "#8e4a2a");
+      tufts(p, r, 1, 17, 20, 3);
+    });
+  },
   rock: (v, alt, M) => {
     if (alt) return M(18, 8, (p, r) => { for (let i = 0; i < 5; i++) { const x = (r() * 14) | 0, y = 2 + ((r() * 5) | 0); p.r(x, y, 3, 2, S.m); p.p(x, y, S.h); } });
     return M(22, 18, (p, r) => {
@@ -91,17 +106,73 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
   }),
   // The buried surface gate: no arch, no opening. A low grassy swell where the
   // arch top lies, with one weathered lintel corner just breaking the turf.
-  buriedgate: (_v, _alt, M) => M(44, 14, (p, r) => {
-    for (let y = 0; y < 14; y++) for (let x = 0; x < 44; x++) {
-      const dx = (x - 22) / 22, dy = (y - 8) / 6, v = dx * dx + dy * dy;
-      if (v > 1 || r() < v * 0.5) continue;
-      if (dy > 0.45) { if ((x + y) & 1) p.p(x, y, "rgba(8,10,6,0.22)"); }
-      else if (dy < -0.3 && r() < 0.5) p.p(x, y, "rgba(255,236,190,0.08)");
+  // The head of the old stair, by how far it has been dug (the variant is its dig stage, content/digging.ts):
+  // 0 buried: a square-cut sunken patch, kerb stones through the grass, a ward glyph cut in the lintel, dark;
+  // 1-2 the turf cut and the earth going down; 3-4 the fallen vault laid bare, then broken through;
+  // 5 open: stone steps going down to the north, into the dark under the lintel, and the glyph alight.
+  buriedgate: (v, _alt, M) => M(72, 58, (p, r) => {
+    const X0 = 6, X1 = 66, Y0 = 14, Y1 = 58, EARTH = ["#33261a", "#3e2e20", "#4e3c2a", "#5a4630"];
+    const fill = (y0: number, y1: number, base: string, a: string, b: string) => {
+      p.r(X0, y0, X1 - X0, y1 - y0, base);
+      for (let i = 0; i < (y1 - y0) * 5; i++) p.p(X0 + ((r() * (X1 - X0)) | 0), y0 + ((r() * (y1 - y0)) | 0), r() < 0.5 ? a : b);
+    };
+    const kerb = (show: number) => {
+      for (let x = 4; x < 68; x += 8) if (x === 28 || x === 36 || r() < show) { p.o(x, 9, 8, 5, "#7a7268", "#141016"); p.r(x + 1, 10, 6, 1, "#9a9288"); p.p(x + 6, 12, "#5a544c"); if (v < 3 && r() < 0.6) p.r(x + 1, 9, 2 + ((r() * 4) | 0), 1, MOSS[1]); }
+      for (let y = 14; y < 58; y += 8) for (const x of [2, 66]) if (r() < show) { p.o(x, y, 4, 8, "#6a645c", "#141016"); p.r(x + 1, y + 1, 1, 6, "#8a8278"); if (v < 3 && r() < 0.5) p.p(x + 1, y, MOSS[2]); }
+    };
+    if (v === 0) {
+      // square, not round: straight sunken edges and a faint settling of the turf between them
+      for (let x = X0; x < X1; x++) for (const y of [Y0, Y1 - 1]) if ((x + y) & 1 && r() < 0.6) p.p(x, y, "rgba(8,10,6,0.22)");
+      for (let y = Y0; y < Y1; y++) for (const x of [X0, X1 - 1]) if ((x + y) & 1 && r() < 0.6) p.p(x, y, "rgba(8,10,6,0.22)");
+      for (let i = 0; i < 90; i++) p.p(X0 + 1 + ((r() * 58) | 0), Y0 + 1 + ((r() * 42) | 0), "rgba(8,10,6,0.12)");
+      for (let x = X0 + 1; x < X1 - 1; x += 2) if (r() < 0.5) p.p(x, Y0 + 1, "rgba(255,236,190,0.07)");
+      kerb(0.3);
+      tufts(p, r, 8, 16, 20, 6); tufts(p, r, 40, 30, 22, 6); tufts(p, r, 14, 50, 40, 8);
+    } else if (v <= 2) {
+      // the turf cut back and the earth going down: the far wall of the pit shows its strata
+      fill(Y0, Y1, EARTH[v === 1 ? 2 : 1], EARTH[3], EARTH[0]);
+      const wall = v === 1 ? 3 : 8;
+      p.r(X0, Y0, X1 - X0, wall, EARTH[2]); p.r(X0, Y0, X1 - X0, 1, "#241a12");
+      for (let y = Y0 + 2; y < Y0 + wall; y += 2) for (let x = X0; x < X1; x++) if (r() < 0.55) p.p(x, y, EARTH[3]);
+      p.r(X0, Y0 + wall, X1 - X0, 1, "#241a12");
+      if (v === 2) { p.r(X0, Y0 + wall, 3, Y1 - Y0 - wall, "rgba(0,0,0,0.28)"); p.r(X1 - 3, Y0 + wall, 3, Y1 - Y0 - wall, "rgba(0,0,0,0.28)"); for (const [x, y] of [[20, 40], [44, 33], [52, 48]] as [number, number][]) { p.r(x, y, 3, 2, S.m); p.p(x, y, S.h); } }
+      for (let x = X0; x < X1; x++) if (r() < 0.5) p.p(x, Y1 - 1, MOSS[(r() * 3) | 0]);
+      kerb(v === 1 ? 0.6 : 0.85);
+    } else if (v <= 4) {
+      // the vault that fell into the stairwell: slabs of dressed stone, earth in the joints; then broken through
+      fill(Y0, Y1, EARTH[0], EARTH[1], "#241a12");
+      p.r(X0, Y0, X1 - X0, 9, EARTH[1]); for (let x = X0; x < X1; x++) if (r() < 0.5) p.p(x, Y0 + 2 + ((r() * 6) | 0), EARTH[2]);
+      p.r(X0, Y0, X1 - X0, 1, "#241a12"); p.r(X0, Y0 + 9, X1 - X0, 1, "#141016");
+      for (let row = 0, by = Y0 + 10; by < Y1 - 2; row++, by += 7) for (let bx = X0 + (row & 1 ? -5 : 0); bx < X1; bx += 12) {
+        const x0 = Math.max(X0, bx), x1 = Math.min(X1, bx + 11), h = Math.min(6, Y1 - by);
+        if (x1 - x0 < 3) continue;
+        if (v === 4 && r() < 0.45) { p.r(x0, by, x1 - x0, h, "#07060a"); p.p(x0 + 1, by + h - 1, S.d); continue; }
+        p.o(x0, by, x1 - x0, h, r() < 0.5 ? S.m : S.l, S.o); p.r(x0 + 1, by + 1, x1 - x0 - 2, 1, S.h);
+        if (v === 4) p.line(x0 + 2, by + 1, x0 + 5, by + h - 1, S.o);
+      }
+      kerb(1);
+    } else {
+      // open: the dark under the lintel, the side walls, and the steps going down away to the north
+      p.r(X0, Y0, X1 - X0, Y1 - Y0, "#050408");
+      p.r(X0, Y0, 4, Y1 - Y0, S.d); p.r(X1 - 4, Y0, 4, Y1 - Y0, S.d);
+      for (let y = Y0; y < Y1; y++) { const k = (y - Y0) / (Y1 - Y0); if (k > 0.25) { p.p(X0 + 3, y, k > 0.6 ? S.l : S.m); p.p(X1 - 4, y, "#1c1820"); } if (((y - Y0) % 8) === 7) { p.r(X0, y, 3, 1, S.o); p.r(X1 - 3, y, 3, 1, S.o); } }
+      const far = [28, 26, 34], near = [146, 139, 154];
+      for (let i = 0; i < 9; i++) {
+        const y0 = 22 + i * 4, k = i / 8, inset = Math.floor((8 - i) / 3), x0 = X0 + 4 + inset, w = X1 - X0 - 8 - inset * 2;
+        const c = far.map((f, j) => Math.round(f + (near[j] - f) * k * k));
+        p.r(x0, y0, w, 1, "#08070c");
+        p.r(x0, y0 + 1, w, 3, `rgb(${c[0]},${c[1]},${c[2]})`);
+        p.r(x0, y0 + 1, w, 1, `rgb(${Math.min(255, c[0] + 22)},${Math.min(255, c[1] + 22)},${Math.min(255, c[2] + 24)})`);
+        for (let n = 0; n < 4; n++) p.p(x0 + ((r() * w) | 0), y0 + 2 + ((r() * 2) | 0), `rgb(${c[0] - 12},${c[1] - 12},${c[2] - 12})`);
+      }
+      for (const [x, y] of [[18, 51], [47, 47], [33, 55]] as [number, number][]) { p.r(x, y, 2, 1, EARTH[2]); p.p(x, y, EARTH[3]); }
+      kerb(1);
+      p.r(X0, Y0, X1 - X0, 1, "#141016");
     }
-    // lintel corner: a squared, moss-capped block edge, mostly sunk
-    p.r(27, 6, 7, 3, "#141016"); p.r(28, 6, 5, 2, "#7a7268"); p.r(28, 6, 5, 1, "#9a9288"); p.p(32, 7, "#5a544c");
-    p.r(28, 5, 3, 1, MOSS[1]); p.p(31, 5, MOSS[2]); p.p(27, 7, MOSS[0]);
-    tufts(p, r, 26, 9, 9, 4); tufts(p, r, 8, 9, 14, 5); tufts(p, r, 33, 8, 6, 3);
+    // the ward glyph cut in the lintel: what is left of the upper hall's magic. Dark while the stair lies buried
+    // (nothing up here glows but the rune); it wakes when the stair is open.
+    for (const [x, y] of [[34, 10], [37, 10], [35, 11], [36, 11], [34, 12], [37, 12]] as [number, number][]) { if (v >= 5) p.gp(x, y, "#d8c4ff"); else p.p(x, y, "#4a4458"); }
+    if (v >= 5) { p.gp(32, 11, "#8a6ae0"); p.gp(39, 11, "#8a6ae0"); }
   }),
   // ---------- surface overgrowth
   bush: (v, _alt, M) => M(22, 17, (p, r) => {

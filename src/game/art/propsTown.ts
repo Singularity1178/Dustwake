@@ -51,6 +51,27 @@ function device(p: Pen, v: number, ox: number, oy: number) {
 }
 
 export const TOWN_PROP_ART: Record<string, PropArt> = {
+  // A full weapon rack and a dressed armour stand, as the halls' own once looked (theirs are ruins now: art/propsDungeon.ts).
+  shoprack: (_v, _alt, M) => {
+    return M(24, 22, (p) => {
+      p.r(1, 2, 2, 20, WD.o); p.r(21, 2, 2, 20, WD.o);
+      p.r(0, 4, 24, 2, WD.m); p.r(0, 15, 24, 2, WD.m); p.r(0, 4, 24, 1, WD.l);
+      p.r(6, 0, 1, 20, WD.l); p.r(5, 0, 3, 3, IR.l); p.p(6, 0, IR.h);
+      p.r(16, 3, 1, 17, WD.l); p.r(15, 2, 3, 2, "#6a4a3a");
+      p.line(10, 6, 13, 19, IR.d);
+    });
+  },
+  shopstand: (v, _alt, M) => {
+    if (v === 1)
+      return M(18, 10, (p) => {
+        p.r(1, 6, 14, 2, WD.m); p.r(1, 6, 14, 1, WD.l);
+        p.o(11, 1, 7, 6, IR.m, IR.d); p.r(12, 3, 5, 1, "#101010");
+      });
+    return M(12, 22, (p) => {
+      p.r(5, 6, 2, 14, WD.m); p.r(1, 9, 10, 2, WD.m); p.r(2, 20, 8, 2, WD.d);
+      p.o(3, 0, 6, 7, IR.m, IR.d); p.r(4, 3, 4, 1, "#101010"); p.p(4, 1, IR.h);
+    });
+  },
   // ---------- light runes
   rune_lamp: (_v, _alt, M) => M(14, 36, (p) => {
     sh(p, 2, 33, 10);

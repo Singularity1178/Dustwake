@@ -35,21 +35,20 @@ const SEALED = ["THIS RUNE SLOT IS SEALED.", "SOMETHING WILL OPEN IT", "LATER."]
  *
  * Which side is which: the golem's LEFT arm is the damaged one, the broken stub
  * the iron arm replaces (golem.ts draws it on screen-right facing down); its
- * RIGHT arm is the sound stone one. The right arm is usable now. The left arm
- * is locked by its own flag, NOT by `golem.arm`: the iron arm stays what it
- * always was (an installed body part that sets `golem.arm`, never a slot item),
- * and the slot opens when a proper arm exists to take fittings.
+ * RIGHT arm is the sound stone one. The right arm is usable from the start.
+ * The left arm slot opens once there is an arm there to take fittings: the
+ * iron arm (`golem.arm`: still an installed body part, never a slot item), or
+ * the slot's own upgrade flag (`golem.slot.armL`, what the debug kit sets).
+ * Nothing is stored for it: the slot is usable exactly while either holds.
  */
 export const GEAR_SLOT_DEFS: readonly GearSlotDef[] = [
   { id: "head", kind: "head", name: "HELM", hint: ["A BARE HEAD.", "A HELM WOULD FIT HERE."] },
   { id: "back", kind: "back", name: "BACK", hint: ["NOTHING ON YOUR BACK.", "WEAR A BASKET FROM THE PACK."] },
-  { id: "armR", kind: "arm", name: "R ARM", hint: ["THE SOUND STONE ARM.", "FITTINGS FOR AN ARM GO HERE."] },
+  { id: "armR", kind: "arm", name: "R ARM", hint: ["THE SOUND STONE ARM.", "A TOOL HEAD FITS HERE."] },
   {
-    id: "armL", kind: "arm", name: "L ARM", unlock: { actorFlags: [FLAGS.slotArmLeft] },
-    locked: [
-      { when: { actorFlags: [FLAGS.golemArm] }, text: ["THE IRON ARM IS BOLTED ON.", "IT TAKES NO FITTINGS YET."] },
-      { text: ["A BROKEN STUB. NOTHING CAN", "BE FITTED TO IT YET."] },
-    ],
+    id: "armL", kind: "arm", name: "L ARM", hint: ["THE IRON ARM.", "FITTINGS FOR AN ARM GO HERE."],
+    unlock: { any: [{ actorFlags: [FLAGS.golemArm] }, { actorFlags: [FLAGS.slotArmLeft] }] },
+    locked: [{ text: ["A BROKEN STUB. NOTHING CAN", "BE FITTED UNTIL THERE IS AN", "ARM HERE."] }],
   },
   { id: "core", kind: "core", name: "CORE", hint: ["A MOUNT BESIDE THE CORE.", "FOR ATTACHMENTS TO IT, NOT", "THE AETHER CORE ITSELF."] },
   { id: "rune0", kind: "rune", name: "RUNE 1", hint: ["AN OPEN RUNE SLOT.", "WEAR A RUNE FROM THE PACK."] },

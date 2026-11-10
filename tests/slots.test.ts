@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
 installFakeCanvas();
-import { clearFlag, player, currentArea, setFlag, type World } from "../src/game/world/world";
+import { clearFlag, hasFlag, player, currentArea, setFlag, type World } from "../src/game/world/world";
 import { serialize, deserialize } from "../src/game/world/save";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
 import { wearFromSlot, takeOffGear } from "../src/game/sim/commands";
@@ -44,19 +44,22 @@ test("the golem has every slot; the sound arm, the helm, the core mount, the bac
   }
 });
 
-test("which arm: the right arm is the sound one and usable; the left (the broken stub, which the iron arm replaces) is locked by its own flag, not by golem.arm", () => {
+test("which arm: the right arm is the sound one and usable; the left (the broken stub) opens once the iron arm is on it, or by its own flag", () => {
   const { w, pl } = fresh();
   assert.ok(slotUsable(w, pl, "armR") && !slotUsable(w, pl, "armL"));
-  const before = lockedText(w, pl, slotDef("armL")).join(" ");
-  setFlag(w, FLAGS.golemArm);
-  assert.ok(!slotUsable(w, pl, "armL"), "the iron arm is a body part, not a slot item: it does not open the slot");
-  const after = lockedText(w, pl, slotDef("armL")).join(" ");
-  assert.notEqual(before, after);
-  assert.match(after, /IRON ARM/);
+  assert.match(lockedText(w, pl, slotDef("armL")).join(" "), /BROKEN STUB/);
+  // the iron arm stays an installed body part (an equip flag, never a slot item), and now takes fittings
   assert.equal(ITEMS.arm.wear, undefined, "the iron arm stays an equip flag");
   assert.ok(ITEMS.arm.equip);
+  setFlag(w, FLAGS.golemArm);
+  assert.ok(slotUsable(w, pl, "armL"), "the iron arm opens the left arm slot");
+  assert.ok(!hasFlag(w, FLAGS.slotArmLeft), "nothing is stored for it: the slot follows the arm");
+  clearFlag(w, FLAGS.golemArm);
+  assert.ok(!slotUsable(w, pl, "armL"), "and shuts again without it");
+  // the slot's own upgrade flag still opens it by itself (the debug kit; a proper arm later)
   setFlag(w, FLAGS.slotArmLeft);
   assert.ok(slotUsable(w, pl, "armL"));
+  assert.equal(slotUnlockFlags(pl).includes(FLAGS.slotArmLeft), true, "the debug kit still knows which flag opens it");
 });
 
 test("the aether core is not slot-aware: it can't be worn, stays in the pack, and the core attachment slot is a separate mount", () => {

@@ -2,6 +2,7 @@
 // build placement. Pure sim.
 import { TS, isSolidT } from "../content/tiles";
 import { HARVEST } from "../content/harvest";
+import { propDef } from "../content/props";
 import type { Area, PropInst } from "../world/area";
 import type { Actor, World } from "../world/world";
 import { actorDef } from "../content/actors";
@@ -25,7 +26,7 @@ export function actorBoxes(w: World, areaId: string, except?: string): Box[] {
 }
 
 /** Does this prop currently block movement / placement? */
-export const propBlocks = (p: PropInst) => !!p.box && !(p.taken && HARVEST[p.kind]?.clearBox);
+export const propBlocks = (p: PropInst) => !!p.box && !(p.taken && HARVEST[p.kind]?.clearBox) && !(propDef(p.kind).openBox && !p.open);
 
 /** Is a golem-sized box (10x5 px, feet at x,y) free of solid tiles, props and the given actor bodies? */
 export function boxFree(area: Area, x: number, y: number, bodies: readonly Box[] = [], size: readonly [number, number] = [10, 5]) {

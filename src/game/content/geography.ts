@@ -11,11 +11,39 @@ export const dungeonToSurface = (x: number, y: number) => ({ x: x + DUNGEON_TO_S
 export const surfaceToDungeon = (x: number, y: number) => ({ x: x - DUNGEON_TO_SURFACE.dx, y: y - DUNGEON_TO_SURFACE.dy });
 
 /**
- * The old SURFACE GATE, in dungeon tiles: the south corridor out of the
- * Vestibule (now choked with rock) and the exit tile marked on the schematic.
+ * The way up to the surface, in dungeon tiles: the south corridor out of the
+ * Vestibule (choked with rock until it is dug out from above) and the exit tile
+ * marked on the schematic. It was first called the surface gate, and the names
+ * keep that; it is a stair (GATE_STAIR below).
  */
 export const GATE_CORRIDOR = { x: 34, y: 50, w: 4, h: 5 } as const;
 export const GATE_EXIT = { x: 36, y: 55 } as const;
+
+/**
+ * The stair itself, in dungeon tiles: the corridor plus the exit row. The halls
+ * are the first cellar floor; this flight climbs south to the surface. It is
+ * choked with earth and fallen vault until it is dug out from above.
+ */
+export const GATE_STAIR = { x: GATE_CORRIDOR.x, y: GATE_CORRIDOR.y, w: GATE_CORRIDOR.w, h: GATE_CORRIDOR.h + 1 } as const;
+
+/**
+ * Entrances: a way between two areas that has to be opened first (dug out). One
+ * world flag says it is open; both portals read it, and opening clears the
+ * lower end (sim/digging.ts: openEntrance). `above` is the dig site's prop,
+ * `below` what the fall filled.
+ */
+export interface EntranceDef {
+  flag: string;
+  above: { area: string; portal: string };
+  below: { area: string; portal: string; /** Tiles (rect) that become open floor. */ clear: { x: number; y: number; w: number; h: number }; /** Prop kinds standing in that rect that go with the fall. */ removes: readonly string[]; /** A prop lit once the way is open (daylight down the stair). */ lights?: string };
+}
+export const ENTRANCES: Record<string, EntranceDef> = {
+  surface_stair: {
+    flag: "entrance.surface_stair.open",
+    above: { area: "surface", portal: "stair_down" },
+    below: { area: "dungeon", portal: "stair_up", clear: GATE_STAIR, removes: ["rockpile", "stairfall"], lights: "stairlight" },
+  },
+};
 
 /** The same entrance in surface tiles (where the arch lies buried). */
 export const SURFACE_GATE = dungeonToSurface(GATE_EXIT.x, GATE_EXIT.y);

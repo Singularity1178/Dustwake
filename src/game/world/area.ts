@@ -84,7 +84,8 @@ export class Area {
   }
 
   private instProp(p: PropDef, dyn = false): PropInst {
-    const bx = propDef(p.kind).box;
+    // (`openBox`: a footprint that only blocks once the prop is open; sim/collision.ts: propBlocks decides)
+    const bx = propDef(p.kind).box ?? propDef(p.kind).openBox;
     const inst: PropInst = { ...p, open: !!p.open, taken: false, dmg: 0, box: bx ? [p.x - bx[0] / 2, p.y - bx[1], p.x + bx[0] / 2, p.y] : null };
     const storage = propDef(p.kind).storage;
     if (storage) {

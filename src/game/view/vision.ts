@@ -17,6 +17,7 @@
 //
 // Holograms are cached per (sprite composite, category, state); NPCs, whose
 // art is procedural and animated, are re-traced each frame (there are few).
+import { propLook } from "../content/digging";
 import { VISION_CATEGORIES, SCAN_DURATION, type Highlight, type HoloEffect } from "../content/vision";
 import { TASK_KINDS } from "../content/tasks";
 import { TS } from "../content/tiles";
@@ -93,7 +94,7 @@ function stampsFor(t: VisionTarget, w: World, area: Area, art: VisionArt): Stamp
     const def = propDef(p.kind);
     if (def.rune) return { list: art.circle.lines.map((src) => ({ src, x: p.x - art.circle.r, y: p.y - art.circle.r })), dynamic: false };
     const alt = def.alt === "lit" ? !!p.lit : def.alt === "taken" ? p.taken : p.open;
-    const s = propSprite(p.kind, p.v, alt);
+    const s = propSprite(p.kind, propLook(p), alt);
     if (!s) return null;
     const list: Stamp[] = [{ src: s.a, x: Math.round(p.x - s.ax), y: Math.round(p.y - s.ay) }];
     if (p.item && !p.container && !p.taken && ITEMS[p.item].showOnProp !== false) {

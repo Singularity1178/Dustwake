@@ -73,6 +73,11 @@ export interface Recipe {
    * or deconstructable (AUTHORED_SALVAGE follows `prop` alone).
    */
   learnFrom?: { kind: string; name: string }[];
+  /**
+   * A knowledge flag that reading this plan also grants (a scan, or taking the
+   * thing apart): the golem works out how a smelter is used by studying one.
+   */
+  teaches?: string;
   /** How the entry is shown while `requires` isn't met. Default "locked". */
   unknown?: "locked" | "hidden";
   /** Placement rule. Default "floor". */
@@ -108,6 +113,17 @@ export const RECIPES: Record<string, Recipe> = {
     name: "CRAFTING BENCH", category: "craft", order: 0, prop: "workbench", dur: 1.4,
     desc: ["A STURDY BENCH TO WORK AT.", "USE IT TO OPEN THE CRAFTING", "PLANS. TAKES THREE TILES."],
     cost: [{ item: "wood", n: 6 }, { item: "stone", n: 2 }], requires: KNOW_BUILD, analysis: "craftbench",
+  },
+  smelter: {
+    // Builds the artificery's own `forge` prop (same sprite, same station). Stone only: iron comes out of it.
+    name: "SMELTER", category: "craft", order: 1, prop: "forge", dur: 1.6,
+    desc: ["A STONE FURNACE. MELTS ORE", "INTO INGOTS OVER A WOOD FIRE.", "TAKES THREE TILES."],
+    cost: [{ item: "cut_stone", n: 6 }, { item: "stone", n: 4 }], requires: KNOW_BUILD, analysis: "smelter", teaches: FLAGS.knowSmelt,
+  },
+  anvil: {
+    name: "ANVIL", category: "craft", order: 2, prop: "anvil", dur: 1.2,
+    desc: ["AN IRON ANVIL ON AN OAK BLOCK.", "FORGE, REPAIR AND TEMPER TOOLS", "AND SET RUNES IN THEM."],
+    cost: [{ item: "iron_ingot", n: 5 }, { item: "wood", n: 2 }], requires: KNOW_BUILD, analysis: "anvil",
   },
   barricade: {
     name: "BARRICADE", category: "defense", order: 0, prop: "barricade", dur: 1.0,

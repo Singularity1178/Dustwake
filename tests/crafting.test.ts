@@ -42,7 +42,9 @@ function atBench() {
 test("crafting data: planks and cut stone from raw materials, two runes carved from cut stone with the chisel as a tool", () => {
   const by = Object.fromEntries(CRAFT_RECIPES.map((r) => [r.id, r]));
   // (plus the ruby chain and the inverse rows promoted from the foundation fixture: tests/rollout.test.ts)
-  assert.deepEqual(Object.keys(by).sort(), ["cut_stone", "planks", "ruby_core", "rune_glow", "rune_swift", "unmake_crown", "unmake_rune_glow", "unmake_rune_swift"]);
+  // (and the hafted tools; the smelter's and the anvil's rows are tests/smithing.test.ts)
+  assert.deepEqual(Object.keys(by).filter((id) => by[id].station === "crafting").sort(),
+    ["axe", "axe_fine", "cut_stone", "pickaxe", "pickaxe_fine", "planks", "ruby_core", "rune_glow", "rune_swift", "shovel", "shovel_fine", "unmake_crown", "unmake_rune_glow", "unmake_rune_swift"]);
   assert.deepEqual(by.planks.inputs.map((c) => c.item), ["wood"]); assert.equal(by.planks.output.item, "planks");
   assert.deepEqual(by.cut_stone.inputs.map((c) => c.item), ["stone"]); assert.equal(by.cut_stone.output.item, "cut_stone");
   for (const id of ["rune_swift", "rune_glow"]) {
@@ -223,7 +225,7 @@ test("build menu: cost lines, the can-build filter and the cost sort handle craf
   // search finds buildables by crafted material names
   const hits = (s: string) => list.filter((e) => matchesSearch(e, s)).map((e) => e.id).sort();
   assert.deepEqual(hits("planks"), ["chair", "storage_chest", "table", "wall_banner"]);
-  assert.deepEqual(hits("cut stone"), ["brazier", "wall_banner", "wall_torch"]);
+  assert.deepEqual(hits("cut stone"), ["brazier", "smelter", "wall_banner", "wall_torch"]);
   // the cost sort weighs a crafted unit by what it costs to make (planks 2/3 of a wood, cut stone 1.5 stone)
   assert.equal(rawValue("planks"), 2 / 3); assert.equal(rawValue("cut_stone"), 1.5); assert.equal(rawValue("wood"), 1);
   assert.equal(costTotal(RECIPES.chair), 1.33); assert.equal(costTotal(RECIPES.table), 2.67);
@@ -257,7 +259,7 @@ test("v8 -> v9: pending build work for a rebalanced recipe is dropped (nothing w
   s.actors[0].task = task("table");
   s.actors[0].queue = [task("torch_post"), task("wall_banner"), task("craftbench")];
   const m: any = migrate(s);
-  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 13); // v13: the calendar clock (tests/daycycle.test.ts)
+  assert.equal(m.version, SAVE_VERSION); assert.equal(SAVE_VERSION, 14); // v14: the entrance (tests/entrance.test.ts)
   assert.equal(m.actors[0].task, null);
   assert.deepEqual(m.actors[0].queue.map((t: any) => t.effect.recipe), ["torch_post", "craftbench"]);
   // the migrated save loads, and nothing the golem carries changed

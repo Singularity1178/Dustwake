@@ -28,6 +28,7 @@ import { actorMessage } from "./messages";
 import { lineOfSight } from "./navigation";
 import { think } from "./monologue";
 import { applySlotCore, canManage } from "./power";
+import { applyDig } from "./digging";
 
 /** Vision mode ends by itself when work starts that takes the golem's attention elsewhere (talking, rune travel, stations...). */
 function endScanFor(a: Actor, spec: TaskSpec) {
@@ -310,6 +311,8 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       if (!p || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
       return harvestProp(w, a, area, p);
     }
+    case "dig":
+      return applyDig(w, a, area, target);
     case "regrow":
       area.setPropState(e.prop, { taken: false, dmg: 0 });
       break;

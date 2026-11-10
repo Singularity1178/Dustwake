@@ -39,7 +39,14 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 //     mass now: tiles 46-48,9-12), and tiles 32-33,48-50 and 38,48-50, where three root decals at the SURFACE
 //     GATE were moved off the top of the south wall. The 667 other decals are where they were: the throne
 //     hall's pillars were re-spaced without disturbing the scatter (map.ts).
-const GOLDEN = { props: "4dffe010", items: "7dcab441", bake: "21fe34d" };
+// The entrance update (v14) redrew the artificery's smelter and anvil and the armory's rack and stand, and laid
+// the stair up to the surface. Checked against the tree as it was, sprite by sprite and pixel by pixel:
+//   props (was "4dffe010"): of the legacy sprites only `forge`, `anvil`, `weaponrack` and `armorstand` differ
+//     (the town keeps the old rack and stand as `shoprack` / `shopstand`).
+//   bake (was "21fe34d"): 35 tiles differ, all meant to: the stair (tiles 34-37,50-55 and the two wall tiles
+//     beside its last row: steps under the fall, where there was earth and wall) and the six decals added to the
+//     two rooms (scorch 5-6,40-41; chalk and paper 6,8,9,44; fallen weapons 65,8 and 63,9).
+const GOLDEN = { props: "e200e828", items: "7dcab441", bake: "d198b0dd" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();

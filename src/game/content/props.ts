@@ -4,6 +4,7 @@
 
 import { SIGNS } from "./town";
 import type { LightHabit } from "./daycycle";
+import type { StationId } from "./crafting";
 
 export interface PropLightDef {
   dx: number; dy: number; rad: number; col: [number, number, number]; int: number; flick: number;
@@ -18,6 +19,8 @@ export interface PropKindDef {
   art?: string;
   /** Collision footprint [w, h], centred on x, ending at y. */
   box?: [number, number];
+  /** A footprint that only blocks while the prop is open: a stairwell is flat ground until it is dug out, then a hole. */
+  openBox?: [number, number];
   /** Sorted just in front of the wall it hangs on. */
   wallMounted?: boolean;
   /** Which state selects the alternate sprite. Default "open". */
@@ -45,7 +48,7 @@ export interface PropKindDef {
    * A work station: interacting runs the `station` rule, whose `useStation`
    * effect asks presentation to open this UI (see content/crafting.ts).
    */
-  station?: "crafting";
+  station?: StationId;
   /** Trails smoke (presentation only): a chimney pot. `z` is the height it leaves at, `rate` puffs per second. */
   smoke?: { dx: number; z: number; rate: number };
 }
@@ -104,6 +107,9 @@ const TOWN_PROPS: Record<string, PropKindDef> = {
   bannerpole: { box: [4, 3], sway: true },
   /** A town tree: the surface's tree to look at, but nobody's timber (not harvestable). */
   towntree: { box: [10, 6], art: "tree", sway: true },
+  // ---- what the town shares with the halls only by sight. The halls' anvil is a working station and their racks
+  // and stands are what an age left of them; the town's are whole, and nobody's to use yet (the town is appearance only).
+  townanvil: { box: [14, 6], art: "anvil" }, shoprack: { box: [24, 6] }, shopstand: { box: [10, 5] },
   // ---- shop fittings (interiors)
   counter: { box: [46, 9] }, bar: { box: [78, 10] }, goodshelf: { wallMounted: true }, displaycase: { box: [14, 7] },
   mannequin: { box: [10, 5] }, clothrack: { box: [28, 6] }, loom: { box: [28, 9] }, mirror: { wallMounted: true }, screen: { box: [24, 5] },
@@ -127,7 +133,27 @@ export const PROPS: Record<string, PropKindDef> = {
   throne: { box: [30, 14] }, maptable: { box: [28, 10], alt: "taken" }, altar: { box: [30, 10] }, pew: { box: [36, 6] },
   // The workbench is the crafting station: the dungeon's authored one and the buildable CRAFTING BENCH are the same prop.
   // While something rests on it (the dungeon's chisel) taking that comes first; see deriveInteractables.
-  workbench: { box: [32, 10], itemDx: -6, station: "crafting" }, forge: { box: [32, 12] }, anvil: { box: [14, 6] }, cradle: { box: [28, 5] },
+  workbench: { box: [32, 10], itemDx: -6, station: "crafting" }, cradle: { box: [28, 5] },
+  // The smelter (kind `forge`, the id it has always had) and the anvil: stations with their own screens. Both can be
+  // read with golem vision and built (content/build.ts); reading the smelter also teaches smelting.
+  forge: { box: [32, 12], station: "smelting" }, anvil: { box: [14, 6], station: "smithing" },
+  // ---- the artificery: where tools, runes and golems were made
+  toolboard: { wallMounted: true, examine: "A TOOL BOARD. PAINTED OUTLINES SHOW WHAT HUNG HERE: TONGS, HAMMERS, A SHOVEL, A PICK. ONLY THE OUTLINES AND A FEW RUSTED SCRAPS ARE LEFT." },
+  runetable: {
+    box: [28, 10], light: { dx: 2, dy: -12, rad: 34, col: [0.6, 0.45, 1], int: 0.4, flick: 0.05, when: "always" },
+    examine: "A RUNE-CUTTER'S TABLE. A HALF-CUT RUNE STONE STILL GLOWS FAINTLY IN ITS CLAMP. WHOEVER WORKED HERE MEANT TO COME BACK.",
+  },
+  clayvat: { box: [14, 7], examine: "A VAT OF SLIP CLAY, DRIED TO A CRACKED CAKE. WORKER BODIES WERE CAST FROM THIS." },
+  husk: { box: [10, 5], examine: "AN UNFINISHED WORKER BODY ON ITS STAND. NO CORE WAS EVER SET IN IT, AND THE CLAY HAS SPLIT." },
+  // ---- the armory: what time left of it
+  staffrack: { box: [20, 6], examine: "A RACK FOR STAVES. MOST OF ITS SOCKETS ARE EMPTY. ONE STAFF IS LEFT, ITS STONE DEAD AND GREY." },
+  wallhooks: { wallMounted: true, examine: "IRON PEGS, AND PALE SHAPES ON THE STONE WHERE BLADES AND SHIELDS HUNG FOR AN AGE." },
+  armorpile: { box: [14, 6], examine: "PLATE AND MAIL, RUSTED INTO ONE LUMP. IT CRUMBLES WHERE YOU TOUCH IT." },
+  // ---- the stair up to the surface (content/geography.ts: GATE_STAIR). Its foot stands in the Vestibule; the fall
+  // that chokes it goes when the stair is dug out from above, and daylight comes down it from then on.
+  stairfoot: { flat: true },
+  stairfall: { flat: true, examine: "A STAIR CLIMBS SOUTH FROM HERE TO THE SURFACE. EARTH AND FALLEN VAULT CHOKE IT TO THE ROOF. IT CAN ONLY BE CLEARED FROM ABOVE." },
+  stairlight: { flat: true, alt: "lit", light: { dx: 0, dy: 0, rad: 120, col: [0.55, 0.68, 1], int: 0.9, flick: 0.02, when: "lit" } },
   slab: { box: [36, 10] }, hearth: { box: [36, 10] }, longtable: { box: [50, 10] }, bench: { box: [44, 4] },
   chest: { box: [16, 8] }, pot: { box: [10, 6] }, fountain: { box: [32, 14] }, pedestal: { box: [10, 5] },
   storage_chest: { box: [14, 8], storage: { slots: 32 }, art: "chest" },
@@ -147,6 +173,8 @@ export const PROPS: Record<string, PropKindDef> = {
   // ---- surface
   tree: { box: [10, 6], alt: "taken", sway: true },
   rock: { box: [16, 8], alt: "taken" },
+  /** A rock veined with iron (content/harvest.ts). */
+  ironore: { box: [16, 8], alt: "taken" },
   torch_post: {
     box: [6, 4], alt: "lit", habit: "fire",
     light: { dx: 0, dy: -14, rad: 96, col: [1, 0.62, 0.32], int: 0.9, flick: 0.22, when: "lit" },
@@ -156,9 +184,11 @@ export const PROPS: Record<string, PropKindDef> = {
   // ---- buildables (content/build.ts)
   /** Sharpened stakes: blocks the whole tile width. */
   barricade: { box: [16, 7] },
-  // The old surface gate, buried: no collision, no visible opening. Only a low
-  // mound where the arch top lies, and a hollow sound if you go looking.
-  buriedgate: { flat: true, examine: "THE GROUND HERE SOUNDS HOLLOW UNDERFOOT." },
+  // The head of the old stair down into the halls, buried: flat, walkable ground with the stair's kerb showing
+  // through the grass and a ward glyph of the lost upper hall cut in its lintel, dark. Nothing here glows, so the
+  // halls stay hidden. It is a dig site (content/digging.ts); dug out, it is an open stairwell that blocks
+  // (openBox) except at its south lip, and the glyph wakes (`lit`: the surface builder's light follows it).
+  buriedgate: { flat: true, openBox: [60, 44], light: { dx: 0, dy: -47, rad: 40, col: [0.62, 0.5, 1], int: 0.45, flick: 0.05, when: "lit" } },
   // ---- surface overgrowth (decorative; small boxes so the woods have texture)
   bush: { box: [12, 5], sway: true },
   fern: { sway: true },

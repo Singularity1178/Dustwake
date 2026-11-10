@@ -17,15 +17,19 @@ import { actorBoxes, boxFree } from "./collision";
 import { ensureWorn, reconcileGear, wears } from "./gear";
 
 /** What the gear kit tops the pack up to (wood and stone, the crafted materials, the chisel for carving). */
+import type { Requirement } from "../content/interactions";
 export const GEAR_KIT: [ItemId, number][] = [["wood", 40], ["stone", 40], ["planks", 40], ["cut_stone", 40], ["chisel", 1]];
 /** One of each: worn or carried, the kit never hands out a second. */
 export const GEAR_KIT_RUNES: ItemId[] = ["rune_swift", "rune_glow"];
 
 /** Every flag that unlocks a gear slot (read from the slot rows, so a new locked slot is covered with no change here). */
-export const slotUnlockFlags = (a?: Actor): string[] => Object.values((a ? actorDef(a) : ACTORS.golem).gearUnlocks ?? {}).flatMap((r) => r?.actorFlags ?? []);
+/** The upgrade flag that opens a slot by itself: its own `actorFlags`, or those of the last alternative (the left arm: the iron arm, else `golem.slot.armL`). */
+const ownFlags = (r?: Requirement): string[] => (!r ? [] : [...(r.actorFlags ?? []), ...(r.any?.length ? ownFlags(r.any[r.any.length - 1]) : [])]);
+export const slotUnlockFlags = (a?: Actor): string[] => Object.values((a ? actorDef(a) : ACTORS.golem).gearUnlocks ?? {}).flatMap((r) => ownFlags(r));
 
 /** Debug only (Ctrl+4, Ctrl+6): every analysis-gated plan read, from the live catalog. Saves never do this. */
 export function learnAllPlans(w: World) {
+  for (const r of Object.values(RECIPES)) if (r.teaches) setFlag(w, r.teaches);
   for (const r of Object.values(RECIPES)) if (r.analysis) w.flags.add(analysisFlag(r.analysis));
 }
 

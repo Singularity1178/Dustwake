@@ -231,7 +231,7 @@ export function buildTown(): AreaData {
   // the tavern's front, and the smith's yard beside the forge wall
   Pt("barrel", 36.6, 44.42); Pt("barrel", 37.5, 44.44, { v: 1 }); Pt("bench", 43.4, 44.3); Pt("crate", 45.4, 44.5);
   D("shadowband", 58 * TS, 39 * TS, 0, 5 * TS, 22);
-  Pt("woodpile", 59.2, 40.4); Pt("coalbin", 61.4, 40.3); Pt("anvil", 60, 42.6); Pt("quench", 61.6, 43.4); Pt("grindstone", 58.6, 43.6); Pt("ingots", 58.6, 41.6);
+  Pt("woodpile", 59.2, 40.4); Pt("coalbin", 61.4, 40.3); Pt("townanvil", 60, 42.6); Pt("quench", 61.6, 43.4); Pt("grindstone", 58.6, 43.6); Pt("ingots", 58.6, 41.6);
   D("stain", 60 * TS, 41.6 * TS, 0, 56, 40); D("scorch", 60 * TS, 42 * TS, 0);
   spot("work.smithyard", "work", 60 * TS + 8, 44.3 * TS, "up");
   Pt("wagon", 75.2, 47.3, { v: 1 }); Pt("barrel", 78.3, 44.42); Pt("barrel", 83.2, 44.44, { v: 1 });

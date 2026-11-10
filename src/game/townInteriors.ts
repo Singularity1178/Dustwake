@@ -90,11 +90,11 @@ const ROOMS: Record<Establishment, RoomSpec> = {
   smithy: {
     w: 15, h: 9, floor: FS.FLAG, wall: WS.BRICK, door: 7, doorW: 1,
     dress: ({ Q, D, spot, counter }) => {
-      Q("smithforge", 2.2, 0.9); Q("bellows", 5.4, 1); Q("coalbin", 0.2, 2.5); Q("anvil", 3, 3.1); Q("quench", 5.2, 3.5); Q("bucket", 1.2, 3.6);
+      Q("smithforge", 2.2, 0.9); Q("bellows", 5.4, 1); Q("coalbin", 0.2, 2.5); Q("townanvil", 3, 3.1); Q("quench", 5.2, 3.5); Q("bucket", 1.2, 3.6);
       Q("torch", 7.2, -1, { lit: true }); Q("toolrack", 9.2, -1); Q("goodshelf", 12, -1, { v: 2 }); Q("torch", 14.2, -1, { lit: true });
-      Q("weaponrack", 11.8, 0.4); Q("barrel", 14.1, 0.7, { v: 1 });
+      Q("shoprack", 11.8, 0.4); Q("barrel", 14.1, 0.7, { v: 1 });
       counter(11.6, 4, 0);
-      Q("ingots", 0.3, 6.4); Q("ingots", 0.5, 7.2); Q("grindstone", 2, 7.8); Q("crate", 13.6, 7.8, { v: 1 }); Q("crate", 14, 6.9); Q("sack", 12.4, 7.9); Q("armorstand", 9.4, 7.9, { v: 0 });
+      Q("ingots", 0.3, 6.4); Q("ingots", 0.5, 7.2); Q("grindstone", 2, 7.8); Q("crate", 13.6, 7.8, { v: 1 }); Q("crate", 14, 6.9); Q("sack", 12.4, 7.9); Q("shopstand", 9.4, 7.9, { v: 0 });
       D("scorch", 2, 2.2); D("stain", 3, 3.6, 0, 70, 44); D("stain", 0.8, 3, 0, 24, 18); D("golemtrack", 5, 2.4, 0, 30);
       for (let i = 0; i < 5; i++) D("debris", 1 + i * 0.9, 4.2 + (i % 2) * 0.5, i % 4);
       Q("candlestand", 8.6, 7.8); Q("candlestand", 14.1, 4.4); Q("lantern", 10.6, -1);
@@ -108,7 +108,7 @@ const ROOMS: Record<Establishment, RoomSpec> = {
     dress: ({ Q, D, spot, counter }) => {
       // everything mirrors about the door's column (7): door, runner, counter and shelf share one axis
       Q("rune_sconce", 2.6, -1); Q("shieldwall", 4.6, -1); Q("goodshelf", 7, -1, { v: 3 }); Q("shieldwall", 9.4, -1); Q("rune_sconce", 11.4, -1);
-      Q("weaponrack", 1, 0.4); Q("weaponrack", 13, 0.4);
+      Q("shoprack", 1, 0.4); Q("shoprack", 13, 0.4);
       counter(7, 2.4, 3);
       for (const [x, y, v] of [[0.3, 3.4, 0], [0.3, 5.2, 1], [0.3, 7, 3], [13.7, 3.4, 2], [13.7, 5.2, 0], [13.7, 7, 1], [4.6, 7.9, 2], [9.4, 7.9, 3]]) Q("armordisplay", x, y, { v });
       Q("runestand", 3.4, 4.6); Q("runestand", 10.6, 4.6); Q("dummy", 2.6, 7.6); Q("chest", 11.6, 7.8, { v: 2 }); Q("crate", 12.7, 7.9, { v: 1 });
@@ -184,7 +184,7 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       // west: the board, and the table where jobs are planned
       spot("idle.board.1", "idle", 2.2, 1.2, "up"); spot("idle.board.2", "idle", 3.8, 1.4, "up");
       Q("maptable", 3, 5.4); Q("chair", 1.4, 5.2); Q("chair", 4.7, 5.2); D("paper", 2.2, 5.8, 0); D("paper", 4, 6.1, 2);
-      Q("armordisplay", 0.3, 3, { v: 1 }); Q("footlocker", 0.3, 8.2); Q("footlocker", 0.3, 9.2); Q("footlocker", 0.3, 10.2); Q("weaponrack", 3.4, 10.9);
+      Q("armordisplay", 0.3, 3, { v: 1 }); Q("footlocker", 0.3, 8.2); Q("footlocker", 0.3, 9.2); Q("footlocker", 0.3, 10.2); Q("shoprack", 3.4, 10.9);
       Q("runestand", 6, 8.4); Q("runestand", 13, 8.4); Q("runestand", 8, 10.9); Q("runestand", 11, 10.9); Q("runestand", 1.6, 7.6); Q("rune_sconce", 13.5, -1);
       spot("work.maps", "work", 3, 6.4, "up");
       // east: the fire, the tables, a corner to hit things in

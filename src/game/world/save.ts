@@ -10,6 +10,7 @@
 // migration from the previous version.
 import { SeededRng } from "../core/rng";
 import { TS, isSolidT } from "../content/tiles";
+import { propDef } from "../content/props";
 import { RECIPES } from "../content/build";
 import { RUNE_T } from "../surface";
 import type { DecalDef, LooseItem, PropDef } from "../map";
@@ -63,8 +64,14 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      the time of day). Older worlds were always night: one that has reached
   *      the surface resumes at its first morning, one still in the halls in
   *      the night it woke in.
+  * v14: the entrance. No field changed shape: a dig site's progress is its
+  *      prop's `dmg` and `open`, an opened entrance is a world flag, the cleared
+  *      stair is ordinary tile and removed-prop diffs. But the artificery and the
+  *      armory were refurnished and iron veins stand on the surface, and a body
+  *      saved where one of those now stands could never move again: any such
+  *      actor is set down beside it (a frozen list of the new footprints).
   */
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -86,7 +93,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 13;
+  version: 14;
   seed: number;
   rng: number;
   time: number;
@@ -293,6 +300,44 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // The calendar clock. The hours are frozen here on purpose (content/daycycle.ts may be retuned later).
   12: (s) => ({ ...s, version: 13, day: typeof s.day === "number" ? s.day : (s.flags ?? []).includes("tutorial.done") ? 6.6 / 24 : 22.5 / 24 }),
+  // Nobody is left standing inside what v14 added. A body whose feet box (10x5, the widest that walks) overlaps one
+  // of the new footprints steps to the nearest place clear of all of them, in a fixed order, 8 px at a time. Bodies
+  // elsewhere, the areas' diffs and everything a save holds are untouched: the new props, the loose rusted heads
+  // and the stair's steps come from the builders, as any authored change does.
+  13: (s) => ({
+    ...s, version: 14,
+    actors: (s.actors ?? []).map((a: any) => {
+      const boxes = V14_SOLID[a.area];
+      const hit = (x: number, y: number) => !!boxes && boxes.some((b) => x + 5 > b[0] && x - 5 < b[2] && y > b[1] && y - 5 < b[3]);
+      if (typeof a.x !== "number" || typeof a.y !== "number" || !hit(a.x, a.y)) return a;
+      // (it stays in the room it was in: a step out of the furniture must not be a step into the wall behind it)
+      const within = (r: number[], x: number, y: number) => x - 5 >= r[0] && x + 5 <= r[2] && y - 5 >= r[1] && y <= r[3];
+      const room = (V14_ROOMS[a.area] ?? []).find((r) => within(r, a.x, a.y));
+      for (let r = 1; r <= 8; r++) for (const [dx, dy] of [[0, -r], [0, r], [r, 0], [-r, 0], [r, -r], [-r, -r], [r, r], [-r, r]]) {
+        const x = a.x + dx * 8, y = a.y + dy * 8;
+        if (!hit(x, y) && (!room || within(room, x, y))) return { ...a, x, y, vx: 0, vy: 0 };
+      }
+      return a;
+    }),
+  }),
+};
+
+/**
+ * The collision footprints [x0, y0, x1, y1] (px) of the solid props v14 added, frozen as they were placed then (a
+ * migration must not read builders that keep changing): the artificery's coal bin, quench trough, rune table, slip
+ * vat and unfinished body; the armory's second rack, staff rack, bare stand and armour heap; the surface's iron veins.
+ */
+/** The floors of the two refurnished rooms (px), frozen likewise: the artificery and the armory. */
+const V14_ROOMS: Record<string, [number, number, number, number][]> = { dungeon: [[64, 576, 272, 736], [992, 48, 1104, 176]] };
+const V14_SOLID: Record<string, [number, number, number, number][]> = {
+  dungeon: [
+    [65, 601, 79, 608], [72, 649, 88, 656], [114, 726, 142, 736], [69, 729, 83, 736], [75, 683, 85, 688],
+    [1072, 78, 1096, 84], [1002, 98, 1022, 104], [1003, 163, 1013, 168], [1069, 138, 1083, 144],
+  ],
+  surface: [
+    [1408, 1031, 1424, 1039], [1375, 263, 1391, 271], [1422, 344, 1438, 352], [737, 199, 753, 207], [447, 1048, 463, 1056], [510, 824, 526, 832],
+    [591, 743, 607, 751], [928, 279, 944, 287], [1215, 856, 1231, 864], [1295, 183, 1311, 191], [881, 119, 897, 127], [1155, 903, 1171, 911],
+  ],
 };
 
 /** v12's analysis-gated plans that v10/v11 had open to anyone with know.build (frozen: not the live catalog). */
@@ -428,14 +473,15 @@ export function loadFromStorage(storage: SaveStorage): World | null {
 }
 
 /**
- * Authored areas change between builds (Westwake grew a wall where there was meadow). Nobody loads a stored
- * game standing inside masonry: the player is set down on the nearest free ground, or failing that at the
- * area's start. Only solid tiles count, since nothing the game saves stands in one. `deserialize` itself stays
- * the exact inverse of `serialize`; this runs on the way in from storage.
+ * Authored areas change between builds (Westwake grew a wall where there was meadow, the artificery was
+ * refurnished). Nobody loads a stored game standing inside masonry or inside a solid prop: the player is set
+ * down on the nearest free ground, or failing that at the area's start. Nothing the game saves stands in either,
+ * so a save from this build is never moved. `deserialize` itself stays the exact inverse of `serialize`; this
+ * runs on the way in from storage.
  */
 export function settle(w: World): World {
   const pl = w.actors.find((a) => a.id === w.playerId), at = pl && w.areas.get(pl.area);
-  if (pl && at && inMasonry(at, pl.x, pl.y)) {
+  if (pl && at && !standable(at, pl.x, pl.y)) {
     let spot: { x: number; y: number } | null = null;
     for (let r = 1; r <= 16 && !spot; r++) for (let i = -r; i <= r && !spot; i++)
       for (const [dx, dy] of [[i, r], [i, -r], [r, i], [-r, i]]) if (!spot && standable(at, pl.x + dx * 8, pl.y + dy * 8)) spot = { x: pl.x + dx * 8, y: pl.y + dy * 8 };
@@ -456,5 +502,5 @@ function inMasonry(a: Area, x: number, y: number): boolean {
 /** Is that box clear of solid tiles and of prop boxes? The rule of sim/collision.ts boxFree, kept local: world does not import sim. */
 function standable(a: Area, x: number, y: number): boolean {
   const x0 = x - 5, x1 = x + 5, y0 = y - 5, y1 = y;
-  return !inMasonry(a, x, y) && !a.props.some((p) => p.box && !p.taken && x1 > p.box[0] && x0 < p.box[2] && y1 > p.box[1] && y0 < p.box[3]);
+  return !inMasonry(a, x, y) && !a.props.some((p) => p.box && !p.taken && !(propDef(p.kind).openBox && !p.open) && x1 > p.box[0] && x0 < p.box[2] && y1 > p.box[1] && y0 < p.box[3]);
 }

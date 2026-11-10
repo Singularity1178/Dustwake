@@ -38,10 +38,11 @@ test("audit: every authored prop of a buildable kind, in the dungeon and on the 
     }
   }
   // what the dungeon actually places (so the audit isn't vacuous)
-  for (const k of ["torch", "brazier", "banner", "table", "chair", "workbench"]) assert.ok((found.get(k) ?? 0) > 0, `authored ${k} exists`);
+  for (const k of ["torch", "brazier", "banner", "table", "chair", "workbench", "forge", "anvil"]) assert.ok((found.get(k) ?? 0) > 0, `authored ${k} exists`);
   // every recipe's prop kind is a row in the salvage table; nothing else is, and non-buildable kinds stay fixed
   for (const r of Object.values(RECIPES)) assert.ok(r.prop in AUTHORED_SALVAGE, r.prop);
-  for (const k of ["chains", "bookshelf", "statue", "bed", "forge", "cradle"]) assert.ok(PROPS[k] && !(k in AUTHORED_SALVAGE), k);
+  // (the smelter, kind `forge`, and the anvil became buildable with the entrance update, so they are in the table now)
+  for (const k of ["chains", "bookshelf", "statue", "bed", "cradle", "runetable", "staffrack"]) assert.ok(PROPS[k] && !(k in AUTHORED_SALVAGE), k);
 });
 
 test("each authored target is taken apart through the dismantle task and refunds the recipe's materials (crafted ones too)", () => {

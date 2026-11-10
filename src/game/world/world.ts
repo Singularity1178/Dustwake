@@ -78,6 +78,10 @@ export type SimEvent =
   | { t: "runeAwakened"; rune: string; actor: string }
   | { t: "travelled"; actor: string; from: string; to: string; rune: string }
   | { t: "harvestHit"; actor: string; prop: string; kind: string; x: number; y: number; depleted: boolean }
+  /** A dig stroke landed (sim/digging.ts): `material` is what it cut, `next` the material now exposed (a layer was cleared), `opened` the column is through. */
+  | { t: "dug"; actor: string; prop: string; x: number; y: number; material: string; n: number; next?: string; opened: boolean }
+  /** An entrance (content/geography.ts) has been opened: both its ends are passable from now on. */
+  | { t: "entranceOpened"; actor: string; entrance: string }
   | { t: "built"; actor: string; prop: string; x: number; y: number }
   /** A prop was taken apart (its refund went through giveItem). */
   | { t: "deconstructed"; actor: string; prop: string; kind: string; x: number; y: number }

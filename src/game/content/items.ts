@@ -4,6 +4,7 @@
 import { GLYPHS } from "./glyphs";
 import { FLAGS } from "./flags";
 import { RUNE_SWIFT_SPEED_BONUS, RUNE_GLOW_LIGHT, GOLEM_LIGHT, type GearKind, type GearSlot, type GolemLight } from "./gear";
+import { TOOL_TYPES, TOOL_TYPE_IDS, TOOL_BONUS, type ToolDef, type ToolItemId, type ToolRune } from "./tools";
 
 export type { GearKind, GearSlot } from "./gear";
 export { GEAR_SLOTS } from "./gear";
@@ -14,7 +15,10 @@ export type ItemId =
   | "schematic" | "crown" | "goblet" | "coin"
   | "wood" | "stone" | "planks" | "cut_stone" | "basket"
   | "rune_swift" | "rune_glow" | "ruby_core" | "large_ruby"
-  | "book_build" | "book_repair";
+  | "book_build" | "book_repair"
+  | "iron_ore" | "iron_ingot" | "dirt"
+  // tool heads and hafted tools, every grade and inset (generated below from content/tools.ts)
+  | ToolItemId;
 
 export type ItemTag = "tool" | "part" | "key" | "relic" | "glyph" | "document" | "power" | "material" | "rune";
 
@@ -57,6 +61,8 @@ export interface ItemDef {
   wear?: { kind: GearKind; slot?: GearSlot };
   /** Effects that apply only while it is worn (runes: speed, light). */
   worn?: WornEffects;
+  /** A working tool (content/tools.ts): a head counts while fitted to an arm slot, a hafted tool in the pack of a body that can wield. */
+  tool?: ToolDef;
   /** Item glows (gets a small light) while displayed on a prop. */
   glow?: { color: string; rad: number; int: number; flick: number };
   /** Drawn as a separate icon when resting on a prop (false: part of the prop sprite). */
@@ -74,6 +80,50 @@ const glyph = (i: number): ItemDef => ({
   desc: ["A CARVED RUNE GLYPH.", "IT BELONGS ON A PEDESTAL."],
   glow: { color: GLYPHS[i].color, rad: 30, int: 0.55, flick: 0.05 },
 });
+
+/** What each rune does while worn. One row per rune, read by the rune item and by a tool head with that rune set in it. */
+const RUNE_WORN: Record<ToolRune, WornEffects> = {
+  swift: { speed: RUNE_SWIFT_SPEED_BONUS, mark: { col: "#5cf0c8", pat: ["#..", ".#.", "#.."] } },
+  glow: { light: RUNE_GLOW_LIGHT, mark: { col: "#ffffff", pat: [".#.", "###", ".#."] } },
+};
+
+/** The tool rows: per type, the head in every grade and inset, and the hafted tool plain and tempered. */
+function toolRows(): Record<ToolItemId, ItemDef> {
+  const out: Partial<Record<ToolItemId, ItemDef>> = {};
+  for (const t of TOOL_TYPE_IDS) {
+    const T = TOOL_TYPES[t];
+    const head = (bonus: number): ToolDef => ({ type: t, form: "head", bonus });
+    out[`head_${t}`] = {
+      name: `${T.name} HEAD`, tags: ["tool"], wear: { kind: "arm" }, tool: head(TOOL_BONUS.plain),
+      desc: [`AN IRON ${T.name} HEAD FOR AN ARM`, "SLOT, OR TO HAFT AT A BENCH."],
+    };
+    out[`head_${t}_rusted`] = {
+      name: `RUSTED ${T.name} HEAD`, tags: ["tool"],
+      desc: [`A ${T.name} HEAD, EATEN BY RUST.`, "AN ANVIL AND ONE IRON INGOT", "WOULD MAKE IT SOUND AGAIN."],
+    };
+    out[`head_${t}_fine`] = {
+      name: `FINE ${T.name} HEAD`, tags: ["tool"], wear: { kind: "arm" }, tool: head(TOOL_BONUS.fine),
+      desc: [`A TEMPERED ${T.name} HEAD. ITS`, "IRON WILL HOLD A RUNE (ANVIL)."],
+    };
+    for (const r of ["swift", "glow"] as const) {
+      // The rune's sigil is drawn for rune slots only, so an inset head carries the effect without the mark.
+      const { mark: _mark, ...worn } = RUNE_WORN[r];
+      out[`head_${t}_${r}`] = {
+        name: `${r.toUpperCase()} ${T.name} HEAD`, tags: ["tool"], wear: { kind: "arm" }, tool: head(TOOL_BONUS.fine), worn,
+        desc: [`A FINE ${T.name} HEAD, RUNE OF ${r.toUpperCase()}.`],
+      };
+    }
+    out[t] = {
+      name: T.full, tags: ["tool"], tool: { type: t, form: "full", bonus: TOOL_BONUS.plain },
+      desc: [`A ${T.full} ON A WOODEN HAFT, FOR`, "HANDS. GIVE IT TO A WORKER."],
+    };
+    out[`${t}_fine`] = {
+      name: `FINE ${T.full}`, tags: ["tool"], tool: { type: t, form: "full", bonus: TOOL_BONUS.fine },
+      desc: [`A TEMPERED ${T.full} ON A HAFT.`, "GIVE IT TO A WORKER."],
+    };
+  }
+  return out as Record<ToolItemId, ItemDef>;
+}
 
 export const ITEMS: Record<ItemId, ItemDef> = {
   chisel: { name: "RUNE CHISEL", tags: ["tool"], droppable: false, desc: ["A CHISEL FOR CARVING RUNES.", "CARRY IT TO CARVE. IT IS", "NEVER USED UP."] },
@@ -93,16 +143,22 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   // Processed materials (crafted at a bench: content/crafting.ts).
   planks: { name: "PLANKS", tags: ["material"], stack: 20, desc: ["SAWN PLANKS, FOR FINER", "BUILDS AND FURNITURE."] },
   cut_stone: { name: "CUT STONE", tags: ["material"], stack: 10, desc: ["SQUARED BLOCKS OF STONE, FOR", "MASONRY AND RUNE CARVING."] },
+  // The iron chain: ore from the surface (content/harvest.ts), ingots from a smelter, tools from an anvil (content/crafting.ts).
+  iron_ore: { name: "IRON ORE", tags: ["material"], stack: 20, desc: ["RUST-RED ORE. A SMELTER TURNS", "IT INTO IRON INGOTS."] },
+  iron_ingot: { name: "IRON INGOT", tags: ["material"], stack: 20, desc: ["A BAR OF SMELTED IRON, READY", "FOR THE ANVIL."] },
+  // What digging earth yields (content/digging.ts).
+  dirt: { name: "DIRT", tags: ["material"], stack: 20, desc: ["LOOSE EARTH. NO USE FOR IT", "YET."] },
+  ...toolRows(),
   // Gear for the back slot: an ordinary pack item until it is worn (sim/gear.ts); worn, it grows the pack.
   basket: { name: "WOVEN BASKET", tags: ["part"], wear: { kind: "back" }, desc: ["A WOVEN BASKET. STRAP IT TO", "YOUR BACK TO CARRY MORE."] },
   // Runes: worn in a rune slot, their effects apply only while worn.
   rune_swift: {
     name: "RUNE OF SWIFT", tags: ["rune"], wear: { kind: "rune" }, desc: ["A STONE CARVED WITH THE SIGN", "OF SWIFTNESS."],
-    worn: { speed: RUNE_SWIFT_SPEED_BONUS, mark: { col: "#5cf0c8", pat: ["#..", ".#.", "#.."] } },
+    worn: RUNE_WORN.swift,
   },
   rune_glow: {
     name: "RUNE OF GLOW", tags: ["rune"], wear: { kind: "rune" }, desc: ["A STONE CARVED WITH THE SIGN", "OF LIGHT."],
-    worn: { light: RUNE_GLOW_LIGHT, mark: { col: "#ffffff", pat: [".#.", "###", ".#."] } },
+    worn: RUNE_WORN.glow,
   },
   book_build: {
     name: "BUILDER'S PRIMER", tags: ["document"], opens: "book", opensOnPickup: true, desc: ["HOW TO RAISE THINGS. READING", "IT TEACHES BUILDING (E)."],
@@ -141,7 +197,13 @@ export const isCritical = (id: ItemId) => ITEMS[id].droppable === false || !!ITE
 
 /** The effect lines the pack shows for a worn item (generated from its data, so a new rune describes itself). The font has no percent sign: multipliers. */
 export function effectLines(id: ItemId): string[] {
-  const w = ITEMS[id].worn, out: string[] = [];
+  const w = ITEMS[id].worn, tool = ITEMS[id].tool, out: string[] = [];
+  if (tool) {
+    // A shovel only digs (bonus units a stroke); the others multiply the work of a blow.
+    const mult = tool.type === "shovel" ? tool.bonus : 1 + tool.bonus;
+    const what = `${TOOL_TYPES[tool.type].works}${mult > 1 ? ` X${mult}` : ""}`;
+    out.push(tool.form === "head" ? `ON AN ARM: ${what}` : tool.type === "shovel" ? "FOR HANDS. NO WORKER DIGS YET." : `WORKER'S TOOL: ${what}`);
+  }
   if (!w) return out;
   if (w.speed) out.push(`WORN: SPEED X${(1 + w.speed).toFixed(1)}`);
   if (w.light) out.push(`WORN: BRIGHT WHITE LIGHT X${(w.light.rad / GOLEM_LIGHT.rad).toFixed(1)}`);

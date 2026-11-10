@@ -18,7 +18,7 @@ import { cancelJob, tickJob } from "./jobs";
 import { toggleScan } from "./analysis";
 import { reactToEvents } from "./monologue";
 import { coreKey } from "./commands";
-import { portalAt, walkThrough } from "./portals";
+import { portalAt, portalOpen, walkThrough } from "./portals";
 import { stepDay } from "./daytime";
 
 export interface PlayerInput {
@@ -51,7 +51,7 @@ export function stepPlayer(w: World, dt: number, input: PlayerInput): PlayerStep
   move(w, area, pl, dt, pl.task ? 0 : input.ix, pl.task ? 0 : input.iy, actorSpeed(w, pl) * (input.speed ?? 1), input.noclip);
   // Roads and doorways (sim/portals.ts): pushing on through one walks into the area beyond.
   if (!pl.task && (input.ix || input.iy)) {
-    const way = portalAt(area, pl.x, pl.y, input.ix, input.iy);
+    const way = portalAt(area, pl.x, pl.y, input.ix, input.iy, (p) => portalOpen(w, p));
     if (way && walkThrough(w, pl, area, way)) { reactToEvents(w); return { target: null, ui: null }; }
   }
   const scan = pl.task || pl.mode !== "scan" ? null : findScanTarget(area, pl);

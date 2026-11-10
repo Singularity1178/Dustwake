@@ -5,6 +5,7 @@ import type { ItemId } from "../content/items";
 import { GLYPHS } from "../content/glyphs";
 import { makeSprite, Sprite, Pen } from "../util";
 import { S, WD, IR, GD } from "./palette";
+import { TOOL_TYPE_IDS, type ToolItemId, type ToolType } from "../content/tools";
 import { cached } from "./common";
 
 export function glyphPattern(p: Pen, gi: number, x: number, y: number, color: string, glow: boolean) {
@@ -33,8 +34,78 @@ const glyphIcon = (gi: number): ItemArt => (p) => {
   glyphPattern(p, gi, 4, 5, g.color, true);
 };
 
+// ---------------------------------------------------------------- tools
+// One shape per tool type, drawn in a metal ramp: plain iron, rust, or tempered (brighter, with a gold tick).
+// A rune set in a head shows as two lit pixels in the rune's colour. A hafted tool is the same metal on a wooden haft.
+type Ramp = { o: string; d: string; m: string; l: string; h: string };
+const IRON: Ramp = { o: "#14161a", d: IR.d, m: IR.m, l: IR.l, h: IR.h };
+const RUSTY: Ramp = { o: "#1a1210", d: "#4a2a1c", m: "#6e4028", l: "#8e5a38", h: "#a87048" };
+const FINE: Ramp = { o: "#14161a", d: "#3c4650", m: "#66737f", l: "#96a6b4", h: "#d6e2ec" };
+
+/** Head shapes as pixel rows (o outline, d/m/l/h the ramp, . nothing) and where they sit in the 16x16 icon. */
+const HEAD_SHAPES: Record<ToolType, { at: [number, number]; rows: string[]; rune: [number, number] }> = {
+  shovel: { at: [3, 1], rune: [4, 7], rows: [
+    "...oooo...", "...ohlo...", "...omlo...", "..oomloo..", ".ohlmmmdo.", ".ohmmmmdo.", ".olmmmmdo.",
+    ".olmmmmdo.", ".olmmmddo.", "..olmmdo..", "..olmddo..", "...omdo...", "....oo....",
+  ] },
+  pickaxe: { at: [1, 4], rune: [6, 2], rows: [
+    "....oooooo....", "..oohhhllmoo..", ".ohllommoommo.", "ohlo.olmo.omdo", "oo...olmo...oo", ".....oddo.....", "......oo......",
+  ] },
+  axe: { at: [2, 3], rune: [4, 4], rows: [
+    "..oo.......", ".ohlo......", "ohllmoooooo", "ohlmmmmmmdo", "ohlmmmmoodo", "ohlmmmmoodo", "ohlmmmmmmdo", "ohllmoooooo", ".ohlo......", "..oo.......",
+  ] },
+};
+
+function drawHead(p: Pen, t: ToolType, c: Ramp, rune?: string) {
+  const { at, rows, rune: rp } = HEAD_SHAPES[t];
+  rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) { const ch = row[i]; if (ch !== ".") p.p(at[0] + i, at[1] + j, c[ch as keyof Ramp]); } });
+  if (c === RUSTY) { p.p(at[0] + rp[0], at[1] + rp[1], c.o); p.p(at[0] + rp[0] + 1, at[1] + rp[1] - 1, c.d); }
+  if (c === FINE) p.p(at[0] + rp[0] + 2, at[1] + rp[1] + 1, GD.l);
+  if (rune) { p.gp(at[0] + rp[0], at[1] + rp[1], rune); p.gp(at[0] + rp[0] + 1, at[1] + rp[1] - 1, rune); }
+}
+
+function drawTool(p: Pen, t: ToolType, c: Ramp) {
+  p.r(6, 2, 4, 13, WD.o); p.r(7, 2, 2, 12, WD.l); p.r(8, 3, 1, 11, WD.m); p.p(7, 14, WD.d);
+  if (t === "axe") { p.o(1, 2, 7, 7, c.m, c.o); p.r(2, 3, 1, 5, c.h); p.r(3, 3, 2, 1, c.l); p.r(6, 3, 1, 5, c.d); p.r(8, 3, 2, 4, c.d); p.p(9, 2, c.o); }
+  else if (t === "pickaxe") { p.r(3, 1, 10, 1, c.o); p.r(1, 2, 14, 3, c.o); p.r(2, 3, 12, 1, c.l); p.r(4, 2, 8, 1, c.h); p.r(6, 4, 4, 1, c.d); p.p(0, 4, c.o); p.p(15, 4, c.o); p.p(1, 5, c.o); p.p(14, 5, c.o); }
+  else { p.r(4, 1, 8, 3, WD.o); p.r(5, 2, 6, 1, WD.l); p.o(4, 9, 8, 6, c.m, c.o); p.r(5, 10, 1, 4, c.h); p.r(6, 10, 4, 1, c.l); p.r(10, 10, 1, 4, c.d); }
+  if (c === FINE) p.p(t === "shovel" ? 9 : 4, t === "shovel" ? 12 : 3, GD.l);
+}
+
+const TOOL_ART: Record<ToolItemId, ItemArt> = (() => {
+  const out: Partial<Record<ToolItemId, ItemArt>> = {};
+  for (const t of TOOL_TYPE_IDS) {
+    out[`head_${t}`] = (p) => drawHead(p, t, IRON);
+    out[`head_${t}_rusted`] = (p) => drawHead(p, t, RUSTY);
+    out[`head_${t}_fine`] = (p) => drawHead(p, t, FINE);
+    out[`head_${t}_swift`] = (p) => drawHead(p, t, FINE, "#5cf0c8");
+    out[`head_${t}_glow`] = (p) => drawHead(p, t, FINE, "#ffffff");
+    out[t] = (p) => drawTool(p, t, IRON);
+    out[`${t}_fine`] = (p) => drawTool(p, t, FINE);
+  }
+  return out as Record<ToolItemId, ItemArt>;
+})();
+
 /** Item icon registry: item id -> draw function. Adding an item = adding an entry. */
 export const ITEM_ART: Record<ItemId, ItemArt> = {
+  ...TOOL_ART,
+  // Three lumps of ore: dark stone, rust-red where the iron is.
+  iron_ore: (p) => {
+    p.o(2, 7, 7, 6, "#5a4a44", S.o); p.r(3, 8, 3, 1, "#7a6a60"); p.r(4, 10, 3, 2, "#a8623a"); p.p(5, 10, "#d8905a");
+    p.o(8, 4, 6, 6, "#4e4440", S.o); p.r(9, 5, 2, 1, "#6e625a"); p.r(10, 7, 3, 2, "#8e4a2a"); p.p(11, 7, "#c8783e");
+    p.o(7, 10, 7, 5, "#5a4a44", S.o); p.r(8, 11, 2, 1, "#7a6a60"); p.r(9, 12, 4, 2, "#a8623a"); p.p(10, 12, "#e0a060");
+  },
+  // Two cast bars, the upper one catching the light.
+  iron_ingot: (p) => {
+    p.o(2, 9, 12, 5, IR.m, "#14161a"); p.r(3, 10, 10, 1, IR.l); p.r(3, 12, 10, 1, IR.d); p.p(2, 9, "#14161a");
+    p.o(4, 4, 9, 5, IR.l, "#14161a"); p.r(5, 5, 7, 1, IR.h); p.r(5, 7, 7, 1, IR.m); p.p(6, 5, "#e6eef4");
+  },
+  // A heap of loose earth with a pebble in it.
+  dirt: (p) => {
+    p.r(3, 14, 10, 1, "rgba(0,0,0,0.35)");
+    p.o(2, 8, 12, 6, "#4e3c2a", "#1a110b"); p.o(4, 5, 8, 5, "#5a4630", "#1a110b"); p.r(5, 6, 4, 1, "#6e583c"); p.r(4, 9, 7, 1, "#5a4630");
+    p.p(6, 11, "#3a2c1e"); p.p(10, 10, "#3a2c1e"); p.p(8, 7, "#7a6a50"); p.p(11, 12, "#6a6372"); p.p(4, 12, "#3a2c1e");
+  },
   // A big brilliant-cut stone: a bright table, crown facets lit from the top left, a dark girdle,
   // and a pavilion narrowing to the culet. One glint glows, so it catches the eye on the ground.
   large_ruby: (p) => {

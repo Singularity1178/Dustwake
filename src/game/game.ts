@@ -11,6 +11,8 @@ import { coreCheck } from "./sim/power";
 import { GOLEM_LIGHT } from "./content/gear";
 import { BuildUi } from "./screens/buildMenu";
 import { CraftingUi } from "./screens/crafting";
+import { isStation } from "./content/crafting";
+import { propLook } from "./content/digging";
 import { PackUi } from "./screens/pack";
 import { StorageUi } from "./screens/storage";
 import { DebugUi } from "./screens/debug";
@@ -622,8 +624,23 @@ export class Game {
         for (let i = 0; i < 12; i++) this.spawn({ x: e.x + (Math.random() - 0.5) * 10, y: e.y, z: e.kind === "torch" || e.kind === "banner" ? 10 : 4, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 16, vz: 10 + Math.random() * 20, life: 0.7, kind: "debris", col: Math.random() < 0.5 ? "#7a5634" : "#6a6372", g: 120 });
         break;
       case "openStation":
-        if (e.actor === this.world.playerId && this.screens.is("play") && e.station === "crafting") this.craftUi.open(e.station, e.prop);
+        // E on a station: the bench, the smelter or the anvil, each the same screen under its own name (content/crafting.ts).
+        if (e.actor === this.world.playerId && this.screens.is("play") && isStation(e.station)) this.craftUi.open(e.station, e.prop);
         break;
+      case "dug": {
+        // A dig stroke: earth thuds and flies brown, stone rings and flies grey. A layer giving out, and the
+        // stair coming open, are said in words (the sim only reports what happened).
+        const stone = e.material === "stone";
+        if (stone) this.sfx.clink(); else this.sfx.thud();
+        this.shake(e.opened ? 0.6 : 0.12, e.opened ? 3 : 1);
+        const cols = stone ? ["#8a8392", "#6a6372", "#4b4552"] : ["#4e3c2a", "#5a4630", "#3e2e20"];
+        for (let i = 0; i < (e.opened ? 32 : 12); i++)
+          this.spawn({ x: e.x + (Math.random() - 0.5) * 30, y: e.y + (Math.random() - 0.5) * 20, z: 2 + Math.random() * 6, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 20, vz: 14 + Math.random() * 30, life: 0.8 + Math.random() * 0.6, kind: "debris", col: cols[(Math.random() * cols.length) | 0], g: 120 });
+        if (e.actor !== this.world.playerId) break;
+        if (e.opened) { this.sfx.smash(); this.say("THE VAULT GIVES WAY. THE OLD STAIR IS OPEN: WALK DOWN INTO IT FROM ITS SOUTH END"); }
+        else if (e.next === "stone") this.say("THE EARTH IS OUT. FALLEN STONE LIES UNDER IT: THAT NEEDS A PICKAXE HEAD");
+        break;
+      }
       case "openStorage":
         // E on a storage prop: its screen (pack beside chest). Only the player's own use, from the play screen.
         if (e.actor === this.world.playerId && this.screens.is("play")) this.storageUi.open(e.prop);
@@ -1407,7 +1424,7 @@ export class Game {
       // its unlit art, a rune or a lantern stops glowing, and a dark window is just the painted window under it.
       const lvl = def.habit ? this.tendedLevel(p, hour) : 1;
       const alt = def.alt === "lit" ? !!p.lit && lvl > 0.05 : def.alt === "taken" ? p.taken : p.open;
-      const s = propSprite(p.kind, p.v, alt);
+      const s = propSprite(p.kind, propLook(p), alt);
       if (!s) continue;
       if (lvl <= 0.01 && def.habit === "window") continue;
       list.push({

@@ -10,7 +10,7 @@
 | `E` / `Enter` | Interact / use |
 | `Space` | Attack: a heavy two-arm ground slam. Works anywhere, facing anything, with or without the iron arm, even right next to something you could interact with (that stays on `E`) |
 | `I` / `Tab` | Open pack (inventory) |
-| `E` (pack open) | Use / read the selected item, or put on gear: it goes to the first free usable slot of its kind (the basket on the back: 48 slots; a rune into a rune slot). On a worn slot `E` takes the item off, if everything still fits without it. A locked slot does nothing |
+| `E` (pack open) | Use / read the selected item, or put on gear: it goes to the first free usable slot of its kind (the basket on the back: 48 slots; a rune into a rune slot; a tool head onto an arm: the right arm, and the left once the iron arm is on). On a worn slot `E` takes the item off, if everything still fits without it. A locked slot does nothing |
 | Movement keys (pack open) | Move the cursor over the paper doll (helm, back, right/left arm, core, four rune slots, all always shown; greyed slots with a padlock are locked and say why in the description panel) and the pack grid. `A` / left off the pack's first column steps onto the doll, `D` / right off the doll's right-hand edge goes back to the pack |
 | `Q` (pack open) | Drop one of the selected pack item in front of the golem |
 | `M` | Read schematic (once found) |
@@ -26,12 +26,16 @@
 | `X` (build menu or placement) | Deconstruct tool: take apart highlighted props for a full refund, crafted materials included (`E` confirm, `X` back to building). Everything buildable can go, the dungeon's braziers, banners, tables, chairs, torches and workbench too; a prop that still holds something the story needs (the workbench's chisel, the library table's primer) refuses until you take it |
 | `B` / `Q` (placement or remove) | Back to the build menu |
 | `Esc` (build tools) | Close |
-| `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `E` craft, `Esc` close): planks from wood, cut stone from stone, and runes carved from cut stone (the rune chisel must be in your pack; it is not used up). The golem works at the bench, then the plans come back. It opens greyed out, with no plans shown, until you know how to build |
+| `E` on a workbench (the dungeon's, or a crafting bench you built) | Open the crafting screen (`W`/`S` choose, `D` or `E` to the CRAFT button, `E` craft, `Esc` close): planks from wood, cut stone from stone, and runes carved from cut stone (the rune chisel must be in your pack; it is not used up), and full tools: a tool head on a wooden haft, for a worker's hands. The golem works at the bench, then the plans come back. It opens greyed out, with no plans shown, until you know how to build |
+| `E` on the smelter | Open the smelting screen (same keys as the bench): iron ore and a wood fire into iron ingots. It opens greyed out until the golem knows how to smelt, which it learns by studying a smelter: `Z`, then `E` on it. That scan also gives the plan to build one |
+| `E` on the anvil | Open the smithing screen. Four tabs (`Q` / `R`, or `1`-`4`): **FORGE** tool heads from ingots (shovel, pick, axe); **REPAIR** a rusted head found in the ruins; **MODIFY**: temper a head, or a tool on its haft, so it works faster; **RUNES**: set a Rune of Swift or Glow into a tempered head (it then works while the head is on your arm), or pry it back out. The last three list what can be done to what you carry: a head on your arm has to come off first. Scanning the anvil (`Z`, `E`) gives the plan to build one |
+| `E` on the buried stair head (surface) | Dig. Earth needs a shovel head on an arm and comes out as dirt; under it lies fallen stone, which needs a pickaxe head and comes out as stone. Without the tool the golem only says what it would take |
+| Walk into the open stair | Once it is dug out: on the surface, push north into the stairwell from its south end to go down into the halls; in the halls, walk south up the stair and off its top to come out |
 | `E` on a storage chest | Open the storage screen: your pack on the left, the chest on the right. Movement keys move the cursor, `A` / `D` off the edge cross to the other side, `E` moves the whole stack under the cursor, `Q` one item, `R` renames the chest (type, `Enter` keeps, `Esc` cancels, empty goes back to the default name), `Esc` / `I` / `Tab` close. A chest is named as the orders call it (DUNGEON CHEST 1, DUNGEON CHEST 2) until renamed; the name is saved and shown in orders. As much as fits moves; a full side, an empty slot and the story's undroppable items say so and change nothing |
 | `E` on a worker golem | While it has never had a core in it, nothing opens: the golem only thinks INTEGRITY INTACT, MISSING POWER SOURCE (slot a core in with `C`). Once a core has been slotted in, this opens its management screen, even after the core is taken out again: power, order, phase and why it is blocked, what it carries and wears. `W` / `S` choose a row, `A` / `D` change a value in a form, `E` confirms, `C` slots a core in or takes it out, `Esc` goes back then closes. The worker golem is a small clay body that animates by what it is doing: slot a core in and it boots up and stands, left idle it settles back into a dormant crouch, take the core out and it powers down (and turns its head aside as it sags), give it work and it stands and swings, walks and hauls. Going through a rune it does nothing of its own: it walks up to the rune and the rune's teleport effect lifts it away. Rows: the core (the golem does the swap, then the screen returns), GATHER (resource, source area, storage chest, amount or repeat), CRAFT (bench, recipe, amount or repeat), GO TO, TRANSFER (your pack beside its pack and what it wears: `E` gives / takes a stack, `Q` one item, `F` equips the item under the cursor, e.g. a rune into its rune slot, `E` on a worn slot takes it off into its pack, `Esc` back), RENAME (`R` too: type, `Enter` keeps, `Esc` cancels, empty clears; the name goes before its kind, e.g. BOB - WORKER GOLEM), pause / resume / retry, cancel. Only valid targets are offered; a refusal says why |
 | `E` on a teleport rune | Travel to its linked rune |
 | Walk into a shop door, or on along a road that runs off the map | Go through. No key: keep pushing the way you are going. Doors open into the room behind them (walk down onto the sill at the bottom of a room to leave); the old road at the west edge of the surface leads to the market town of Westwake, and the town's east gate leads back |
-| `Space` near a tree, rock or log | Harvest wood / stone: the slam works every tree, rock and log within about a tile of where the fists land, one blow of work each (so one slam can work several at once). They aren't interactable: `E` does nothing on them and the vision mode doesn't highlight them |
+| `Space` near a tree, rock, log or iron vein | Harvest wood / stone / iron ore (ore takes two blows a piece bare-handed; a tool head of the right kind on an arm doubles the work of each blow, a tempered one triples it): the slam works every tree, rock and log within about a tile of where the fists land, one blow of work each (so one slam can work several at once). They aren't interactable: `E` does nothing on them and the vision mode doesn't highlight them |
 | `Z` | Toggle vision (scan) mode: a scanner sweep from the golem's eye highlights what it can see within its light's radius, each category with its own hologram (gold: important, cyan: interactable, violet: someone, green: buildable). A pulsing diamond marks something still to analyze; a dim, still outline with a check mark means it's already analyzed. `E` on a buildable analyzes its pattern. The top-right readout counts both within sight |
 | `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
@@ -49,6 +53,22 @@ Worker golem sprites: `node scripts/preview.mjs` renders pose sheets and animati
 Debug menu (testing only): `Ctrl+0` opens (and closes) a tabbed menu over the play screen; the world is paused behind it. `Q` / `R` or `1`-`5` switch tab, `W` / `S` (or `PgUp` / `PgDn`) move, `Esc` / `Tab` closes. **ITEMS**: every item in the game; `A` / `D` set the quantity (`Shift` for tens, `M` for a full stack), `E` summons it into the pack (what does not fit lands on the ground; the iron arm installs itself), `G` drops it on the ground in front, `X` deletes from the pack, `F` wears it (gear), `/` searches. **PLAYER**: iron arm, mended eye, super speed (off / x3 / x6 / x12), noclip, all gear slots, the gear / build / story kits, learn all plans, fill materials, wear a basket, clear the pack. **FLAGS**: every progression flag, rune site, build plan and NPC awake state, toggled with `E` (searchable). **TELEPORT**: any area's start, room, rune site, circle or NPC (searchable; an area you have not visited yet is entered at its start). **WORLD**: coordinate HUD, zoom, time of day (`E` steps the clock to the next mark of the day), clock speed (x1 / x20 / x60), unlock everything, save, load, a new game without the intro, the foundation fixture. The logic is in `src/game/sim/debug.ts` (tested in `tests/debugMenu.test.ts`), the screen in `src/game/screens/debug.ts`.
 
 Debug keys (testing only): `Ctrl+1` toggle iron arm, `Ctrl+2` runes + core + tools, `Ctrl+3` super speed, `Ctrl+4` build + masonry knowledge, the basket worn on the golem's back (the one in the pack if it has one), 40 each of wood, stone, planks and cut stone (enough to try every buildable), `Ctrl+5` toggle the mended eye (`golem.eye`) and its zoom, `Ctrl+6` toggle the gear kit: build + masonry knowledge, the basket worn, the rune chisel, wood, stone, planks and cut stone topped up to 40, both runes (Swift, Glow; one of each, never a second), and every locked gear slot unlocked (the left arm and the other three rune slots); press again to lock them (what they hold goes back to the pack).
+
+## Iron, tools and the way in
+
+The halls are the first cellar floor of something much larger. The floor that stood above them is gone under the grass, and only what was warded is left up there: the rune circle, and a glyph cut in the lintel of the old stair. That stair is the way in, and it is buried. To open it:
+
+1. **Learn to smelt.** In the artificery, study the smelter (`Z`, then `E`). Study the anvil too.
+2. **Find iron.** Twelve rust-veined rocks stand on the surface, mostly in the rocky ground. Slam them (`Space`): two blows a piece, three pieces each. They do not grow back.
+3. **Smelt** ore and wood into ingots at the smelter.
+4. **Make a shovel head** at the anvil: forge one (2 ingots), or repair the rusted one lying by the smelter's coal bin (1 ingot). Put it on an arm from the pack (`E`).
+5. **Dig** at the stair head, south of the rune (a square of kerb stones in the grass, between two low banks): `E`, eight strokes. Then the shovel rings on stone.
+6. **Forge a pick head** (3 ingots), fit it, and break through: eight more strokes. With one arm slot the pick takes the shovel's place; with the iron arm on, the left arm takes a head too.
+7. **Walk in.** The stairwell is open, the glyph on its lintel wakes, and daylight reaches the Vestibule below.
+
+Tool heads are for a golem's arms. A full tool (a head on a wooden haft, made at the workbench from a head and 2 wood) is for hands: carried by a worker, it speeds that worker's gathering; in your own pack it is cargo. An axe head works wood, a pick head rock and ore, a shovel head only digs. Dirt has no use yet. Tools do not wear out; "repair" is for the rusted heads time left behind (there is an old axe head in the armory too).
+
+Developer preview: `node scripts/entrancePreview.mjs` renders the stair head at every dig stage, the open stair below, the smelter's and the anvil's screens and a sheet of the new sprites to `.preview/entrance/*.png`.
 
 ## Day and night
 
@@ -144,7 +164,7 @@ src/
   game/
     core/            seeded RNG, hashing (pure)
     content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
-                     inventory tiers, gear slots, rune network, harvest yields, build + craft recipes,
+                     inventory tiers, gear slots, rune network, harvest yields, tools, dig sites and entrances, build + station recipes,
                      NPC definitions, dialogue scripts + beats, inner-monologue lines,
                      cutscene scripts (data)
     map.ts           tutorial dungeon area builder
@@ -152,7 +172,7 @@ src/
     town.ts          Westwake area builder (streets, buildings, street light, yards, standing places)
     townInteriors.ts the six shop interiors (one small area each)
     world/           Area, World, area registry, save/load (simulated + saved state)
-    sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting,
+    sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting (bench, smelter, anvil), tools, digging and entrances,
                      runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
                      stepping, UI commands (incl. storage moves and worker orders), jobs, the order screen's option lists (orders.ts), debug kits (no DOM)
     view/            area view: baked background + light registry; zoom model

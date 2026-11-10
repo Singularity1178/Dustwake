@@ -8,7 +8,7 @@
 // overflow on the ground like any pickup. Nothing is ever deleted: a failed
 // check changes nothing. Tools (the rune chisel) must be carried, never used up.
 // Any actor can run the same task, not just the player.
-import { craftRecipesFor, CRAFT_RECIPES, CRAFT_DUR, STATION_REQUIRES, type CraftRecipe } from "../content/crafting";
+import { craftRecipesFor, CRAFT_RECIPES, CRAFT_DUR, STATION_REQUIRES, STATIONS, isStation, type CraftRecipe } from "../content/crafting";
 import { ITEMS, ITEM_NAMES, type ItemId } from "../content/items";
 import { propDef } from "../content/props";
 import { emit, type Actor, type World } from "../world/world";
@@ -42,9 +42,13 @@ export const CRAFT_TEXT: Record<Exclude<CraftStatus, "ok" | "tools">, string> = 
 /** Shown when the crafter doesn't know the craft at all (the station opens greyed out). */
 export const CRAFT_LOCKED_TEXT = "YOU DON'T KNOW HOW TO CRAFT YET";
 export const CRAFT_GONE_TEXT = "THE BENCH IS GONE OR TOO FAR AWAY";
+/** What a station says while its craft is unknown, and when it has gone: the bench's own lines, or the station's (content/crafting.ts: STATIONS). */
+export const craftLockedText = (station: string) => (isStation(station) ? STATIONS[station].lockedText : CRAFT_LOCKED_TEXT);
+export const craftGoneText = (station: string) => (isStation(station) && station !== "crafting" ? `THE ${STATIONS[station].name} IS GONE OR TOO FAR AWAY` : CRAFT_GONE_TEXT);
 
 const validRecipe = (r: CraftRecipe) => !!ITEMS[r.output.item] && Number.isSafeInteger(r.output.n) && r.output.n > 0
   && r.inputs.every((c) => !!ITEMS[c.item] && Number.isSafeInteger(c.n) && c.n > 0)
+  && (r.also ?? []).every((c) => !!ITEMS[c.item] && Number.isSafeInteger(c.n) && c.n > 0)
   && (r.tools ?? []).every((item) => !!ITEMS[item] && !r.inputs.some((c) => c.item === item));
 
 /** The reason a recipe can't be made now, for the screen and the message line. */
@@ -75,6 +79,18 @@ export function craftEntries(w: World, a: Actor, station: string, list: readonly
   return craftRecipesFor(station, list).map((r) => craftEntry(w, a, r, p));
 }
 
+/** Is the piece a row works on (CraftRecipe.work) at hand? Rows without one always are. */
+const atHand = (e: CraftEntry) => !e.recipe.work || (e.lines.find((l) => l.item === e.recipe.work)?.have ?? 0) > 0;
+
+/**
+ * What a station's screen lists: its plans, one tab of them if `tab` is given,
+ * without the rows whose piece to work on is not at hand (so the anvil's
+ * repair, modify and rune tabs show what can be done to the tools brought to it).
+ */
+export function craftList(w: World, a: Actor, station: string, propId?: string | null, tab?: string, list: readonly CraftRecipe[] = CRAFT_RECIPES): CraftEntry[] {
+  return craftEntries(w, a, station, list, propId).filter((e) => (!tab || e.recipe.tab === tab) && atHand(e));
+}
+
 /**
  * The CRAFT button. Validates, then starts the craft task (the effect does the
  * work when it fires). `propId` is the bench in use: the crafter turns to face
@@ -85,13 +101,13 @@ export function orderCraft(w: World, a: Actor, station: string, id: string, prop
   // A station-opening reach may be paused beneath its screen after firing.
   const opening = a.task?.fired && a.task.effect?.op === "useStation";
   if ((a.task && !opening) || !capable(a, "craft") || !powered(a)) return false;
-  if (craftLocked(w, a, station)) { actorMessage(w, a, CRAFT_LOCKED_TEXT); return false; }
+  if (craftLocked(w, a, station)) { actorMessage(w, a, craftLockedText(station)); return false; }
   const r = craftRecipesFor(station, list).find((x) => x.id === id);
   if (!r) return false;
   const p = propId ? w.areas.get(a.area)?.prop(propId) : undefined;
   const e = craftEntry(w, a, r, p);
   if (e.status !== "ok") { actorMessage(w, a, craftReason(e)); return false; }
-  if (propId && (!p || propDef(p.kind).station !== station || !atStation(a, p) || !lineOfSight(w.areas.get(a.area)!, a, p))) { actorMessage(w, a, CRAFT_GONE_TEXT); return false; }
+  if (propId && (!p || propDef(p.kind).station !== station || !atStation(a, p) || !lineOfSight(w.areas.get(a.area)!, a, p))) { actorMessage(w, a, craftGoneText(station)); return false; }
   if (p) faceTo(a, p.x, p.y - 4);
   beginTask(a, { kind: "craft", dur: r.dur ?? CRAFT_DUR, effect: { op: "craft", recipe: r.id } }, { kind: "craft", x: p?.x ?? a.x, y: p?.y ?? a.y, propId: p?.id });
   return true;
@@ -108,9 +124,9 @@ export function applyCraft(w: World, a: Actor, area: Area, recipe: string, propI
   if (!r) return false;
   if (propId) {
     const p = area.prop(propId);
-    if (!p || propDef(p.kind).station !== r.station || !atStation(a, p) || !lineOfSight(area, a, p)) { actorMessage(w, a, CRAFT_GONE_TEXT); return false; }
+    if (!p || propDef(p.kind).station !== r.station || !atStation(a, p) || !lineOfSight(area, a, p)) { actorMessage(w, a, craftGoneText(r.station)); return false; }
   }
-  if (craftLocked(w, a, r.station)) { actorMessage(w, a, CRAFT_LOCKED_TEXT); return false; }
+  if (craftLocked(w, a, r.station)) { actorMessage(w, a, craftLockedText(r.station)); return false; }
   const p = propId ? area.prop(propId) : undefined;
   const e = craftEntry(w, a, r, p);
   if (e.status !== "ok") { actorMessage(w, a, craftReason(e)); return false; }
@@ -118,6 +134,7 @@ export function applyCraft(w: World, a: Actor, area: Area, recipe: string, propI
   if (!consumeInputs(craftSources(w, a, p), r.inputs)) return false;
   for (const c of r.inputs) rememberItem(w, a, c.item);
   giveItem(w, a, r.output.item, r.output.n);
+  for (const x of r.also ?? []) giveItem(w, a, x.item, x.n);
   emit(w, { t: "crafted", actor: a.id, recipe: r.id, item: r.output.item, n: r.output.n });
   return true;
 }

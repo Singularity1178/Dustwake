@@ -269,7 +269,7 @@ test("the built crafting bench is a workbench: interactable, and opens its UI th
   assert.deepEqual(ev, { t: "openStation", actor: pl.id, prop: bench.id, station: "crafting" });
   // the bench lists the real plans and CRAFT starts work at this very bench
   const list = craftEntries(w, pl, "crafting");
-  assert.equal(list.length, CRAFT_RECIPES.length);
+  assert.equal(list.length, CRAFT_RECIPES.filter((r) => r.station === "crafting").length);
   assert.equal(list.find((e) => e.recipe.id === "planks")!.status, "ok");
   assert.equal(orderCraft(w, pl, "crafting", "planks", bench.id), true);
   assert.equal(pl.task!.kind, "craft");
@@ -281,7 +281,7 @@ test("the dungeon's workbench gives up its chisel first, then works as a craftin
   const id = "workbench@13.5,37";
   // chisel still on it: the pickup is what is offered (the tutorial depends on this)
   assert.equal(interactables(a).find((i) => i.propId === id)!.kind, "propItem");
-  assert.ok(!interactables(a).some((i) => i.kind === "station"));
+  assert.ok(!interactables(a).some((i) => i.kind === "station" && i.propId === id), "(the smelter and the anvil are stations of their own: tests/smithing.test.ts)");
   useOn(w, propItem(w, id));
   assert.equal(countItem(pl, "chisel"), 1);
   // chisel gone: the same prop is now a station, and using it opens the crafting UI
@@ -313,7 +313,7 @@ test("without the knowledge to build, a workbench still opens but nothing is vie
   // learning to build unlocks the plans
   setFlag(w, FLAGS.knowBuild);
   assert.ok(!craftLocked(w, pl, "crafting"));
-  assert.equal(craftEntries(w, pl, "crafting").length, CRAFT_RECIPES.length);
+  assert.equal(craftEntries(w, pl, "crafting").length, CRAFT_RECIPES.filter((r) => r.station === "crafting").length);
 });
 
 /** A UiHost just big enough to drive the crafting screen against a real world and the recording canvas. */

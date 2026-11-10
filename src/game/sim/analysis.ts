@@ -6,7 +6,8 @@ import { actorDef, capable } from "../content/actors";
 import { TILE_INTERACT, TS } from "../content/tiles";
 import type { Target } from "../content/tasks";
 import type { Area, PropInst } from "../world/area";
-import { emit, type Actor, type World } from "../world/world";
+import { emit, hasFlag, setFlag, type Actor, type World } from "../world/world";
+import { DIG_SITES } from "../content/digging";
 import { meets } from "./requirements";
 import { lineOfSight } from "./navigation";
 
@@ -36,10 +37,13 @@ export function learnPlans(w: World, a: Actor, p: Pick<PropInst, "id" | "kind">)
   const fresh: [string, Recipe][] = [];
   for (const [id, r] of buildRows(p.kind)) {
     const flag = analysisFlag(r.analysis ?? id);
-    if (w.flags.has(flag)) continue;
-    w.flags.add(flag);
-    fresh.push([id, r]);
-    emit(w, { t: "analyzed", actor: a.id, prop: p.id, flag });
+    if (!w.flags.has(flag)) {
+      w.flags.add(flag);
+      fresh.push([id, r]);
+      emit(w, { t: "analyzed", actor: a.id, prop: p.id, flag });
+    }
+    // Studying the thing also shows how it is used (the smelter teaches smelting).
+    if (r.teaches && !hasFlag(w, r.teaches)) { setFlag(w, r.teaches); emit(w, { t: "learned", flag: r.teaches }); }
   }
   return fresh;
 }
@@ -113,7 +117,7 @@ export function visionTargets(w: World, area: Area): VisionTarget[] {
     const d = propDef(p.kind);
     const category = classifyHighlight({
       item: !p.taken && !p.open ? p.item : undefined, rune: d.rune, buildable: buildRows(p.kind).length > 0,
-      interactable: !!(d.station || d.storage || d.examine || (!p.taken && p.item) || (p.container && !p.open)),
+      interactable: !!(d.station || d.storage || d.examine || (!p.taken && p.item) || (p.container && !p.open) || (DIG_SITES[p.kind] && !p.open)),
     });
     if (category) out.push({ id: p.id, kind: `prop:${p.kind}`, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
   }

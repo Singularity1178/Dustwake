@@ -38,6 +38,8 @@ export const FS = {
   BOARD: 14,
   /** Pale glazed tiles with dark insets (the high-end shops). */
   TILE: 15,
+  /** A flight of stone steps climbing to the south (the stair from the halls up to the surface). */
+  STAIR: 16,
 } as const;
 
 /**

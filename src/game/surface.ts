@@ -12,7 +12,7 @@
 import { mulberry, hash2 } from "./core/rng";
 import { TS, T, FS } from "./content/tiles";
 import { propDef } from "./content/props";
-import { DUNGEON_TO_SURFACE, SURFACE_GATE, SURFACE_GATE_CORRIDOR, SURFACE_GATE_ZONE, WEST_ROAD } from "./content/geography";
+import { DUNGEON_TO_SURFACE, ENTRANCES, SURFACE_GATE, SURFACE_GATE_CORRIDOR, SURFACE_GATE_ZONE, WEST_ROAD } from "./content/geography";
 import { reachable, type Box } from "./sim/reach";
 import { buildDungeon, type AreaData, type DecalDef, type Exit, type LightDef, type LooseItem, type Portal, type PropDef } from "./map";
 
@@ -43,7 +43,10 @@ const fbm = (x: number, y: number, s: number) => 0.5 * vnoise(x, y, 13, s) + 0.3
  * `westRoad: false` leaves out the old road to Westwake (the wild exactly as it
  * was before the town existed; the art regression test bakes that one).
  */
-export function buildSurface(opts: { westRoad?: boolean } = {}): AreaData {
+/** How many iron veins the surface holds (three pieces of ore each; they do not grow back). */
+export const IRON_VEINS = 12;
+
+export function buildSurface(opts: { westRoad?: boolean; iron?: boolean } = {}): AreaData {
   const rng = mulberry(SURFACE_SEED);
   const n = SW * SH;
   const grid = new Uint8Array(n).fill(T.FLOOR);
@@ -192,9 +195,14 @@ export function buildSurface(opts: { westRoad?: boolean } = {}): AreaData {
   // No baseline glow: presentation drives this light from 0 (dormant) to full.
   lights.push({ x: rc.x, y: rc.y, rad: 78, col: [0.6, 0.38, 1], int: 0.75, flick: 0.06, id: "runeglow" });
 
-  // ---- the buried surface gate: walkable, flat markers only
-  const gate = at(SURFACE_GATE.x, SURFACE_GATE.y);
-  P("buriedgate", gate.x, gate.y);
+  // ---- the buried stair head: walkable, flat markers only. The halls below are the first cellar floor; the floor
+  // that stood here is gone under the grass, and of it only what was warded survives: the rune circle, and the
+  // glyph on this stair's lintel. The prop is centred on the stair (between its two middle tiles) and is the dig
+  // site (content/digging.ts): dug out, it is the open stairwell, entered from its south lip (the portal below).
+  const gate = { x: (SURFACE_GATE_CORRIDOR.x + SURFACE_GATE_CORRIDOR.w / 2) * TS, y: (SURFACE_GATE.y + 1) * TS };
+  const stairHead = P("buriedgate", gate.x, gate.y);
+  // the ward glyph's glow: owned by the stair head, so it is dark until that is lit (when the stair is dug out)
+  lights.push({ x: gate.x, y: gate.y - 47, rad: 40, col: [0.62, 0.5, 1], int: 0.45, flick: 0.05, id: "wardglow", owner: stairHead.id });
   const cor = SURFACE_GATE_CORRIDOR, wL = SURFACE_GATE_ZONE.x0, wR = SURFACE_GATE_ZONE.x1;
   P("capstone", wL * TS + 9, (cor.y + 1) * TS + 15);
   P("capstone", wR * TS + 7, (cor.y + 3) * TS + 14, { v: 1 });
@@ -321,14 +329,12 @@ export function buildSurface(opts: { westRoad?: boolean } = {}): AreaData {
   }
   for (const p of props) if (p.kind === "tree" && hash2(p.x, p.y, 242) < 0.65 && clearOfRune(p.x + 6, p.y - 12, 28)) D("shade", p.x + 6 + jit(6), p.y - 12 + jit(4), 0, 44 + rng() * 14);
 
-  // the buried entrance, readable only if you look: two parallel low banks over
-  // the corridor walls, a faint sunken strip between them, a swell where the arch lies
+  // the buried stair, readable only if you look: two parallel low banks over its side walls. Between them the
+  // ground is square-cut, not a round dent: the stair head's own kerb shows through the grass (the prop's sprite).
   {
     const top = SURFACE_GATE_ZONE.y0 * TS + 4, len = (SURFACE_GATE.y - SURFACE_GATE_ZONE.y0) * TS + 4;
     D("ridge", wL * TS + 8, top, 1, len, 10);
     D("ridge", wR * TS + 8, top + 6, 1, len - 6, 10);
-    D("hollow", (cor.x + cor.w / 2) * TS, (cor.y + cor.h / 2) * TS + 4, 0, cor.w * TS - 8, cor.h * TS);
-    D("hump", gate.x, gate.y - 6, 0, 64, 18);
   }
 
   // ground cover
@@ -430,8 +436,39 @@ export function buildSurface(opts: { westRoad?: boolean } = {}): AreaData {
     exits.push({ x: 0, y: mid, label: "WESTWAKE", dir: "w" });
   }
 
+  // ---- iron: rocks veined with ore, in the rocky ground first. Placed last and by hash, never by the rng, so
+  // nothing else in the wild moves; each keeps the free ring every blocking prop has, so no pocket can form.
+  if (opts.iron !== false) {
+    const cand: [number, number, number][] = [];
+    for (let y = 2; y < SH - 2; y++) for (let x = 2; x < SW - 2; x++) {
+      const z = zone[y * SW + x];
+      if (grid[y * SW + x] !== T.FLOOR || z === Zone.GATE || z === Zone.CLEARING) continue;
+      cand.push([hash2(x, y, 301) + (z === Zone.ROCKY ? 0 : 1), x, y]);
+    }
+    cand.sort((a, b) => a[0] - b[0] || a[2] - b[2] || a[1] - b[1]);
+    const veins: { x: number; y: number }[] = [];
+    for (const [, x, y] of cand) {
+      if (veins.length >= IRON_VEINS) break;
+      if (dRune(x, y) < 8 || veins.some((v) => Math.hypot(v.x - x, v.y - y) < 5)) continue;
+      const a = at(x, y, 3);
+      if (!canPlace("ironore", a.x, a.y)) continue;
+      P("ironore", a.x, a.y, { v: Math.floor(hash2(x, y, 302) * 3) });
+      veins.push({ x, y });
+    }
+  }
+
+  // ---- the stair head's south lip: once the stair is dug out, pushing north into the stairwell from here walks
+  // down into the halls (and coming up out of them sets you down here). Shut until then (the entrance's flag).
+  const stair = ENTRANCES.surface_stair;
+  portals.push({
+    id: stair.above.portal, x: gate.x - 26, y: gate.y, w: 52, h: 10, dir: "up",
+    to: { area: stair.below.area, portal: stair.below.portal }, arrive: { x: gate.x, y: gate.y + 7 }, flag: stair.flag, label: "THE SURFACE",
+  });
+
   return {
     id: "surface", w: SW, h: SH, grid, plan, style, tvar, rooms: [], props, decals, lights, loose,
     start: { x: rc.x, y: rc.y + 4 }, exits, drips: [], outdoor: true, ambient: [0.32, 0.31, 0.42], portals,
+    // where someone looking for the way in ends up (data only, like the town's spots)
+    spots: [{ id: "stairhead", kind: "door", x: gate.x, y: gate.y + 7, facing: "up" }],
   };
 }

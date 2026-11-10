@@ -64,7 +64,7 @@ test("the Guardian's village is where it said: a road leaves the surface westwar
   for (let y = WEST_ROAD.surface.y0; y <= WEST_ROAD.surface.y1; y++) { assert.equal(s.grid[y * s.w], T.THICKET, "the edge column stays closed"); assert.equal(s.grid[y * s.w + 1], T.FLOOR, "the road reaches it"); }
   assert.ok(s.props.some((p) => p.kind === "waymark"), "a waymark stands at its mouth");
   const wild = buildSurface({ westRoad: false });
-  assert.equal(wild.portals!.length, 0); assert.equal(wild.exits.length, 0);
+  assert.ok(!wild.portals!.some((p) => p.id === WEST_ROAD.portal), "(the stair head's own portal is not a road: tests/entrance.test.ts)"); assert.equal(wild.exits.length, 0);
   assert.equal(wild.grid[WEST_ROAD.surface.y0 * wild.w + 1], T.THICKET, "without the road the wild is as it was");
   assert.equal(AREA_NAMES[TOWN_ID], "WESTWAKE");
 });

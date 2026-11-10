@@ -1,6 +1,7 @@
 // Actor inventories: an ordered array of slots ({item, n} or null). Capacity is
 // derived from world/actor state (content/inventory.ts), never stored. All
 // functions here are pure sim (no DOM) and work for any actor.
+import { propDef } from "../content/props";
 import { actorDef } from "../content/actors";
 import { maxStack, type ItemId } from "../content/items";
 import { TS, isSolidT } from "../content/tiles";
@@ -145,7 +146,7 @@ function tileFree(area: Area, tx: number, ty: number, bodies: readonly Box[]) {
   const cx = tx * TS + 8, cy = ty * TS + 11;
   for (const p of area.props) {
     const b = p.box;
-    if (b && !p.taken && cx > b[0] - 3 && cx < b[2] + 3 && cy > b[1] - 3 && cy < b[3] + 3) return false;
+    if (b && !p.taken && !(propDef(p.kind).openBox && !p.open) && cx > b[0] - 3 && cx < b[2] + 3 && cy > b[1] - 3 && cy < b[3] + 3) return false;
   }
   for (const b of bodies) if (cx > b[0] - 3 && cx < b[2] + 3 && cy > b[1] - 3 && cy < b[3] + 3) return false;
   return true;

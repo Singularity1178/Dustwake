@@ -8,7 +8,7 @@
 import type { Portal } from "../map";
 import type { Facing } from "../golem";
 import { actorDef, capable } from "../content/actors";
-import { emit, enterArea, getArea, type Actor, type World } from "../world/world";
+import { emit, enterArea, getArea, hasFlag, type Actor, type World } from "../world/world";
 import type { Area } from "../world/area";
 import { actorBoxes, nearestFree } from "./collision";
 
@@ -18,11 +18,18 @@ const AWAY: Record<Portal["dir"], Facing> = { up: "down", down: "up", left: "rig
 export const portalsOf = (area: Area): readonly Portal[] => area.base.portals ?? [];
 export const portalById = (area: Area, id: string): Portal | undefined => portalsOf(area).find((p) => p.id === id);
 
-/** The portal someone standing at (x, y) and pushing (ix, iy) walks through, if any: feet in its box, pushing mostly its way. */
-export function portalAt(area: Area, x: number, y: number, ix: number, iy: number): Portal | null {
+/** Is a portal passable? One with a `flag` (a stair that has to be dug out first) only once that world flag is set. */
+export const portalOpen = (w: World, p: Portal) => !p.flag || hasFlag(w, p.flag);
+
+/**
+ * The portal someone standing at (x, y) and pushing (ix, iy) walks through, if any: feet in its box, pushing
+ * mostly its way. `open` leaves out the ones that are shut (pass `(p) => portalOpen(w, p)`).
+ */
+export function portalAt(area: Area, x: number, y: number, ix: number, iy: number, open: (p: Portal) => boolean = () => true): Portal | null {
   const mag = Math.hypot(ix, iy);
   if (!mag) return null;
   for (const p of portalsOf(area)) {
+    if (!open(p)) continue;
     const [dx, dy] = PUSH[p.dir];
     if ((ix * dx + iy * dy) / mag < 0.7) continue;
     if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return p;
@@ -42,7 +49,7 @@ export function portalArrival(p: Portal): { x: number; y: number; facing: Facing
  * nothing moves) if the other side is missing or blocked solid.
  */
 export function walkThrough(w: World, a: Actor, area: Area, p: Portal): boolean {
-  if (a.area !== area.id || !capable(a, "move")) return false;
+  if (a.area !== area.id || !capable(a, "move") || !portalOpen(w, p)) return false;
   const dest = getArea(w, p.to.area), out = portalById(dest, p.to.portal);
   if (!out) return false;
   const at = portalArrival(out);

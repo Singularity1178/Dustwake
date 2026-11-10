@@ -27,7 +27,12 @@ import type { ItemId } from "../src/game/content/items";
 // Compared pixel for pixel with the art as it was: of the prop sprites only `bed` and `brazier` differ
 // (props was "e4c643ed"), and of the tile sprites only the cracked wall, redrawn as a stretch of the wall it
 // stands in (tiles was "5eb324bb"); rubble, both pillars, the door and the bars are untouched.
-const GOLDEN = { props: "9ff9b39a", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "c332aec8" };
+// The entrance update (v14): props (was "9ff9b39a"): `buriedgate`, `forge`, `anvil`, `weaponrack` and
+// `armorstand` were redrawn and eleven kinds added (ironore, toolboard, runetable, clayvat, husk, staffrack,
+// wallhooks, armorpile, stairfoot, stairfall, stairlight); the 123 other sprites hash as before. surface (was
+// "c332aec8"): only tiles inside 46-50,56-62 differ, where the round hollow and hump over the buried stair
+// were taken out (compared pixel by pixel against the bake as it was).
+const GOLDEN = { props: "b2f6aee3", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

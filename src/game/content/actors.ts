@@ -17,6 +17,7 @@ export interface ActorDef {
   /** Locks belong to a body definition, not to the slot vocabulary. */
   gearUnlocks?: Partial<Record<GearSlot, Requirement>>;
   power?: { family: string; tier: number };
+  /** `wield`: works with a hafted tool carried in its pack (content/tools.ts). The maintainer fits heads to its arms instead. */
   capabilities: readonly string[];
   eyeLight?: { dx: number; dy: number; rad: number; col: [number, number, number] };
 }
@@ -40,13 +41,13 @@ export const ACTORS: Record<string, ActorDef> = {
   worker_golem: {
     name: "WORKER GOLEM", body: { box: [8, 4], height: 20, reach: 18 }, art: { key: "worker" },
     speed: 16, harvestPower: 0.5, inventory: { slots: 8 }, gearSlots: ["rune0"],
-    power: { family: "golem", tier: 1 }, capabilities: ["move", "harvest", "craft", "travel", "worker"],
+    power: { family: "golem", tier: 1 }, capabilities: ["move", "harvest", "craft", "travel", "worker", "wield"],
   },
   // Fixture-only (tests): no builder, NPCS row or migration produces one, and its "human" art is a stand-in.
   npc_worker: {
     name: "WORKER", body: { box: [8, 6], height: 22, reach: 18 }, art: { key: "human" },
     speed: 20, harvestPower: 0.75, inventory: { slots: 8 }, gearSlots: ["head", "back", "armR", "armL"],
-    capabilities: ["move", "harvest", "craft", "travel", "worker"],
+    capabilities: ["move", "harvest", "craft", "travel", "worker", "wield"],
   },
 };
 

@@ -17,6 +17,8 @@ export const FLAGS = {
   knowSchematic: "know.schematic",
   knowBuild: "know.build",
   knowRepair: "know.repair",
+  /** Smelting ore into ingots. Nobody teaches it: the golem reads it off a smelter (content/build.ts: Recipe.teaches). */
+  knowSmelt: "know.smelt",
   /** Stonework (the brazier recipe). No book teaches it yet; Ctrl+4 grants it. */
   knowMasonry: "know.masonry",
   /**
@@ -40,6 +42,7 @@ export const LEARNED_TEXT: Record<string, string> = {
   [FLAGS.knowBuild]: "YOU LEARNED TO BUILD.",
   [FLAGS.knowRepair]: "YOU LEARNED THE ART OF MENDING",
   [FLAGS.knowMasonry]: "YOU LEARNED THE MASON'S CRAFT",
+  [FLAGS.knowSmelt]: "YOU LEARNED TO SMELT ORE.",
 };
 export const learnedText = (flag: string) => LEARNED_TEXT[flag] ?? `YOU LEARNED ${flag}`;
 

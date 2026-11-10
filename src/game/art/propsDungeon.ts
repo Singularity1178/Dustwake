@@ -18,6 +18,9 @@ function books(p: Pen, x: number, y: number, w: number, h: number, r: Rng, spars
   }
 }
 
+/** Rust: what the armory's iron has turned to. */
+const RU = { d: "#4a2a1c", m: "#6e4028", l: "#8e5a38" };
+
 export const DUNGEON_PROP_ART: Record<string, PropArt> = {
   torch: (_v, alt, M) => {
     return M(8, 16, (p) => {
@@ -169,13 +172,28 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       }
     });
   },
-  weaponrack: (_v, _alt, M) => {
-    return M(24, 22, (p) => {
-      p.r(1, 2, 2, 20, WD.o); p.r(21, 2, 2, 20, WD.o);
-      p.r(0, 4, 24, 2, WD.m); p.r(0, 15, 24, 2, WD.m); p.r(0, 4, 24, 1, WD.l);
-      p.r(6, 0, 1, 20, WD.l); p.r(5, 0, 3, 3, IR.l); p.p(6, 0, IR.h);
-      p.r(16, 3, 1, 17, WD.l); p.r(15, 2, 3, 2, "#6a4a3a");
-      p.line(10, 6, 13, 19, IR.d);
+  // A long rack, all but empty. v0: one sword left in its notch, rusted to the scabbard colour, and the butt of a
+  // snapped spear. v1: nothing on it, the top rail broken, a blade lying under it.
+  weaponrack: (v, _alt, M) => {
+    return M(26, 24, (p) => {
+      p.r(3, 22, 20, 2, "rgba(0,0,0,0.3)");
+      p.r(1, 3, 2, 21, WD.o); p.r(23, 3, 2, 21, WD.o); p.r(1, 4, 1, 19, WD.d); p.r(23, 4, 1, 19, WD.d);
+      p.r(0, 22, 4, 2, WD.d); p.r(22, 22, 4, 2, WD.d);
+      p.r(0, 17, 26, 2, WD.m); p.r(0, 17, 26, 1, WD.l); p.r(0, 19, 26, 1, WD.o);
+      const top = v === 1 ? 14 : 26;
+      p.r(0, 5, top, 2, WD.m); p.r(0, 5, top, 1, WD.l); p.r(0, 7, top, 1, WD.o);
+      for (const x of [4, 8, 12, 16, 20]) { if (x < top) p.p(x, 5, WD.o); p.p(x, 18, WD.o); }
+      if (v === 1) {
+        // the broken end of the rail hangs by a splinter; a blade lies where it fell
+        p.line(14, 6, 19, 11, WD.m); p.p(14, 5, WD.h); p.p(20, 12, WD.l);
+        p.r(5, 21, 11, 1, RU.m); p.p(5, 21, RU.l); p.r(16, 20, 1, 3, IR.d);
+      } else {
+        // hilt up, as it was racked: pommel, grip, guard, and a blade the rust has pitted
+        p.p(8, 0, IR.l); p.r(8, 1, 1, 3, "#3a2a20"); p.r(7, 4, 3, 1, IR.m); p.r(8, 5, 1, 13, RU.m); p.p(8, 8, RU.l); p.p(8, 12, RU.d); p.p(8, 15, RU.l);
+        p.r(16, 9, 1, 11, WD.l); p.p(16, 8, WD.h); p.p(17, 8, WD.l); p.p(15, 9, WD.m);
+      }
+      // cobweb in the corner where nothing has been drawn for an age
+      for (const [x, y] of [[21, 8], [22, 9], [20, 9], [21, 10], [22, 11], [19, 10]] as [number, number][]) p.p(x, y, "rgba(214,214,224,0.34)");
     });
   },
   limbrack: (_v, alt, M) => {
@@ -187,15 +205,27 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       if (alt) { p.p(7, 9, IR.m); p.p(7, 11, IR.d); p.p(15, 9, IR.m); }
     });
   },
+  // v0: a stand still wearing what is left of a cuirass, holed and rust-brown, its helm long gone from the peg.
+  // v1: one that has gone over, the helm rolled clear. v2: a bare stand, a cobweb where the harness hung.
   armorstand: (v, _alt, M) => {
     if (v === 1)
-      return M(18, 10, (p) => {
-        p.r(1, 6, 14, 2, WD.m); p.r(1, 6, 14, 1, WD.l);
-        p.o(11, 1, 7, 6, IR.m, IR.d); p.r(12, 3, 5, 1, "#101010");
+      return M(20, 10, (p) => {
+        p.r(1, 8, 18, 2, "rgba(0,0,0,0.3)");
+        p.r(1, 6, 16, 2, WD.m); p.r(1, 6, 16, 1, WD.l); p.r(5, 2, 2, 8, WD.m); p.r(5, 2, 1, 8, WD.l); p.r(0, 5, 2, 4, WD.d);
+        p.o(13, 1, 7, 6, RU.m, "#1a1210"); p.r(14, 3, 5, 1, "#0e0a08"); p.p(14, 2, RU.l); p.p(18, 5, RU.d);
       });
-    return M(12, 22, (p) => {
-      p.r(5, 6, 2, 14, WD.m); p.r(1, 9, 10, 2, WD.m); p.r(2, 20, 8, 2, WD.d);
-      p.o(3, 0, 6, 7, IR.m, IR.d); p.r(4, 3, 4, 1, "#101010"); p.p(4, 1, IR.h);
+    return M(14, 24, (p) => {
+      p.r(2, 22, 10, 2, "rgba(0,0,0,0.3)");
+      p.r(6, 3, 2, 19, WD.m); p.r(6, 3, 1, 19, WD.l); p.r(1, 8, 12, 2, WD.m); p.r(1, 8, 12, 1, WD.l); p.r(1, 10, 12, 1, WD.o);
+      p.r(3, 21, 8, 2, WD.d); p.r(3, 21, 8, 1, WD.m); p.r(5, 1, 4, 2, WD.l); p.p(5, 1, WD.h);
+      if (v === 2) {
+        for (const [x, y] of [[8, 11], [9, 12], [10, 11], [11, 11], [9, 13], [8, 14], [10, 13]] as [number, number][]) p.p(x, y, "rgba(214,214,224,0.34)");
+        p.r(2, 10, 1, 3, "#3a2a20");
+        return;
+      }
+      p.o(3, 9, 8, 9, RU.m, "#1a1210"); p.r(4, 10, 3, 1, RU.l); p.r(4, 11, 1, 5, RU.l); p.r(9, 11, 1, 6, RU.d);
+      p.r(5, 12, 2, 3, "#0e0a08"); p.p(8, 15, "#0e0a08"); p.p(7, 10, "#0e0a08");
+      p.r(2, 10, 1, 5, "#3a2a20"); p.r(11, 10, 1, 3, "#3a2a20"); p.r(4, 18, 6, 1, RU.d); p.p(5, 19, RU.d); p.p(8, 19, RU.d);
     });
   },
   barrel: (v, _alt, M) => {
@@ -337,21 +367,44 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       for (const x of [2, 8, 14]) { p.r(x, 9, 2, 4, "#8a7a5a"); p.p(x, 10, "#b0a07a"); }
     });
   },
+  // The smelter (kind `forge`): a stone furnace under a flue. An arched fire mouth behind an iron grate, the fire
+  // rune on its keystone still keeping the coals alive, a bellows at one side, a tapping spout and an ingot mould
+  // with cold iron left in it at the other.
   forge: (_v, _alt, M) => {
-    return M(32, 30, (p) => {
-      p.o(6, 0, 20, 10, S.m, S.o); p.r(7, 1, 18, 1, S.h); p.r(8, 8, 16, 2, S.d);
-      p.o(0, 10, 32, 18, S.l, S.o); p.r(1, 11, 30, 2, S.h);
-      p.r(7, 14, 18, 8, "#0c0808");
-      for (const [x, y, c] of [[9, 20, "#7a2a08"], [12, 21, "#c24a10"], [14, 20, "#5a1e06"], [17, 21, "#a03a0a"], [20, 20, "#7a2a08"], [22, 21, "#5a1e06"], [11, 21, "#ff7a20"]] as [number, number, string][]) p.g(x, y, 1, 1, c);
-      p.r(1, 25, 30, 2, S.d);
-      p.o(26, 18, 6, 9, "#4a3020", WD.o); p.r(27, 19, 4, 1, "#6a4a30");
+    return M(32, 34, (p, r) => {
+      p.r(1, 32, 30, 2, "rgba(0,0,0,0.35)");
+      // flue and hood
+      p.o(11, 0, 10, 6, S.m, S.o); p.r(12, 1, 8, 1, S.h); p.r(12, 3, 8, 1, S.d); p.r(13, 0, 6, 1, "#0c0808");
+      p.o(7, 5, 18, 6, S.l, S.o); p.r(8, 6, 16, 1, S.h); p.r(7, 9, 18, 1, IR.d); p.p(9, 9, IR.l); p.p(22, 9, IR.l);
+      // the body: coursed stone
+      p.o(1, 10, 30, 21, S.l, S.o); p.r(2, 11, 28, 1, S.h); p.r(2, 28, 28, 2, S.d);
+      for (const y of [16, 22]) p.r(2, y, 28, 1, S.m);
+      for (const [x, y] of [[6, 12], [15, 12], [25, 12], [4, 17], [27, 17], [6, 23], [26, 23]] as [number, number][]) p.r(x, y, 1, 4, S.m);
+      for (let i = 0; i < 10; i++) p.p(2 + ((r() * 28) | 0), 12 + ((r() * 16) | 0), S.m);
+      // soot over the mouth, the mouth, the grate, the coals
+      p.r(9, 13, 14, 2, S.d); p.r(11, 12, 10, 1, S.m);
+      p.r(9, 15, 14, 11, "#0a0606"); p.p(9, 15, S.d); p.p(22, 15, S.d); p.r(8, 16, 1, 10, S.o); p.r(23, 16, 1, 10, S.o);
+      p.g(11, 22, 10, 1, "#4a1806"); p.g(10, 23, 12, 1, "#6a2208");
+      for (const [x, y, c] of [[10, 24, "#7a2a08"], [11, 23, "#c24a10"], [12, 24, "#ff7a20"], [14, 24, "#a03a0a"], [15, 23, "#ffb040"], [16, 24, "#ff7a20"], [18, 24, "#c24a10"], [19, 23, "#7a2a08"], [20, 24, "#a03a0a"], [21, 24, "#5a1e06"], [13, 22, "#c24a10"], [17, 22, "#a03a0a"]] as [number, number, string][]) p.g(x, y, 1, 1, c);
+      for (const x of [11, 14, 17, 20]) p.r(x, 18, 1, 8, IR.d);
+      p.r(9, 25, 14, 1, IR.m); p.r(9, 18, 14, 1, IR.d);
+      p.gp(15, 13, "#ff9a40"); p.gp(16, 13, "#ffc070"); p.gp(15, 14, "#c85a18");
+      // bellows nozzle (left), tapping spout and ingot mould (right)
+      p.o(0, 17, 5, 9, "#4a3020", WD.o); p.r(1, 18, 3, 1, "#6a4a30"); p.r(1, 21, 3, 1, "#2e1c12"); p.r(4, 21, 4, 2, IR.m); p.p(4, 21, IR.l);
+      p.r(24, 19, 5, 2, IR.m); p.r(24, 19, 5, 1, IR.l); p.p(28, 21, IR.d); p.p(28, 22, IR.d);
+      p.o(23, 26, 9, 5, IR.d, "#14161a"); p.r(24, 27, 7, 1, "#14161a"); p.r(25, 27, 2, 1, IR.l); p.r(28, 27, 2, 1, IR.l);
+      p.r(0, 31, 32, 1, S.d); p.r(0, 30, 32, 1, S.m);
     });
   },
+  // A horned anvil on an iron-banded oak block, the smith's hammer left lying across its face.
   anvil: (_v, _alt, M) => {
-    return M(16, 12, (p) => {
-      p.o(4, 6, 8, 6, WD.m, WD.o);
-      p.o(0, 0, 16, 5, IR.m, "#14161a"); p.r(1, 1, 14, 1, IR.h); p.r(0, 2, 3, 2, IR.d);
-      p.o(5, 4, 6, 3, IR.d, "#14161a");
+    return M(18, 16, (p) => {
+      p.r(3, 15, 12, 1, "rgba(0,0,0,0.35)");
+      p.o(4, 9, 10, 7, WD.m, WD.o); p.r(5, 10, 8, 1, WD.l); p.r(5, 14, 8, 1, WD.d); p.r(4, 12, 10, 1, IR.d); p.p(6, 12, IR.l); p.p(11, 12, IR.l);
+      p.o(5, 6, 8, 4, IR.d, "#14161a"); p.r(6, 8, 6, 1, IR.m);
+      p.o(3, 2, 13, 5, IR.m, "#14161a"); p.r(4, 3, 11, 1, IR.h); p.r(4, 5, 11, 1, IR.d); p.p(14, 3, "#e6eef4");
+      p.r(0, 3, 3, 2, "#14161a"); p.r(1, 3, 2, 1, IR.l); p.p(0, 4, IR.d);
+      p.line(10, 1, 16, 1, WD.l); p.r(8, 0, 3, 3, "#14161a"); p.r(8, 0, 3, 2, IR.l); p.p(8, 0, IR.h);
     });
   },
   cradle: (_v, _alt, M) => {
@@ -531,4 +584,134 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
       p.o(0, 2, 8, 6, WD.m, WD.o); p.r(0, 4, 8, 1, IR.m); p.r(1, 2, 6, 1, "#100c08"); p.r(2, 0, 4, 1, IR.l);
     });
   },
+  // ---------- the artificery
+  // A tool board: pegs, and the painted outline of everything that hung from them. One file is still there.
+  toolboard: (_v, _alt, M) => {
+    const PALE = "rgba(214,204,180,0.42)";
+    return M(26, 15, (p) => {
+      p.o(0, 1, 26, 13, "#4a3424", WD.o); p.r(1, 2, 24, 1, WD.l); p.r(1, 12, 24, 1, WD.d); p.r(8, 2, 1, 11, "#3d2a1c"); p.r(17, 2, 1, 11, "#3d2a1c");
+      for (const x of [4, 10, 14, 19, 23]) p.p(x, 3, IR.l);
+      p.r(3, 4, 3, 2, PALE); p.r(4, 6, 1, 5, PALE);                        // hammer
+      p.line(9, 4, 10, 11, PALE); p.line(11, 4, 10, 11, PALE);             // tongs
+      p.r(14, 4, 1, 6, RU.m); p.p(14, 5, RU.l); p.r(13, 9, 3, 3, WD.l); p.p(13, 9, WD.h); // the file that is left
+      p.r(19, 4, 1, 5, PALE); p.r(18, 8, 3, 4, PALE);                      // shovel
+      p.r(21, 5, 4, 1, PALE); p.r(23, 5, 1, 7, PALE);                      // pick
+      p.p(2, 11, RU.d); p.p(6, 12, RU.d);
+    });
+  },
+  // The rune-cutter's table: a stone top scored with guide lines, an iron clamp holding the last stone anyone
+  // started, its sigil still alight, blanks stacked beside it, mallet and chisel where they were put down.
+  runetable: (_v, _alt, M) => {
+    return M(30, 26, (p) => {
+      p.r(2, 24, 26, 2, "rgba(0,0,0,0.3)");
+      p.r(3, 20, 2, 6, S.o); p.r(25, 20, 2, 6, S.o); p.r(3, 20, 1, 5, S.d); p.r(25, 20, 1, 5, S.d);
+      p.o(0, 8, 30, 13, S.l, S.o); p.r(1, 9, 28, 1, S.h); p.r(1, 18, 28, 2, S.d);
+      p.r(3, 12, 8, 1, S.m); p.r(3, 15, 8, 1, S.m); p.r(6, 11, 1, 6, S.m);
+      p.r(4, 10, 3, 2, WD.l); p.r(7, 10, 3, 1, WD.m); p.p(4, 10, WD.h);
+      p.o(13, 7, 10, 6, IR.d, "#14161a"); p.r(14, 8, 8, 1, IR.l); p.r(22, 9, 2, 2, IR.m);
+      p.o(15, 3, 6, 7, "#5a5562", S.o); p.r(16, 4, 4, 1, "#7a7484");
+      for (const [x, y, c] of [[17, 5, "#c8aaff"], [18, 6, "#b08aff"], [17, 7, "#c8aaff"], [16, 6, "#8a6ae0"], [18, 8, "#8a6ae0"]] as [number, number, string][]) p.gp(x, y, c);
+      p.o(23, 13, 6, 4, "#4b4552", S.o); p.r(24, 14, 4, 1, "#6a6372"); p.o(24, 10, 5, 4, "#4b4552", S.o); p.r(25, 11, 3, 1, "#6a6372");
+      p.line(11, 13, 14, 16, IR.l); p.p(10, 12, WD.l);
+      p.p(9, 16, "#d8d0c0"); p.p(12, 11, "#d8d0c0"); p.p(20, 15, "#d8d0c0");
+    });
+  },
+  // The slip vat: staves and two iron hoops, and inside it the clay, dried and cracked across.
+  clayvat: (_v, _alt, M) => {
+    return M(16, 14, (p) => {
+      p.r(2, 13, 12, 1, "rgba(0,0,0,0.35)");
+      p.o(1, 3, 14, 10, WD.m, WD.o); p.r(2, 4, 1, 8, WD.l);
+      for (const x of [5, 8, 11]) p.r(x, 4, 1, 8, WD.d);
+      p.r(1, 6, 14, 1, IR.d); p.r(1, 10, 14, 1, IR.d); p.p(3, 6, IR.l); p.p(3, 10, IR.l);
+      p.r(2, 1, 12, 3, "#1a110b"); p.r(3, 1, 10, 2, "#8a4a34"); p.r(3, 1, 4, 1, "#a86048");
+      for (const [x, y] of [[5, 2], [6, 1], [7, 2], [9, 1], [10, 2], [11, 1]] as [number, number][]) p.p(x, y, "#4a2418");
+    });
+  },
+  // An unfinished worker body on its casting stand: the red clay barrel and stump legs, a neck ring with no
+  // head on it, the core hatch empty, and a split down the front where it dried too fast.
+  husk: (_v, _alt, M) => {
+    return M(14, 25, (p) => {
+      p.r(1, 23, 12, 2, "rgba(0,0,0,0.3)");
+      p.o(1, 21, 12, 3, WD.d, WD.o); p.r(2, 22, 10, 1, WD.m);
+      p.r(7, 0, 1, 5, IR.d); p.r(5, 0, 5, 1, IR.d);
+      p.r(4, 17, 2, 5, "#7a3e2c"); p.r(8, 17, 2, 5, "#7a3e2c"); p.p(4, 17, "#9a5038"); p.p(8, 17, "#9a5038");
+      p.o(2, 7, 10, 11, "#9a5038", "#3a1a12"); p.r(3, 8, 2, 8, "#b4664a"); p.r(9, 9, 2, 8, "#7a3e2c");
+      p.r(5, 5, 4, 2, IR.m); p.r(5, 5, 4, 1, IR.l);
+      p.r(2, 13, 10, 1, IR.d); p.p(3, 13, IR.l);
+      p.r(6, 10, 2, 2, "#0e0a08");
+      p.line(8, 7, 7, 12, "#2a100a"); p.line(7, 13, 6, 17, "#2a100a");
+    });
+  },
+  // ---------- the armory
+  // The wardens' staff rack: two socketed rails. One staff is left standing, its head stone gone dull; the stump
+  // of another, and a length of a third on the floor.
+  staffrack: (_v, _alt, M) => {
+    return M(22, 26, (p) => {
+      p.r(2, 24, 18, 2, "rgba(0,0,0,0.3)");
+      p.r(2, 9, 2, 16, WD.o); p.r(18, 9, 2, 16, WD.o); p.r(2, 9, 1, 15, WD.d); p.r(18, 9, 1, 15, WD.d);
+      p.o(1, 7, 20, 4, WD.m, WD.o); p.r(2, 8, 18, 1, WD.l);
+      p.o(1, 18, 20, 4, WD.m, WD.o); p.r(2, 19, 18, 1, WD.l);
+      for (const x of [5, 9, 13, 17]) { p.r(x, 8, 2, 1, "#0e0a08"); p.r(x, 19, 2, 1, "#0e0a08"); }
+      p.r(5, 2, 1, 21, WD.l); p.r(6, 3, 1, 20, WD.d); p.o(4, 0, 4, 4, "#6a6a74", "#24242a"); p.p(5, 1, "#9a9aa4"); p.p(6, 2, "#4a4a54");
+      p.r(13, 13, 1, 9, WD.m); p.p(13, 12, WD.l); p.p(14, 13, WD.l);
+      p.r(8, 24, 9, 1, WD.m); p.p(8, 24, WD.l); p.p(17, 24, "#5a5a64");
+      for (const [x, y] of [[17, 11], [18, 12], [16, 12], [17, 13], [18, 14]] as [number, number][]) p.p(x, y, "rgba(214,214,224,0.3)");
+    });
+  },
+  // Pegs on the wall, and the pale shapes of what hung on them. v1 still holds a rusted sword and a split buckler.
+  wallhooks: (v, _alt, M) => {
+    const PALE = "rgba(196,190,206,0.2)";
+    return M(18, 14, (p) => {
+      p.r(0, 2, 18, 1, IR.d); p.p(0, 2, IR.l); p.p(17, 2, IR.l);
+      for (const x of [2, 6, 12, 16]) { p.r(x, 3, 1, 2, IR.m); p.p(x, 4, IR.l); }
+      p.r(6, 5, 1, 8, PALE); p.r(5, 6, 3, 1, PALE);
+      p.r(16, 5, 1, 7, PALE); p.r(15, 6, 3, 1, PALE);
+      if (v === 1) {
+        p.r(2, 5, 1, 2, "#3a2a20"); p.r(1, 7, 3, 1, IR.d); p.r(2, 8, 1, 6, RU.m); p.p(2, 10, RU.l); p.p(2, 13, RU.d);
+        p.o(9, 5, 7, 8, RU.d, "#1a1210"); p.r(10, 6, 5, 1, RU.l); p.r(12, 8, 1, 2, IR.m); p.line(11, 6, 13, 12, "#0e0a08");
+      } else { p.r(2, 5, 1, 8, PALE); p.r(1, 6, 3, 1, PALE); p.r(10, 6, 5, 6, PALE); }
+    });
+  },
+  // What fell off the stands: breastplate, mail and a helm, rusted into one heap.
+  armorpile: (_v, _alt, M) => {
+    return M(18, 12, (p) => {
+      p.r(1, 11, 16, 1, "rgba(0,0,0,0.4)");
+      p.o(1, 5, 9, 6, RU.d, "#1a1210"); p.r(2, 6, 6, 1, RU.m); p.p(3, 8, "#0e0a08");
+      p.o(6, 2, 8, 8, RU.m, "#1a1210"); p.r(7, 3, 5, 1, RU.l); p.r(7, 4, 1, 4, RU.l); p.r(9, 6, 2, 2, "#0e0a08");
+      p.o(11, 6, 6, 5, IR.d, "#14161a"); p.r(12, 8, 4, 1, "#0a0a0a"); p.p(12, 7, IR.m);
+      for (const [x, y] of [[3, 9], [5, 10], [8, 10], [10, 10], [4, 10]] as [number, number][]) p.p(x, y, IR.m);
+      p.p(15, 10, RU.l); p.p(2, 10, RU.l);
+    });
+  },
+  // ---------- the stair up to the surface
+  // Its three lowest steps, standing clear in the Vestibule. The flight climbs south, so from here only treads
+  // show: each begins at a bright nosing and ends in the line of shadow under the next step up, and each is a
+  // little lighter than the one below it. Kerb blocks close both ends.
+  stairfoot: (_v, _alt, M) => {
+    return M(36, 25, (p, r) => {
+      p.r(2, 0, 32, 1, "rgba(0,0,0,0.35)");
+      const steps: [number, string, string, string][] = [[1, "#625c6c", "#948ea0", "#524c5c"], [9, "#726c7c", "#a49eb0", "#625c6c"], [17, "#827c8c", "#b6b0c2", "#726c7c"]];
+      for (const [y, c, hi, lo] of steps) {
+        p.r(2, y, 32, 7, c); p.r(2, y, 32, 1, hi); p.r(2, y + 1, 32, 1, c);
+        p.r(13, y + 2, 10, 4, hi === "#b6b0c2" ? "#8c8696" : c);          // worn pale down the middle
+        for (let i = 0; i < 8; i++) p.p(3 + ((r() * 30) | 0), y + 2 + ((r() * 4) | 0), i % 3 ? lo : hi);
+        p.r(2, y + 7, 32, 1, "#16121a");
+      }
+      for (const x of [0, 34]) { p.r(x, 0, 2, 25, S.d); p.r(x, 0, 1, 25, S.m); p.r(x, 8, 2, 1, S.o); p.r(x, 16, 2, 1, S.o); p.r(x, 24, 2, 1, S.o); }
+    });
+  },
+  // The foot of the fall: the last of the earth and vault stone, lying across the third step. It goes when the
+  // stair is dug out.
+  stairfall: (_v, _alt, M) => {
+    return M(40, 11, (p, r) => {
+      for (let j = 0; j < 8; j++) {
+        const w = Math.round(16 + j * 3), x0 = 20 - (w >> 1);
+        p.r(x0, 3 + j, w, 1, j < 2 ? "#3a2c1e" : "#4e3c2a");
+        for (let i = 0; i < w / 4; i++) p.p(x0 + ((r() * w) | 0), 3 + j, r() < 0.5 ? "#5a4630" : "#3e2e20");
+      }
+      stoneBlob(p, 4, 3, 9, 7, r); stoneBlob(p, 26, 2, 10, 8, r); stoneBlob(p, 16, 0, 8, 6, r);
+    });
+  },
+  // No sprite of its own: it owns the daylight that comes down the stair once it is open (content/props.ts).
+  stairlight: (_v, _alt, M) => M(2, 2, () => {}),
 };

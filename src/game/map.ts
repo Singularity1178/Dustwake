@@ -6,7 +6,7 @@ import type { ItemId } from "./content/items";
 import type { Slot } from "./content/inventory";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
-import { GATE_CORRIDOR, GATE_EXIT } from "./content/geography";
+import { GATE_CORRIDOR, GATE_EXIT, GATE_STAIR, ENTRANCES } from "./content/geography";
 
 export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
 export type { ItemId } from "./content/items";
@@ -70,6 +70,8 @@ export interface Portal {
   arrive?: { x: number; y: number };
   /** A door (latch sound) rather than open road. */
   door?: boolean;
+  /** A world flag that must be set before anyone can pass (an entrance that has to be opened first: content/geography.ts). */
+  flag?: string;
   /** Shown as a note when someone arrives through this portal: the name of the place they are now in. */
   label?: string;
 }
@@ -181,7 +183,9 @@ export function buildMap(seed: number): MapData {
   rect(51, 33, 2, 2, T.FLOOR, B);
   rect(51, 46, 2, 2, T.FLOOR, B);
   rect(35, 41, 2, 3, T.FLOOR, FS.MARBLE);
-  rect(GATE_CORRIDOR.x, GATE_CORRIDOR.y, GATE_CORRIDOR.w, GATE_CORRIDOR.h, T.FLOOR, FS.MARBLE);
+  // The stair up to the surface: the halls are the first cellar floor, and this flight climbs south out of the
+  // Vestibule to the buried stair head above (content/geography.ts). As built it is open, steps all the way.
+  rect(GATE_STAIR.x, GATE_STAIR.y, GATE_STAIR.w, GATE_STAIR.h, T.FLOOR, FS.STAIR);
   rect(29, 48, 2, 1, T.FLOOR, FS.FLAG);
   rect(34, 16, 4, 4, T.FLOOR, FS.MARBLE);
   rect(69, 46, 2, 2, T.FLOOR, FS.FLAG);
@@ -210,8 +214,9 @@ export function buildMap(seed: number): MapData {
   rect(49, 1, 2, 3, R);
   rect(34, 16, 4, 4, R);
   rect(44, 36, 3, 2, R);
-  // the SURFACE GATE corridor: collapsed and choked with rock and spilled earth
-  rect(GATE_CORRIDOR.x, GATE_CORRIDOR.y, GATE_CORRIDOR.w, GATE_CORRIDOR.h, R, FS.EARTH);
+  // the stair to the surface: the vault came down into it, and it is choked with rock and earth from its
+  // second step to the top (the steps are still there under the fall: digging it out from above clears them)
+  rect(GATE_STAIR.x, GATE_STAIR.y, GATE_STAIR.w, GATE_STAIR.h, R, FS.STAIR);
   rect(69, 46, 2, 2, R);
   for (const [x, y] of [
     [43, 2], [44, 2], [45, 2], [44, 3], [45, 3], [45, 4], [43, 3],
@@ -455,10 +460,14 @@ export function buildMap(seed: number): MapData {
   // The circle as a node of the rune network (content/runes.ts). No sprite, no collision.
   props.push({ id: "rune.dungeon", kind: "runesite", x: ritual.x, y: ritual.y, v: 0 });
 
-  // ---- The collapsed SURFACE GATE (added after the procedural pass, with its
-  // own rng, so nothing else in the dungeon changes). The corridor is heaped
-  // with boulders and fallen masonry; rubble and spilled earth reach a few
-  // tiles into the Vestibule; roots force their way through the broken vault.
+  // ---- The choked SURFACE STAIR (added after the procedural pass, with its
+  // own rng, so nothing else in the dungeon changes). The flight is heaped
+  // with boulders and fallen vault; rubble and spilled earth reach a few
+  // tiles into the Vestibule; roots force their way through the broken roof.
+  // What shows it is a stair and not a gate at ground level: its two lowest
+  // steps stand clear in the Vestibule (`stairfoot`) with the fall lying on
+  // them (`stairfall`, which says what it is), and no night air comes through:
+  // the daylight down the stair (`stairlight`) only burns once it is dug out.
   {
     const gr = mulberry(seed ^ 0x6a7e);
     const C = GATE_CORRIDOR;
@@ -479,9 +488,41 @@ export function buildMap(seed: number): MapData {
       [C.x + 1.6, C.y + 3.2, 2], [C.x + 0.5, C.y + 4, 0], [C.x + 2.8, C.y + 4.2, 1], [C.x - 0.5, C.y - 1.9, 1], [C.x + C.w - 0.1, C.y - 1.8, 2],
     ];
     for (const [x, y, v] of piles) P("rockpile", x, y, { v });
-    // the faintest cool seam of night air where the gate's crown has slumped
-    lights.push({ x: cx, y: top + 22, rad: 24, col: [0.55, 0.68, 0.95], int: 0.16, flick: 0.04, id: "gateleak" });
+    for (const [id, kind, y] of [["stairfoot", "stairfoot", top], ["stairfall", "stairfall", top + 2], ["stairlight", "stairlight", top + 3 * TS]] as const) {
+      ids.add(id);
+      props.push({ id, kind, x: cx, y, v: 0 });
+    }
+    // the sky down the open stair (moonlight, or the sun by day): owned by `stairlight`, so dark until that is lit
+    lights.push({ x: cx, y: top + 4 * TS, rad: 120, col: [0.55, 0.68, 1], int: 0.9, flick: 0.02, id: "gateleak", owner: "stairlight", sky: true });
   }
+
+  // ---- The artificery and the armory, redone (fixed places, no rng, appended: no id, light or scatter above moves).
+  // Artificery: the workshop where tools, runes and golems were made. Round the smelter its coal bin (and the coal
+  // shovel's head, rusted through, on the floor beside it) and by the anvil a quench trough; a tool board on the
+  // north wall with little left on it; in the south a rune-cutter's table whose last stone still glows, the slip
+  // vat the worker bodies were cast from, and by it one unfinished body still on its casting stand.
+  P("coalbin", 4, 37);
+  P("quench", 4.5, 40);
+  P("toolboard", 11.5, 35);
+  P("runetable", 7.5, 45);
+  P("clayvat", 4.25, 45);
+  P("husk", 4.5, 42);
+  loose.push({ id: "rusted_shovel", item: "head_shovel_rusted", x: 4 * TS + 14, y: 38 * TS + 12 });
+  D("chalk", 6 * TS + 4, 44 * TS + 2, 1);
+  D("chalk", 9 * TS + 6, 44 * TS + 8, 2);
+  D("scorch", 6 * TS - 2, 41 * TS, 0);
+  D("paper", 8 * TS + 4, 44 * TS + 6, 1);
+  // Armory: it held racks of blades, rows of harness and the wardens' staves. Time took most of it: a second
+  // rack stands all but empty, the pegs on the wall hold one sword, the staff rack one dead staff, a bare stand
+  // waits in the corner, and what fell has rusted into a heap. One old axe head is still worth mending.
+  P("wallhooks", 67.75, 2, { v: 1 });
+  P("weaponrack", 67.25, 4.25, { v: 1 });
+  P("staffrack", 62.75, 5.5);
+  P("armorstand", 62.5, 9.5, { v: 2 });
+  P("armorpile", 66.75, 8);
+  loose.push({ id: "rusted_axe", item: "head_axe_rusted", x: 64 * TS + 10, y: 6 * TS + 8 });
+  D("weapon", 65 * TS + 2, 8 * TS + 6, 1);
+  D("weapon", 63 * TS + 9, 9 * TS + 2, 2);
 
   // ---- NPCs (no rng, no props: nothing above changes). The Treasury Guardian
   // slumps against the treasury's north wall between the two looted chests,
@@ -499,11 +540,20 @@ export function buildMap(seed: number): MapData {
   return {
     id: "dungeon", w: MW, h: MH,
     grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips, npcs,
+    // The stair's upper end: walk south off the top of the flight and you come out of the stair head on the surface
+    // (and back). Shut until the stair is dug out. The spot is for whoever finds the way in later.
+    portals: [{
+      id: ENTRANCES.surface_stair.below.portal, x: GATE_STAIR.x * TS + 2, y: (GATE_STAIR.y + GATE_STAIR.h) * TS - 10, w: GATE_STAIR.w * TS - 4, h: 10, dir: "down",
+      to: { area: ENTRANCES.surface_stair.above.area, portal: ENTRANCES.surface_stair.above.portal },
+      arrive: { x: (GATE_STAIR.x + GATE_STAIR.w / 2) * TS, y: (GATE_STAIR.y + GATE_STAIR.h) * TS - 14 },
+      flag: ENTRANCES.surface_stair.flag, label: "THE HALLS: FIRST CELLAR",
+    }],
+    spots: [{ id: "stairfoot", kind: "door", x: (GATE_STAIR.x + GATE_STAIR.w / 2) * TS, y: GATE_STAIR.y * TS - 4, facing: "up" }],
     start: { x: 9 * TS + 8, y: 38 * TS + 14 },
     exits: [
       { x: 22, y: 1, label: "UPPER WARD", dir: "n" },
       { x: 50, y: 1, label: "TOWER", dir: "n" },
-      { x: GATE_EXIT.x, y: GATE_EXIT.y, label: "SURFACE GATE", dir: "s" },
+      { x: GATE_EXIT.x, y: GATE_EXIT.y, label: "SURFACE STAIR", dir: "s" },
       { x: 71, y: 47, label: "CELLARS", dir: "e" },
     ],
   };
