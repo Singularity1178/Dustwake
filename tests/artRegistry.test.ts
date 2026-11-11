@@ -32,7 +32,13 @@ import type { ItemId } from "../src/game/content/items";
 // wallhooks, armorpile, stairfoot, stairfall, stairlight); the 123 other sprites hash as before. surface (was
 // "c332aec8"): only tiles inside 46-50,56-62 differ, where the round hollow and hump over the buried stair
 // were taken out (compared pixel by pixel against the bake as it was).
-const GOLDEN = { props: "b2f6aee3", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
+// The stone retexture (docs/ARCHITECTURE.md: "The stone retexture"): props (was "b2f6aee3"): `rock` and `ironore`
+// are faceted rock, each variant a shape of its own (standing and broken up); `stairfoot` is the flight's own
+// steps; `buriedgate` differs from stage 3 on (its stone layer is the halls' tumbled fall, not coursed blocks;
+// stages 4 and 5, where the stair's steps show, lie outside this four-variant sweep and are held by
+// tests/stoneArt.test.ts). Sprite by sprite (scripts/artDiff.mjs): 26 sprites of those four kinds differ and the
+// 592 others are identical. tiles and surface: unmoved (no tile sprite was touched; the surface has no stair tile).
+const GOLDEN = { props: "1be409a2", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

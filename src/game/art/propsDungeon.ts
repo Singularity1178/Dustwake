@@ -1,8 +1,10 @@
 // Dungeon prop sprites: furniture, fittings, light sources, the ritual
 // pedestal, workshop and treasury props. Registered into PROP_ART by art/props.ts.
+import { rgb } from "../util";
 import type { Pen, Rng } from "../util";
 import { S, WD, IR, CL, GD, BN } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
+import { stepPix, STEP_PX } from "./stone";
 
 function books(p: Pen, x: number, y: number, w: number, h: number, r: Rng, sparse = 0) {
   const cols = ["#6a2a2a", "#2a3a6a", "#3a5a2a", "#6a5a2a", "#5a2a5a", "#7a6a50"];
@@ -684,20 +686,13 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
     });
   },
   // ---------- the stair up to the surface
-  // Its three lowest steps, standing clear in the Vestibule. The flight climbs south, so from here only treads
-  // show: each begins at a bright nosing and ends in the line of shadow under the next step up, and each is a
-  // little lighter than the one below it. Kerb blocks close both ends.
+  // Its three lowest steps, standing clear in the Vestibule: the flight's own steps (art/stone.ts: stepPix, the
+  // stone the bake lays in the stairwell behind them, in step with it), so foot and flight are one stair. The
+  // flight climbs south, so from here only treads show; a kerb block closes each end of each step.
   stairfoot: (_v, _alt, M) => {
-    return M(36, 25, (p, r) => {
-      p.r(2, 0, 32, 1, "rgba(0,0,0,0.35)");
-      const steps: [number, string, string, string][] = [[1, "#625c6c", "#948ea0", "#524c5c"], [9, "#726c7c", "#a49eb0", "#625c6c"], [17, "#827c8c", "#b6b0c2", "#726c7c"]];
-      for (const [y, c, hi, lo] of steps) {
-        p.r(2, y, 32, 7, c); p.r(2, y, 32, 1, hi); p.r(2, y + 1, 32, 1, c);
-        p.r(13, y + 2, 10, 4, hi === "#b6b0c2" ? "#8c8696" : c);          // worn pale down the middle
-        for (let i = 0; i < 8; i++) p.p(3 + ((r() * 30) | 0), y + 2 + ((r() * 4) | 0), i % 3 ? lo : hi);
-        p.r(2, y + 7, 32, 1, "#16121a");
-      }
-      for (const x of [0, 34]) { p.r(x, 0, 2, 25, S.d); p.r(x, 0, 1, 25, S.m); p.r(x, 8, 2, 1, S.o); p.r(x, 16, 2, 1, S.o); p.r(x, 24, 2, 1, S.o); }
+    return M(36, 25, (p) => {
+      p.r(3, 0, 30, 1, "rgba(0,0,0,0.35)");
+      for (let y = 0; y < 3 * STEP_PX; y++) for (let x = 0; x < 36; x++) { const c = stepPix(x, 36, y % STEP_PX, STEP_PX, 40 + Math.floor(y / STEP_PX)); p.p(x, y + 1, rgb(c[0], c[1], c[2])); }
     });
   },
   // The foot of the fall: the last of the earth and vault stone, lying across the third step. It goes when the

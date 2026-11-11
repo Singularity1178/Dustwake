@@ -7,6 +7,7 @@ import { TS, T, FS, WS, isWallMassT, isGroundFS } from "../content/tiles";
 import { hash2, makeSprite, Sprite, Pen, clamp } from "../util";
 import { S, WD, IR, GD } from "./palette";
 import { cached, stoneBlob } from "./common";
+import { stepPix, STEP_PX } from "./stone";
 import { decalBounds, drawDecal } from "./decals";
 import { townFloorPix, townWallFacePix, rampartTopPix } from "./tilesTown";
 
@@ -21,14 +22,6 @@ function floorPix(style: number, tx: number, ty: number, lx: number, ly: number)
   const wx = tx * TS + lx, wy = ty * TS + ly;
   const n = (hash2(wx, wy, 7) - 0.5) * 12;
   if (isGroundFS(style)) return groundPix(style, tx, ty, wx, wy, n);
-  if (style === FS.STAIR) {
-    // A flight climbing south, seen from the south and above, so only treads show: two to a tile, each beginning
-    // at a bright nosing and ending in the line of shadow the next step up drops across it. Worn pale down the middle.
-    const s = ly & 7;
-    const k = s === 0 ? 26 : s === 7 ? -46 : s === 6 ? -16 : hash2(wx >> 1, wy, 11) < 0.05 ? -12 : 0;
-    const v = 84 + k + (Math.abs(lx - 7.5) < 4 ? 5 : 0) + n * 0.6;
-    return [v, v * 0.96, v * 1.06];
-  }
   // the market town's pavings and floors (art/tilesTown.ts)
   if (style >= FS.SETT) { const c = townFloorPix(style, tx, ty, lx, ly, n); if (c) return c; }
   if (style === FS.MARBLE) {
@@ -95,6 +88,27 @@ function floorPix(style: number, tx: number, ty: number, lx: number, ly: number)
   if (lx === sx0 || ly === sy0) bev = 9;
   else if (lx === sx0 + sw - 2 || ly === sy0 + sh - 2) bev = -7;
   return [60 + t + n + bev, 55 + t + n + bev, 50 + t * 0.9 + n + bev];
+}
+
+// ---- the stair
+/**
+ * A tile of a flight of steps climbing south (FS.STAIR): two steps to a tile, drawn by the one function that
+ * draws the stair wherever it shows (art/stone.ts: stepPix). A step runs the whole width of the flight, so the
+ * tile is placed in its row's run of stair tiles: the kerb blocks stand at the run's two ends, the slab joints
+ * and the trodden path are laid across all of it, and nothing repeats from tile to tile.
+ * Memoised: the bake visits a tile's pixels together.
+ */
+let stairM: BakeSource | null = null, stairTx = -1, stairTy = -1, stairX0 = 0, stairW = 0;
+function stairPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
+  if (m !== stairM || tx !== stairTx || ty !== stairTy) {
+    const step = (x: number) => x >= 0 && x < m.w && !isWall(m, x, ty) && m.style[ty * m.w + x] === FS.STAIR;
+    let a = tx, b = tx;
+    while (step(a - 1)) a--;
+    while (step(b + 1)) b++;
+    stairM = m; stairTx = tx; stairTy = ty; stairX0 = a * TS; stairW = (b - a + 1) * TS;
+  }
+  const wy = ty * TS + ly;
+  return stepPix(tx * TS + lx - stairX0, stairW, wy % STEP_PX, STEP_PX, Math.floor(wy / STEP_PX));
 }
 
 // ---- surface ground
@@ -254,7 +268,7 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
           if (t === T.THICKET) c = thicketPix(tx, ty, lx, ly);
           else if (wall) c = face ? (st >= WS.PLASTER ? townWallFacePix(st, tx, ty, lx, ly) : wallFacePix(tx, ty, lx, ly)) : wallTopPix(m, tx, ty, lx, ly);
           else {
-            c = floorPix(ground ? warpedGroundStyle(m, st, tx, ty, tx * TS + lx, ty * TS + ly) : st, tx, ty, lx, ly);
+            c = st === FS.STAIR ? stairPix(m, tx, ty, lx, ly) : floorPix(ground ? warpedGroundStyle(m, st, tx, ty, tx * TS + lx, ty * TS + ly) : st, tx, ty, lx, ly);
             let f = 1;
             if (aoU && ly < 4) f *= [0.45, 0.6, 0.75, 0.88][ly];
             if (aoL && lx < 2) f *= lx === 0 ? 0.7 : 0.85;

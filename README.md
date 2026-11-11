@@ -70,6 +70,10 @@ Tool heads are for a golem's arms. A full tool (a head on a wooden haft, made at
 
 Developer preview: `node scripts/entrancePreview.mjs` renders the stair head at every dig stage, the open stair below, the smelter's and the anvil's screens and a sheet of the new sprites to `.preview/entrance/*.png`.
 
+How the stone reads: a rock you can break is broken, faceted stone (four shapes, two of them mossed: those are the woods' rocks), and an iron vein is the same kind of rock with rust-orange seams of ore through it (three shapes). The round, mossy boulders and outcrops are scenery. The stair is the same steps at both ends, and the fallen stone you dig through above is the same tumbled rock that chokes the stair's foot below; half way through it the first steps show.
+
+Stone preview: `node scripts/stonePreview.mjs` renders every rock and iron vein variant, the rockiest stretch of the surface, the stair head at every dig stage, the stair's foot in the halls (choked and open) and the two ends of the open stair side by side to `.preview/stone/*.png` (give it a directory to keep a set to compare against). `node scripts/artDiff.mjs save before.json`, then `diff before.json` after an art change, names what moved, sprite by sprite and baked tile by baked tile: run it before updating a golden hash.
+
 ## Day and night
 
 The world keeps a clock. A full day is 12 minutes of play (30 seconds to the hour): night until 05:00, dawn to 07:00, day to 19:00, dusk to 21:00. The golem wakes at 22:30. The clock runs whenever the world does (it stops behind the pack, menus and the debug menu) and is saved with the game. The hour shows bottom right, with a sun, a moon or the sun on the horizon, whenever the golem is under the open sky, and everywhere once it has first been up (before that it has no way to know).
@@ -185,6 +189,7 @@ src/
     art/             procedural pixel art, by what it draws:
       palette.ts       shared colour ramps
       common.ts        sprite cache, registry types, shared stone blob
+      stone.ts         stone shared across families: faceted rock (rocks, iron veins), the stair's steps (one function for both ends), the tumbled fall
       tiles.ts         background bake (floors, walls, ground) + tile sprites (rubble, pillars, door, bars)
       decals.ts        decals painted into the bake
       tilesTown.ts     the town's pavings, floors and wall materials (per pixel)
