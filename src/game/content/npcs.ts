@@ -12,8 +12,11 @@
 //               fields (archetype, stats, ...) to the union; nothing here
 //               should be stretched to fit it.
 
-/** Only "special" exists today; "generic" joins the union with the generic-NPC work. */
-export type NpcType = "special";
+/**
+ * "special": a row here. "generic": townsfolk (content/folk.ts, sim/folk.ts) carry their identity on the actor
+ * (`Actor.person`: archetype, traits, name, look), generated from the world seed, so they have no row here.
+ */
+export type NpcType = "special" | "generic";
 
 export interface NpcDef {
   /** Display name (dialogue speaker tag). Uppercase: the bitmap font is uppercase only. */

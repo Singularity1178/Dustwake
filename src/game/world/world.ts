@@ -13,6 +13,8 @@ import type { Job } from "./jobs";
 import type { Slot } from "../content/inventory";
 export type { Slot } from "../content/inventory";
 import { START_HOUR, type DayPhase } from "../content/daycycle";
+import type { ChatIcon } from "../content/folk";
+import { populateFolk, type Person, type Life } from "../sim/folk";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -43,6 +45,10 @@ export interface Actor {
   npc?: string;
   /** A name the player gave this body (orderable workers): shown ahead of its kind, "BOB - WORKER GOLEM". Saved with the actor. */
   name?: string;
+  /** A generic NPC's identity (townsfolk, sim/folk.ts): name, archetype, traits, look. Generated once, saved. */
+  person?: Person;
+  /** What a townsperson is doing right now (sim/folk.ts). Saved, so a load resumes mid-stride. */
+  life?: Life;
 }
 
 /** A delayed effect. `area` is where it was scheduled: it always applies there, even if the actor has travelled. */
@@ -113,7 +119,11 @@ export type SimEvent =
   /** `actor` thought line `line` (content/monologue.ts). Presentation shows it; nothing else reacts. */
   | { t: "thought"; actor: string; line: string }
   /** The calendar clock crossed into another part of the day (sim/daytime.ts). `day`: the day count it happened on. */
-  | { t: "dayPhase"; phase: DayPhase; day: number };
+  | { t: "dayPhase"; phase: DayPhase; day: number }
+  /** `actor` spoke to townsperson `folk`, who answered `line` (sim/folk.ts: folkTalk). */
+  | { t: "folkSpoke"; actor: string; folk: string; line: string }
+  /** Townsperson `folk` said something about `icon` to whoever they are talking to (presentation: a speech bubble). */
+  | { t: "folkChat"; folk: string; icon: ChatIcon };
 
 /**
  * Inner-monologue state (saved, sim/monologue.ts). `said`: one-shot lines already
@@ -182,6 +192,8 @@ export function getArea(w: World, id: string): Area {
     if (a.base.ritual) a.initRitual(shuffle(w.rng, [0, 1, 2, 3]));
     w.areas.set(id, a);
     for (const s of a.base.npcs ?? []) if (!actorById(w, s.id)) w.actors.push(makeNpc(s, id));
+    // the people who live here (content/folk.ts: CENSUS), made once from the world seed (never from w.rng)
+    populateFolk(w, id);
   }
   return a;
 }

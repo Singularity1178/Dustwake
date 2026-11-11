@@ -34,7 +34,7 @@ export interface PropKindDef {
    */
   habit?: LightHabit;
   /** Fire visuals while lit. */
-  fire?: { big: boolean; embers: number; emberDy: number };
+  fire?: { big: boolean; embers: number; emberDy: number; /** Flame height offset (px, down) from the torch-height default: a campfire burns on the ground. */ dy?: number };
   /** Horizontal offset of an item icon resting on the prop. */
   itemDx?: number;
   /** A teleportation rune site (see content/runes.ts). Drawn as a floor circle, not a sprite. */
@@ -124,6 +124,22 @@ const TOWN_PROPS: Record<string, PropKindDef> = {
   cellarhatch: { flat: true, examine: "THE CELLAR HATCH, CUT WIDE. THE RAMP BELOW IS SCORED BY SOMETHING HEAVY AND FLAT-FOOTED THAT CARRIES THE KEGS UP." },
   crownplaque: { wallMounted: true, examine: "A CROWN OF BEATEN TIN, NAILED OVER THE HEARTH. THE REAL ONE, THEY SAY, WENT DOWN WITH THE KEEP." },
   questboard: { wallMounted: true, examine: "CONTRACTS, PINNED THREE DEEP. ESCORTS. WOLF BOUNTIES. A CELLAR OF RATS. ONE SHEET HAS YELLOWED UNCLAIMED: SURVEY THE SUNKEN KEEP." },
+};
+
+/**
+ * The hunters' camp in the north-west wood (surface.ts: the camp; art/propsFolk.ts). The surface is not `tended`, so
+ * the fire burns day and night like everything the wild keeps.
+ */
+const FOLK_PROPS: Record<string, PropKindDef> = {
+  campfire: {
+    box: [14, 6], alt: "lit",
+    light: { dx: 0, dy: -5, rad: 104, col: [1, 0.6, 0.3], int: 0.95, flick: 0.24, when: "lit" },
+    fire: { big: true, embers: 4, emberDy: 8, dy: 9 },
+  },
+  leanto: { box: [26, 6] },
+  bedroll: { flat: true },
+  peltrack: { box: [18, 4] },
+  seatlog: { box: [20, 4] },
 };
 
 export const PROPS: Record<string, PropKindDef> = {
@@ -217,6 +233,7 @@ export const PROPS: Record<string, PropKindDef> = {
   runecircle: { rune: true },
   chains: { wallMounted: true },
   ...TOWN_PROPS,
+  ...FOLK_PROPS,
 };
 
 const NONE: PropKindDef = {};

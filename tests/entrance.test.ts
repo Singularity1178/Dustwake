@@ -294,7 +294,7 @@ test("the flight stands between its cheek walls: a body keeps off the wall faces
 
 // ------------------------------------------------------------------ saves
 test("save v15: a v14 save loads with the stair as it is now laid; a body saved in a cheek wall or a newel post is set down beside it, in the passage", () => {
-  assert.equal(SAVE_VERSION, 17);
+  assert.equal(SAVE_VERSION, 18);
   const base = () => { const { w } = atGate(); digOut(w); return w; };
   const old = (edit: (s: any, pl: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(base()))); s.version = 14; edit(s, s.actors.find((a: any) => a.id === s.playerId)); return s; };
   // v15 only: a body standing clear is not touched, nor is anything else in the save
@@ -335,12 +335,12 @@ test("save v15: a v14 save loads with the stair as it is now laid; a body saved 
 });
 
 test("save v16: a v15 save loads with the newel posts raised off the first step; a body saved where a post now stands is set down beside it, in the passage; nobody else moves", () => {
-  assert.equal(SAVE_VERSION, 17);
+  assert.equal(SAVE_VERSION, 18);
   const base = () => { const { w } = atGate(); digOut(w); return w; };
   const old = (edit: (s: any, pl: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(base()))); s.version = 15; edit(s, s.actors.find((a: any) => a.id === s.playerId)); return s; };
   // a body standing clear is not touched, nor is anything else in the save
   const plain = old(), m = migrate(plain) as any;
-  assert.equal(m.version, 17);
+  assert.equal(m.version, 18);
   assert.deepEqual(m.actors, plain.actors); assert.deepEqual(m.areas, plain.areas); assert.deepEqual(m.flags, plain.flags);
   // the dug-out stair loads as it is laid now: the posts' feet on the flight's north edge, the cheek walls running on from them
   const S = GATE_STAIR, sy = S.y * TS, w0 = deserialize(plain), d0 = getArea(w0, "dungeon");
@@ -383,14 +383,14 @@ test("save v16: a v15 save loads with the newel posts raised off the first step;
   assert.deepEqual((migrate(far) as any).actors, far.actors);
   // older saves run every step
   const v14 = old((s) => { s.version = 14; });
-  assert.equal((migrate(v14) as any).version, 17);
+  assert.equal((migrate(v14) as any).version, 18);
 });
 
 test("save v14: a v13 save loads; a body saved where the new furniture or an iron vein stands is set down beside it; nothing else moves", () => {
-  assert.equal(SAVE_VERSION, 17);
+  assert.equal(SAVE_VERSION, 18);
   const old = (edit: (s: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(newWorld()))); s.version = 13; edit(s); return s; };
   const plain = old(), m = migrate(plain) as any;
-  assert.equal(m.version, 17);
+  assert.equal(m.version, 18);
   assert.deepEqual(m.actors, plain.actors, "a body standing clear is not touched");
   assert.deepEqual(m.areas, plain.areas); assert.deepEqual(m.flags, plain.flags);
   // the player on the spot the rune-cutter's table now takes, the worker where the slip vat stands

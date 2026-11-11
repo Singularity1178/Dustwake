@@ -1,6 +1,7 @@
 // Interactables are *derived* from area state (props, loose items, tiles,
 // ritual) and cached on the area's revision, so no call site has to remember
 // to rebuild them after changing the world.
+import { folkPresent, isFolk } from "./folk";
 import { TS, TILE_INTERACT } from "../content/tiles";
 import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
@@ -114,7 +115,8 @@ export function npcInteractables(w: World, area: Area): Interactable[] {
   for (const a of w.actors) {
     if (a.id === w.playerId || a.area !== area.id) continue;
     const d = actorDef(a).body;
-    const kind = capable(a, "worker") ? "worker" : npcDef(a.npc) ? "npc" : null;
+    if (!folkPresent(a)) continue; // a townsperson indoors is not there to talk to
+    const kind = capable(a, "worker") ? "worker" : npcDef(a.npc) ? "npc" : isFolk(a) ? "folk" : null;
     if (kind) out.push({ kind, x: a.x, y: a.y + 2, r: d.reach, itemZ: d.height - 12, actorId: a.id, npc: a.npc });
   }
   return out;

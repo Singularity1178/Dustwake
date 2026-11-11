@@ -14,7 +14,7 @@ import { TS, T, FS } from "./content/tiles";
 import { propDef } from "./content/props";
 import { DUNGEON_TO_SURFACE, ENTRANCES, SURFACE_GATE, SURFACE_GATE_CORRIDOR, SURFACE_GATE_ZONE, WEST_ROAD } from "./content/geography";
 import { reachable, type Box } from "./sim/reach";
-import { buildDungeon, type AreaData, type DecalDef, type Exit, type LightDef, type LooseItem, type Portal, type PropDef } from "./map";
+import { buildDungeon, type AreaData, type DecalDef, type Exit, type LightDef, type LooseItem, type Portal, type PropDef, type Spot } from "./map";
 
 export const SW = 96, SH = 72;
 const SURFACE_SEED = 7331;
@@ -46,7 +46,15 @@ const fbm = (x: number, y: number, s: number) => 0.5 * vnoise(x, y, 13, s) + 0.3
 /** How many iron veins the surface holds (three pieces of ore each; they do not grow back). */
 export const IRON_VEINS = 12;
 
-export function buildSurface(opts: { westRoad?: boolean; iron?: boolean } = {}): AreaData {
+/** The hunters' camp: the fire's place (px), in the clearing in the north-west wood. */
+export const CAMP = { x: 360, y: 176 };
+/** Hunting blinds and foraging grounds (tiles), in the west woods, never in sight of the rune or the stair. */
+export const FOREST_GROUNDS: { hunt: [number, number][]; forage: [number, number][] } = {
+  hunt: [[8, 7], [15, 11], [11, 16], [7, 21], [10, 43], [12, 46], [29, 56], [20, 4]],
+  forage: [[9, 6], [14, 13], [10, 18], [6, 22], [26, 12], [9, 45], [11, 47], [28, 58], [16, 9]],
+};
+
+export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: boolean } = {}): AreaData {
   const rng = mulberry(SURFACE_SEED);
   const n = SW * SH;
   const grid = new Uint8Array(n).fill(T.FLOOR);
@@ -457,6 +465,43 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean } = {}):
     }
   }
 
+  // ---- the hunters' camp (content/folk.ts: the forest's people). In the clearing in the north-west wood, well
+  // away from the rune and the stair, out of sight of anyone arriving by the circle. Placed after everything else
+  // and by fixed positions, never by the rng, so nothing else in the wild moves; each prop takes the nearest place
+  // it can stand within a few px. `camp: false` leaves it out (the wild as it was).
+  const spots: Spot[] = [{ id: "stairhead", kind: "door", x: gate.x, y: gate.y + 7, facing: "up" }];
+  if (opts.camp !== false) {
+    const place = (kind: string, id: string, px: number, py: number, o: Partial<PropDef> = {}) => {
+      for (let r = 0; r <= 24; r += 4) for (const [dx, dy] of r ? [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]] : [[0, 0]]) {
+        if (canPlace(kind, px + dx, py + dy, false)) return P(kind, px + dx, py + dy, { ...o, id });
+      }
+      return null;
+    };
+    const C = CAMP;
+    place("campfire", "camp.fire", C.x, C.y, { lit: true });
+    place("leanto", "camp.leanto", C.x - 42, C.y - 22);
+    place("peltrack", "camp.rack", C.x + 72, C.y - 4);
+    place("seatlog", "camp.log", C.x, C.y + 24);
+    const beds: [number, number][] = [[C.x - 44, C.y + 14], [C.x + 42, C.y - 24], [C.x + 46, C.y + 22]];
+    beds.forEach(([x, y], i) => { const b = place("bedroll", `camp.bed.${i + 1}`, x, y, { v: i }); if (b) spots.push({ id: `bed.${i + 1}`, kind: "bed", x: b.x, y: b.y - 3, facing: "down" }); });
+    // where people stand: the nearest tile with floor under it and nothing solid on it or beside it
+    const stand = (id: string, kind: Spot["kind"], tx: number, ty: number, facing: Spot["facing"] = "down") => {
+      for (let r = 0; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = tx + dx, y = ty + dy;
+        if (![-1, 0, 1].every((i) => inb(x + i, y) && G(x + i, y) === T.FLOOR && !occ[y * SW + x + i])) continue;
+        if (!inb(x, y - 1) || occ[(y - 1) * SW + x]) continue;
+        spots.push({ id, kind, x: x * TS + 8, y: y * TS + 12, facing });
+        return;
+      }
+    };
+    const ft = { x: Math.floor(C.x / TS), y: Math.floor((C.y - 1) / TS) };
+    stand("camp.w", "camp", ft.x - 2, ft.y, "right"); stand("camp.e", "camp", ft.x + 2, ft.y, "left");
+    stand("camp.s", "camp", ft.x, ft.y + 2, "up"); stand("camp.n", "camp", ft.x, ft.y - 2, "down");
+    FOREST_GROUNDS.hunt.forEach(([x, y], i) => stand(`hunt.${i + 1}`, "hunt", x, y));
+    FOREST_GROUNDS.forage.forEach(([x, y], i) => stand(`forage.${i + 1}`, "forage", x, y));
+  }
+
   // ---- the stair head's south lip: once the stair is dug out, pushing north into the stairwell from here walks
   // down into the halls (and coming up out of them sets you down here). Shut until then (the entrance's flag).
   const stair = ENTRANCES.surface_stair;
@@ -468,7 +513,7 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean } = {}):
   return {
     id: "surface", w: SW, h: SH, grid, plan, style, tvar, rooms: [], props, decals, lights, loose,
     start: { x: rc.x, y: rc.y + 4 }, exits, drips: [], outdoor: true, ambient: [0.32, 0.31, 0.42], portals,
-    // where someone looking for the way in ends up (data only, like the town's spots)
-    spots: [{ id: "stairhead", kind: "door", x: gate.x, y: gate.y + 7, facing: "up" }],
+    // where someone looking for the way in ends up (data only, like the town's spots), and the camp's places
+    spots,
   };
 }

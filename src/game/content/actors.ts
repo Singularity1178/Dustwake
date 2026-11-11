@@ -43,6 +43,12 @@ export const ACTORS: Record<string, ActorDef> = {
     speed: 16, harvestPower: 0.5, inventory: { slots: 8 }, gearSlots: ["rune0"],
     power: { family: "golem", tier: 1 }, capabilities: ["move", "harvest", "craft", "travel", "worker", "wield"],
   },
+  // Townsfolk (sim/folk.ts): every generic NPC's body. Soft (sim/collision.ts: actorBox gives none), so nobody can
+  // be blocked by one; who they are and how they look is the actor's own `person` (folkArt.ts draws it).
+  townsfolk: {
+    name: "TOWNSFOLK", body: { box: [8, 4], height: 22, reach: 18 }, art: { key: "folk" },
+    speed: 18, harvestPower: 0.5, inventory: { slots: 0 }, gearSlots: [], capabilities: ["move", "talk", "travel"],
+  },
   // Fixture-only (tests): no builder, NPCS row or migration produces one, and its "human" art is a stand-in.
   npc_worker: {
     name: "WORKER", body: { box: [8, 6], height: 22, reach: 18 }, art: { key: "human" },

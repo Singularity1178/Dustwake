@@ -192,3 +192,41 @@ export const SIGNS: [kind: string, text: string][] = [
   ["sign_cooper", "A BARREL HOOP AND A WHEEL. COOPER AND WHEELWRIGHT."],
   ["sign_warehouse", "MARKET STORE. THE DOORS ARE TWICE A MAN'S WIDTH, AND THE SILL IS WORN DOWN IN TWO FLAT TRACKS."],
 ];
+
+// ---------------------------------------------------------------- the townsfolk's places
+/**
+ * Where the people of Westwake go (content/folk.ts reads them by kind and id prefix). Appended to the builder's spots
+ * after the ground cover is scattered, so no prop or pixel moved for them; the layout audit checks each is free and
+ * can be walked to. Chore and work ids carry their motion (`chore.chop.*` splits wood, `work.haul.*` carries).
+ */
+type FolkSpot = { id: string; kind: "gather" | "bench" | "wander" | "chore" | "patrol" | "work"; x: number; y: number; facing: "down" | "up" | "left" | "right" };
+const FS_ = (id: string, kind: FolkSpot["kind"], x: number, y: number, facing: FolkSpot["facing"] = "down"): FolkSpot => ({ id, kind, x, y, facing });
+export const TOWN_FOLK_SPOTS: FolkSpot[] = [
+  // the tavern door at dusk: a loose knot of people on Low Street, never in the doorway itself
+  FS_("gather.1", "gather", 614, 750, "right"), FS_("gather.2", "gather", 632, 760, "up"), FS_("gather.3", "gather", 654, 763, "up"),
+  FS_("gather.4", "gather", 676, 757, "left"), FS_("gather.5", "gather", 690, 745, "left"), FS_("gather.6", "gather", 600, 740, "right"),
+  // benches (sitting on them: the spot is the seat, the sitter faces the street)
+  FS_("bench.well", "bench", 414, 240, "down"), FS_("bench.garden", "bench", 1216, 344, "down"), FS_("bench.tavern", "bench", 702, 733, "down"),
+  // a stroll: corners of the square, the lanes, the gardens
+  FS_("wander.sq.1", "wander", 616, 474), FS_("wander.sq.2", "wander", 904, 474), FS_("wander.sq.3", "wander", 896, 586, "up"), FS_("wander.sq.4", "wander", 616, 600, "up"),
+  FS_("wander.high.1", "wander", 1000, 516), FS_("wander.high.2", "wander", 1240, 512), FS_("wander.high.3", "wander", 470, 514), FS_("wander.high.4", "wander", 260, 516),
+  FS_("wander.old.1", "wander", 300, 262), FS_("wander.old.2", "wander", 700, 262), FS_("wander.old.3", "wander", 860, 258),
+  FS_("wander.low.1", "wander", 480, 752), FS_("wander.low.2", "wander", 820, 754), FS_("wander.low.3", "wander", 1140, 750),
+  FS_("wander.back.1", "wander", 360, 950), FS_("wander.back.2", "wander", 760, 958), FS_("wander.ne.1", "wander", 1140, 300), FS_("wander.ne.2", "wander", 1300, 300),
+  // household chores, each beside the thing it needs
+  FS_("chore.chop.1", "chore", 240, 262), FS_("chore.chop.2", "chore", 1238, 612, "left"), FS_("chore.chop.3", "chore", 326, 824, "left"), FS_("chore.chop.4", "chore", 958, 676),
+  FS_("chore.hang.1", "chore", 178, 138, "down"), FS_("chore.hang.2", "chore", 1093, 618, "down"), FS_("chore.hang.3", "chore", 514, 618, "down"), FS_("chore.hang.4", "chore", 226, 826, "down"),
+  FS_("chore.feed.1", "chore", 610, 252, "up"), FS_("chore.feed.2", "chore", 1294, 616, "up"), FS_("chore.feed.3", "chore", 500, 826, "left"),
+  FS_("chore.draw.1", "chore", 400, 216, "right"), FS_("chore.sweep.1", "chore", 680, 266), FS_("chore.sweep.2", "chore", 1176, 746), FS_("chore.sweep.3", "chore", 440, 954),
+  FS_("chore.hoe.1", "chore", 430, 588), FS_("chore.hoe.2", "chore", 1040, 588), FS_("chore.hoe.3", "chore", 186, 806), FS_("chore.hoe.4", "chore", 420, 806),
+  // the stone yard and the building site: carrying and digging
+  FS_("work.haul.1", "work", 1040, 852, "up"), FS_("work.haul.2", "work", 1180, 774), FS_("work.haul.3", "work", 1056, 946, "up"), FS_("work.haul.4", "work", 740, 890, "up"),
+  FS_("work.dig.1", "work", 660, 948), FS_("work.dig.2", "work", 1150, 870, "left"),
+  // the smithy's yard: the apprentices' anvil work
+  FS_("work.hammer.1", "work", 968, 709, "up"), FS_("work.hammer.3", "work", 1300, 746, "up"),
+  // the watch's rounds
+  FS_("patrol.watchhouse", "patrol", 1336, 512), FS_("patrol.gate", "patrol", 1384, 508, "right"), FS_("patrol.high.e", "patrol", 1150, 514),
+  FS_("patrol.square.ne", "patrol", 940, 470), FS_("patrol.square.nw", "patrol", 582, 470), FS_("patrol.high.w", "patrol", 400, 514), FS_("patrol.bar", "patrol", 150, 510, "left"),
+  FS_("patrol.yard.n", "patrol", 1130, 680), FS_("patrol.low.e", "patrol", 1250, 752), FS_("patrol.low.mid", "patrol", 900, 756), FS_("patrol.tavern", "patrol", 700, 760),
+  FS_("patrol.low.w", "patrol", 400, 754), FS_("patrol.lane.w", "patrol", 352, 620), FS_("patrol.lane.n", "patrol", 544, 360), FS_("patrol.old.w", "patrol", 200, 260), FS_("patrol.old.e", "patrol", 820, 262),
+];

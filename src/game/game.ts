@@ -65,6 +65,11 @@ import type { Target } from "./content/tasks";
 import { isAwake, npcActor } from "./sim/dialogue";
 import { saveToStorage, loadFromStorage } from "./view/persistence";
 import type { Actor } from "./world/world";
+import { archetypeOf, folkLabel, folkPresent } from "./sim/folk";
+import { folkLantern } from "./view/actors";
+import { drawChatIcon, drawSpeech } from "./folkArt";
+import type { ChatIcon } from "./content/folk";
+import { hash01 } from "./content/daycycle";
 import { DAY_SECONDS, ambientAt, lampGain, skyLight, litLevel, sunLevel, clockText, phaseAt, hearthSmoke, type DayPhase, type RGB } from "./content/daycycle";
 import { worldHour, exposureOf, advanceDay, advanceDayTo } from "./sim/daytime";
 
@@ -113,6 +118,8 @@ export class Game {
   emit = makeCanvas(W, H);
   lighting = new Lighting(W, H);
   npcLooks = new Map<string, NpcLook>();
+  /** Speech bubbles over townsfolk (presentation only): a line said to the golem, or a pictogram in their own talk. */
+  bubbles = new Map<string, { text?: string; icon?: ChatIcon; t: number; dur: number }>();
   /** The golem's vision mode overlay (presentation of the sim's scan mode). */
   vision = new VisionView();
   private lastAnalyzed = { prop: "", t: -1 };
@@ -237,7 +244,7 @@ export class Game {
     this.zoomAnim = null;
     this.setZoom(hasFlag(world, FLAGS.golemEye) ? ZOOM_DEFAULT : 1);
     this.cam.x = pl.x - this.vw / 2; this.cam.y = pl.y - this.vh / 2 - 10;
-    this.npcLooks.clear();
+    this.npcLooks.clear(); this.bubbles.clear();
     this.vision.reset(pl.mode === "scan");
     this.dialogueUi.reset();
     this.packUi.reset();
@@ -518,7 +525,10 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- update
+  /** The last update's dt (the folk bubbles age on it while drawing). */
+  frameDt = 0;
   update(dt: number) {
+    this.frameDt = dt;
     this.t += dt;
     if (this.uiTimers.length) {
       const due = this.uiTimers.filter((u) => u.at <= this.t);
@@ -549,6 +559,7 @@ export class Game {
     this.world.events = [];
     for (const e of evs) {
       if (e.t === "travelled" && e.actor !== this.world.playerId) { this.workerTravelled(e); continue; }
+      if (e.t === "portal" && actorById(this.world, e.actor)?.kind === "folk") continue; // townsfolk come and go quietly
       if (e.t === "portal" && e.actor !== this.world.playerId) { this.workerWalked(e); continue; }
       const aud = eventAudience(this.world, e);
       if (aud === "player") this.onEvent(e);
@@ -602,6 +613,16 @@ export class Game {
         break;
       case "packFull": this.say("YOUR PACK IS FULL"); this.sfx.tone(180, 0.1, "square", 0.04); break;
       case "message": this.say(e.text); break;
+      case "folkSpoke": {
+        const a = actorById(this.world, e.folk);
+        if (a?.person) { this.bubbles.set(a.id, { text: e.line, t: 0, dur: 2.4 + e.line.length * 0.055 }); this.say(folkLabel(a)); this.sfx.tone(520, 0.05, "triangle", 0.03); }
+        break;
+      }
+      case "folkChat": {
+        const a = actorById(this.world, e.folk);
+        if (a && a.area === this.pl.area && !this.bubbles.get(a.id)?.text) this.bubbles.set(a.id, { icon: e.icon, t: 0, dur: 1.5 });
+        break;
+      }
       case "analyzed":
         // one chime per prop, however many plans it held
         if (this.lastAnalyzed.prop !== e.prop || this.t - this.lastAnalyzed.t > 0.2) this.sfx.analyzed();
@@ -1623,7 +1644,7 @@ export class Game {
 
   drawFlame(p: PropInst, big: boolean, camX: number, camY: number) {
     const ec = this.emit.ctx;
-    const bx = Math.round(p.x - camX), by = Math.round(p.y - camY - 15);
+    const bx = Math.round(p.x - camX), by = Math.round(p.y - camY - 15 + (propDef(p.kind).fire?.dy ?? 0));
     const t = this.t * 12 + p.x;
     const cols = ["#ff5a10", "#ff9a30", "#ffd060", "#fff0b0"];
     const w = big ? 8 : 3;
@@ -1724,6 +1745,7 @@ export class Game {
     const area = this.area;
     for (const a of this.world.actors) {
       if (a.area !== area.id || a.id === this.world.playerId) continue;
+      if (a.kind === "folk") { this.updateFolkLook(a); continue; }
       // Bodies without a dialogue identity (workers): the sequencer decides how they stand, sit and shut down.
       if (!npcDef(a.npc)) { this.updateWorkerLook(a, dt); continue; }
       if (a.kind !== "npc") continue;
@@ -1777,6 +1799,42 @@ export class Game {
     lt.x = a.x; lt.y = a.y - 9 - L.lift;
     if (Math.abs(lt.x - lt.vx) > 2 || Math.abs(lt.y - lt.vy) > 2) computeVis(lt, this.area);
     lt.int = L.worker.out.core * 0.2 + L.worker.out.eye * 0.1 + (task?.kind === "channel" ? 0.3 : 0);
+  }
+
+  /** A townsperson, one frame: the watch's lantern lights the street round them after dark. */
+  private updateFolkLook(a: Actor) {
+    if (archetypeOf(a).garb !== "watch") return;
+    const on = folkPresent(a) && folkLantern(this.world, a);
+    const side = a.facing === "left" ? -1 : a.facing === "right" ? 1 : -4 / 3;
+    const lx = a.x + side * 4, ly = a.y - 6;
+    const lt = this.view.dynamicLight("folk:" + a.id, () => makeLight(lx, ly, 70, [1, 0.7, 0.38], 0, 0.14, "folk:" + a.id));
+    lt.x = lx; lt.y = ly;
+    if (on && (Math.abs(lt.x - lt.vx) > 2 || Math.abs(lt.y - lt.vy) > 2)) computeVis(lt, this.area);
+    lt.int = on ? 0.62 : 0;
+  }
+
+  /** Speech bubbles and sleepers' Zs over townsfolk, on the world layer (they scale with the zoom like the marker). */
+  private renderFolkBubbles(dt: number) {
+    const ctx = this.wctx, area = this.area, camX = this.cam.x, camY = this.cam.y;
+    for (const [id, b] of this.bubbles) { b.t += dt; if (b.t > b.dur) this.bubbles.delete(id); }
+    for (const a of this.world.actors) {
+      if (a.kind !== "folk" || a.area !== area.id || !folkPresent(a) || !a.life) continue;
+      const x = Math.round(a.x - camX), y = Math.round(a.y - camY);
+      if (x < -60 || y < -60 || x > this.vw + 60 || y > this.vh + 60) continue;
+      if (a.life.pose === "lie") {
+        const k = (this.t * 0.5 + hash01(a.id, 4)) % 1;
+        ctx.globalAlpha = Math.sin(k * Math.PI) * 0.8;
+        drawTextS(ctx, k < 0.5 ? "z" : "Z", x + 4 + k * 6, y - 26 - k * 10, "#d8e0f0", 1, "left", "#1a1418");
+        ctx.globalAlpha = 1;
+      }
+      const b = this.bubbles.get(a.id);
+      if (!b) continue;
+      const fade = clamp(Math.min(b.t / 0.12, (b.dur - b.t) / 0.25), 0, 1), top = y - (a.life.pose === "sit" ? 27 : 30);
+      ctx.globalAlpha = fade;
+      if (b.text) drawSpeech(ctx, b.text, x, top, this.vw);
+      else if (b.icon) drawChatIcon(ctx, b.icon, x + 3, top - Math.round((1 - fade) * 3));
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** The sounds and dust of a worker's animation cues (workerAnim.ts), quiet when it is far off. */
@@ -1872,6 +1930,7 @@ export class Game {
       ctx.fillStyle = "#d8cfa8";
       ctx.fillRect(x - 2, y - 1, 5, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1);
     }
+    if (this.screens.is("play") || this.screens.is("dialogue")) this.renderFolkBubbles(this.frameDt);
     if (this.arriveFade > 0) { ctx.fillStyle = `rgba(235,240,255,${this.arriveFade})`; ctx.fillRect(0, 0, W, H); }
     if (this.doorFade > 0) { ctx.fillStyle = `rgba(6,5,9,${this.doorFade})`; ctx.fillRect(0, 0, W, H); }
     this.renderBars();

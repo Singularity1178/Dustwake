@@ -10,6 +10,8 @@ import type { Box } from "./reach";
 
 /** Every actor has its definition's body, centred on x and ending at its feet. */
 export function actorBox(a: Actor): Box | null {
+  // townsfolk are soft: they step out of the way themselves and never block anyone (sim/folk.ts)
+  if (a.kind === "folk") return null;
   const [w, h] = actorDef(a).body.box;
   return [a.x - w / 2, a.y - h, a.x + w / 2, a.y];
 }

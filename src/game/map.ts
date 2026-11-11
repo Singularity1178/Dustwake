@@ -83,7 +83,9 @@ export interface Portal {
  */
 export interface Spot {
   id: string;
-  kind: "keeper" | "customer" | "seat" | "stall" | "idle" | "work" | "door";
+  kind: "keeper" | "customer" | "seat" | "stall" | "idle" | "work" | "door"
+    // the townsfolk's places (content/folk.ts): where people meet, sit, stroll, do chores, walk their rounds; the forest camp
+    | "gather" | "bench" | "wander" | "chore" | "patrol" | "camp" | "bed" | "hunt" | "forage";
   x: number; y: number;
   facing: "down" | "up" | "left" | "right";
 }

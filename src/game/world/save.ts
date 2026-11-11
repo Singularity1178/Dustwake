@@ -8,6 +8,7 @@
 // Diffs keep saves small and let authored areas evolve between versions as
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
+import { populateFolk } from "../sim/folk";
 import { SeededRng } from "../core/rng";
 import { TS, isSolidT } from "../content/tiles";
 import { propDef } from "../content/props";
@@ -90,8 +91,12 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      active; the flag follows the ritual again. And an order stopped for
   *      want of a route carries the reason's new name (routes are no longer
   *      runes alone).
+  * v18: townsfolk (sim/folk.ts). Generic NPCs are actors of kind "folk" with
+  *      `person` (who) and `life` (what they are doing); `census.<area>` flags
+  *      record that an area's people were made. A pre-v18 save gets the people
+  *      of every area it had visited on load (populateFolk), from its own seed.
   */
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -113,7 +118,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 17;
+  version: 18;
   seed: number;
   rng: number;
   time: number;
@@ -343,6 +348,10 @@ export const MIGRATIONS: Record<number, Migration> = {
       actors: (s.actors ?? []).map((a: any) => (a.job?.reason === "noRuneRoute" ? { ...a, job: { ...a.job, reason: "noRoute" } } : a)),
     };
   },
+  // v18: townsfolk. Actors may carry `person` and `life` (sim/folk.ts) and the world the `census.<area>` flags. Nothing
+  // older needs rewriting: deserialize makes the people of every area the save has already visited (populateFolk,
+  // keyed by the census flag, from the save's own seed), so a town visited before v18 is lived in on load.
+  17: (s) => ({ ...s, version: 18 }),
 };
 
 type Rect = [number, number, number, number];
@@ -438,6 +447,8 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
     monologue: { said: [...(s.monologue?.said ?? [])], ready: { ...(s.monologue?.ready ?? {}) } }, events: [],
   };
   for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d));
+  // townsfolk for areas visited before there were any (a no-op for a save that has them: the census flag is set)
+  for (const id of w.areas.keys()) populateFolk(w, id);
   return w;
 }
 

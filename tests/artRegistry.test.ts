@@ -14,6 +14,7 @@ import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
 installFakeCanvas();
 import { PROP_ART, propSprite } from "../src/game/art/props";
 import { TOWN_PROP_ART } from "../src/game/art/propsTown";
+import { FOLK_PROP_ART } from "../src/game/art/propsFolk";
 import { ITEM_ART, itemIcon, glyphPattern } from "../src/game/art/items";
 import { rubbleSprite, pillarSprite, doorSprite, barsSprite, bakeRegion } from "../src/game/art/tiles";
 import { GLYPHS } from "../src/game/content/glyphs";
@@ -49,7 +50,7 @@ test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();
   // The surface's and the dungeon's sprites, in registry order. The market town's kinds were added after them
   // (art/propsTown.ts, checked in tests/town.test.ts) and are left out here, so this golden never has to move.
-  for (const k of Object.keys(PROP_ART)) { if (k in TOWN_PROP_ART) continue; for (let v = 0; v < 4; v++) for (const alt of [false, true]) propSprite(k, v, alt); }
+  for (const k of Object.keys(PROP_ART)) { if (k in TOWN_PROP_ART || k in FOLK_PROP_ART) continue; for (let v = 0; v < 4; v++) for (const alt of [false, true]) propSprite(k, v, alt); }
   assert.equal(traceHash(), GOLDEN.props);
 });
 

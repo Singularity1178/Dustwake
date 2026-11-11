@@ -1,3 +1,4 @@
+import { folkPresent } from "./folk";
 import { RECIPES, type Recipe } from "../content/build";
 import { HIGHLIGHT_RULES, SCAN_DURATION, analysisFlag, type Highlight } from "../content/vision";
 import { ITEMS, type ItemId } from "../content/items";
@@ -122,7 +123,7 @@ export function visionTargets(w: World, area: Area): VisionTarget[] {
     if (category) out.push({ id: p.id, kind: `prop:${p.kind}`, x: p.x, y: p.y, height: p.itemZ ?? 14, category, analysis: analysisState(w, p), source: "prop" });
   }
   for (const l of area.loose) if (!l.taken) out.push({ id: l.id, kind: `item:${l.item}`, x: l.x, y: l.y, height: 8, category: classifyHighlight({ item: l.item, interactable: true })!, source: "loose" });
-  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId) out.push({ id: a.id, kind: `actor:${a.npc ?? a.definition}`, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc", source: "actor" });
+  for (const a of w.actors) if (a.area === area.id && a.id !== w.playerId && folkPresent(a)) out.push({ id: a.id, kind: `actor:${a.npc ?? a.definition}`, x: a.x, y: a.y, height: actorDef(a).body.height, category: "npc", source: "actor" });
   for (const t of tileTargets(area)) out.push(t);
   return out;
 }

@@ -78,6 +78,8 @@ export const RULES: Record<string, Rule[]> = {
   // ---- NPCs: any actor of kind "npc". The target carries its actor id and NpcDef id;
   // what is said comes from that NPC's dialogue script (content/dialogue.ts).
   npc: [{ task: { kind: "talk", dur: 0.3, effect: { op: "talk" } } }],
+  // ---- townsfolk (sim/folk.ts): they stop, turn and answer in a speech bubble; no dialogue screen
+  folk: [{ task: { kind: "talk", dur: 0.3, effect: { op: "folkTalk" } } }],
 };
 
 /** Slotting or removing a power core (C, facing a golem body): a short reach into its chest. sim/power.ts adds the effect. */

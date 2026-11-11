@@ -108,6 +108,8 @@ export type Effect =
   // ---- NPCs and dialogue (sim/dialogue.ts). The NPC is named by its actor id.
   /** Talk to the NPC actor at target.actorId: opens its first available dialogue segment, else its idle line. */
   | { op: "talk" }
+  /** Talk to a townsperson (sim/folk.ts: folkTalk): the target carries its actor id. */
+  | { op: "folkTalk" }
   /** Set an NPC's reversible awake/dormant state (flag npc.<id>.awake). */
   | { op: "npcAwake"; npc: string; awake: boolean }
   /** Mend the golem's eye (golem.eye). Idempotent. */

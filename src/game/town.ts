@@ -19,6 +19,7 @@
 // two tiles wide and never dead-end without a reason, every door has a free
 // doorstep, every market stall has a pitch behind it and a place to stand in
 // front, and `spots` names those standing places (map.ts: Spot).
+import { TOWN_FOLK_SPOTS } from "./content/town";
 import { mulberry } from "./core/rng";
 import { TS, T, FS, WS } from "./content/tiles";
 import { propDef } from "./content/props";
@@ -315,6 +316,6 @@ export function buildTown(): AreaData {
   return {
     id: TOWN_ID, w: W, h: H, grid, plan: grid.slice(), style, tvar: k.tvar, rooms, props, decals, lights: k.lights, loose: k.loose,
     start: { x: 85 * TS + 8, y: hs.y0 * TS + 28 }, exits: [{ x: W - 1, y: hs.y0 + 1, label: "THE OLD ROAD", dir: "e" }], drips: [],
-    outdoor: true, tended: true, ambient: TOWN_AMBIENT, portals: k.portals, spots: k.spots,
+    outdoor: true, tended: true, ambient: TOWN_AMBIENT, portals: k.portals, spots: [...k.spots, ...TOWN_FOLK_SPOTS],
   };
 }

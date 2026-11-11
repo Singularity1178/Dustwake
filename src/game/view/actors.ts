@@ -12,6 +12,9 @@ import { Pen, clamp } from "../util";
 import { powered } from "../sim/actorStats";
 import { runeMarks } from "../sim/gear";
 import type { Actor, World } from "../world/world";
+import { folkSprite, POSE_RATE, type FolkArtPose } from "../folkArt";
+import { archetypeOf, folkPresent } from "../sim/folk";
+import { hash01, hourOf } from "../content/daycycle";
 
 /**
  * What the host eases per actor (game.ts: NpcLook). `worker` is a worker body's animation sequencer (workerAnim.ts,
@@ -24,6 +27,7 @@ export const actorActive = (a: Actor) => powered(a) && (!!a.task || a.job?.statu
 
 export function drawActor(sc: CanvasRenderingContext2D, ec: CanvasRenderingContext2D, w: World, a: Actor, camX: number, camY: number, t: number, look: Look) {
   const d = actorDef(a), x = Math.round(a.x - camX), y = Math.round(a.y - camY), hw = Math.round(d.body.box[0] / 2) + 2;
+  if (d.art.key === "folk") { drawFolk(sc, ec, w, a, x, y, t); return; }
   sc.fillStyle = "rgba(0,0,0,0.45)";
   sc.fillRect(x - hw, y - 1, hw * 2, 2);
   sc.fillRect(x - hw + 3, y - 3, hw * 2 - 6, 4);
@@ -75,4 +79,36 @@ function drawFixtureHuman(p: Pen, x: number, y: number, a: Actor) {
   p.ox = x; p.oy = y;
   p.o(-4, -20, 8, 7, "#b79b7d"); p.o(-5, -13, 10, 9, "#63796a");
   p.r(-4 + stride, -4, 3, 4, "#594a41"); p.r(1 - stride, -4, 3, 4, "#594a41");
+}
+
+/** The watch carries a lit lantern on its rounds after dark. */
+export function folkLantern(w: World, a: Actor): boolean {
+  if (!a.person || !a.life || archetypeOf(a).garb !== "watch") return false;
+  const h = hourOf(w.day), dark = h < 5.6 || h > 19.8;
+  return dark && (a.life.act === "patrol" || a.life.act === "post" || a.life.act === "lamps") && a.area === a.person.origin;
+}
+
+/** The pose a townsperson is drawn in this frame: the sim's posture plus presentation timing (step, motion, blink). */
+export function folkArtPose(w: World, a: Actor, t: number): FolkArtPose {
+  const L = a.life!, off = hash01(a.id, 3) * 10;
+  const rate = POSE_RATE[L.pose] ?? 0;
+  let frame = L.pose === "walk" ? Math.floor(L.phase) % 4 : rate ? Math.floor(t * rate + off) % 2 : 0;
+  if (L.pose === "drink") frame = (t + off) % 5 < 1.3 ? 1 : 0;
+  return {
+    facing: a.facing, head: L.head && L.head !== a.facing ? L.head : null, pose: L.pose, frame, carry: L.carry,
+    lantern: folkLantern(w, a), pole: L.act === "lamps", blink: L.pose !== "lie" && (t + off) % 3.9 < 0.13,
+  };
+}
+
+/** A townsperson (folkArt.ts): a soft shadow, then the cached sprite into both passes. Indoors, nothing. */
+function drawFolk(sc: CanvasRenderingContext2D, ec: CanvasRenderingContext2D, w: World, a: Actor, x: number, y: number, t: number) {
+  if (!a.person || !a.life || !folkPresent(a)) return;
+  const pose = folkArtPose(w, a, t), arch = archetypeOf(a);
+  if (pose.pose !== "lie") {
+    sc.fillStyle = "rgba(0,0,0,0.32)";
+    sc.fillRect(x - 5, y - 1, 11, 2); sc.fillRect(x - 3, y - 2, 7, 4);
+  }
+  const s = folkSprite(arch.garb, arch.age, a.person.look, pose);
+  sc.drawImage(s.a, x - s.ax, y - s.ay);
+  ec.drawImage(s.e, x - s.ax, y - s.ay);
 }

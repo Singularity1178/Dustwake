@@ -30,3 +30,6 @@ Thumbs.db
 .test-out/
 snapshots/
 .preview/
+
+# local scratch scripts
+.scratch/

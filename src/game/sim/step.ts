@@ -20,6 +20,7 @@ import { reactToEvents } from "./monologue";
 import { coreKey } from "./commands";
 import { portalAt, portalOpen, walkThrough } from "./portals";
 import { stepDay } from "./daytime";
+import { tickFolk } from "./folk";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -99,6 +100,8 @@ export function stepWorld(w: World, dt: number) {
   for (const area of w.areas.values()) {
     area.advanceRitual(dt);
   }
+  // townsfolk live by their routines (sim/folk.ts): stepped in the player's area, set down by the hour elsewhere
+  tickFolk(w, dt);
   // Inner-monologue event triggers see everything this step emitted (sim/monologue.ts).
   reactToEvents(w);
 }
