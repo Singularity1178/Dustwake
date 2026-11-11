@@ -22,9 +22,16 @@ export interface RuneLink {
   b: string;
   /** Travel only a -> b. */
   oneWay?: boolean;
-  /** Arriving through this link wakes a dormant destination (the surface rune mends itself). */
+  /**
+   * Arriving at `b` from `a` wakes it if it is dormant (the surface rune mends itself on the first crossing).
+   * Never the other way: `a` is lit by whatever lights it (the halls' circle by its ritual), and while `a` is dark
+   * nothing answers `b` (sim/runes.ts: runeState).
+   */
   awakens?: boolean;
 }
+
+/** One way out of a rune: the far node, the link it runs along, and whether going this way wakes a dormant far node. */
+export interface RuneHop { node: RuneNode; link: RuneLink; wakes: boolean }
 
 export const RUNE_NODES: Record<string, RuneNode> = {
   // The tutorial's translocation circle. Arrivals land just south of the
@@ -41,12 +48,12 @@ export function runeAt(area: string, propId: string): RuneNode | undefined {
   return undefined;
 }
 
-/** Where travelling from `id` leads, and through which link. */
-export function runeDestinations(id: string): { node: RuneNode; link: RuneLink }[] {
-  const out: { node: RuneNode; link: RuneLink }[] = [];
+/** Where travelling from `id` leads, through which link, and whether that way wakes the far end (a -> b of an `awakens` link only). */
+export function runeDestinations(id: string): RuneHop[] {
+  const out: RuneHop[] = [];
   for (const link of RUNE_LINKS) {
-    if (link.a === id && RUNE_NODES[link.b]) out.push({ node: RUNE_NODES[link.b], link });
-    if (link.b === id && !link.oneWay && RUNE_NODES[link.a]) out.push({ node: RUNE_NODES[link.a], link });
+    if (link.a === id && RUNE_NODES[link.b]) out.push({ node: RUNE_NODES[link.b], link, wakes: !!link.awakens });
+    if (link.b === id && !link.oneWay && RUNE_NODES[link.a]) out.push({ node: RUNE_NODES[link.a], link, wakes: false });
   }
   return out;
 }

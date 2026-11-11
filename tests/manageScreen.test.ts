@@ -283,15 +283,26 @@ test("forms only offer what exists, and a form with nothing to offer cannot be i
   assert.ok(!getArea(w, "dungeon").props.length || storageOptions(w, wk).every((o) => o.area !== "dungeon"), "the dungeon's chests are not storage");
   const dungeonChest = getArea(w, "dungeon").props.find((p) => p.kind === "chest");
   assert.ok(dungeonChest, "the dungeon has a looted chest kind"); assert.ok(!storageOptions(w, wk).some((o) => o.ref.prop === dungeonChest!.id));
-  // no chest: the gather form can't be issued
+  // no chest anywhere: the TO row still offers the worker's own pack, so a gather can always be ordered
+  // (the order itself is run end to end in tests/routes.test.ts)
   getArea(w, CHEST.area).removeProp(CHEST.prop);
   choose(sh, ui, "GATHER");
-  assert.deepEqual(ui.menu.map((r) => r.value ?? ""), ["WOOD", "DEBUG YARD", "NONE", "5", ""]);
-  choose(sh, ui, "ISSUE ORDER");
-  assert.equal(last(sh.notes), "BUILD A STORAGE CHEST FIRST"); assert.equal(wk.job, null); assert.ok(sh.host.screens.is("manage"));
+  assert.deepEqual(ui.menu.map((r) => r.value ?? ""), ["WOOD", "DEBUG YARD", "INVENTORY", "5", ""]);
+  assert.ok(ui.menu.every((r) => r.ok), "nothing is greyed out");
+  goto(sh, ui, "TO");
+  assert.deepEqual(ui.menu[ui.row].note, ["IT KEEPS WHAT IT GATHERS IN ITS OWN PACK.", "TAKE IT FROM THERE WITH TRANSFER."]);
+  sh.press("d"); assert.equal(ui.menu[ui.row].value, "INVENTORY", "the only choice there is");
   shot(sh, "manage gather no chest");
+  goto(sh, ui, "ISSUE ORDER");
+  assert.deepEqual(ui.menu[ui.row].note, ["GATHER 5 WOOD FROM DEBUG YARD, TO INVENTORY."]);
+  sh.press("e");
+  assert.equal(last(sh.notes), "ORDER GIVEN"); assert.equal(ui.view, "main"); assert.ok(sh.host.screens.is("manage"));
+  assert.deepEqual(wk.job!.args, gatherOrder("wood", "debug_yard", null, 5).args);
+  has(shot(sh, "manage gather to inventory"), "TO INVENTORY");
+  assert.ok(setWorkerOrder(w, player(w), wk.id, null)); assert.equal(wk.job, null);
+  // with a chest the list is the chests first, then INVENTORY: the default stays the chest (the first test above)
   // nothing to gather: the rune route is dark, so the yard is out of reach
-  sh.press("escape"); assert.equal(ui.view, "main");
+  assert.equal(ui.view, "main");
   clearFlag(w, "rune.debug_yard.active");
   assert.deepEqual(gatherSources(w, wk, "wood"), []);
   choose(sh, ui, "GATHER");

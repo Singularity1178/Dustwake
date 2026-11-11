@@ -52,7 +52,12 @@ export const RULES: Record<string, Rule[]> = {
     { when: { flags: [FLAGS.tutorialDone] }, task: { kind: "channel", dur: 2.2, effect: { op: "travel" } } },
     { task: { kind: "channel", dur: 4.6, effect: { op: "travel" } } },
   ],
-  runeDormant: [{ task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "THE RUNE IS DARK AND SILENT", cue: "dud" } } }],
+  // A rune that will not carry (sim/runes.ts: runeState). Either way nothing is channelled: the golem reaches, the
+  // rune refuses (`runeDud`: the host plays its sputter, view/runeFx.ts) and the golem is told why.
+  /** Dark: its own flag is unset. */
+  runeDormant: [{ task: { kind: "reach", dur: 0.5, effect: { op: "message", text: "THE RUNE IS DARK AND SILENT", cue: "runeDud" } } }],
+  /** Lit, but nothing answers it: the rune it is linked to is dark (the surface rune while the circle below is broken). */
+  runeSevered: [{ task: { kind: "reach", dur: 0.9, effect: { op: "message", text: "THE RUNE GUTTERS OUT. NOTHING ANSWERS ON THE OTHER SIDE", cue: "runeDud" } } }],
   // ---- surface
   // Trees, rocks and logs have no row: they aren't interactables. The golem harvests them with the attack (SLAM_RULES' note below).
   examine: [{ task: { kind: "reach", dur: 0.4, effect: { op: "examine" } } }],

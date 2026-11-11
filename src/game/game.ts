@@ -44,6 +44,8 @@ import { buildCircle, CircleArt, CR } from "./circle";
 import { SurfaceRuneArt } from "./surfaceRune";
 import { carvingVisible, clumpCleared } from "./runeReveal";
 import { RUNE_NODES } from "./content/runes";
+import { runeState } from "./sim/runes";
+import { RUNE_DUD, linkedGlow, runeDudGlow, severedGlow } from "./view/runeFx";
 import { drawText, drawTextS } from "./font";
 import { createWorld, player, currentArea, actorById, hasFlag, setFlag, clearFlag, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
@@ -166,6 +168,8 @@ export class Game {
    * t: redraw progress 0..1, glow: emissive level (>1 = overdriven pulse), column: summon beam 0..1.
    */
   runeAnim: { t: number; glow: number; column: number } | null = null;
+  /** A rune that refused to carry (E on one that is dark or severed): where it is, and how long its sputter has run (view/runeFx.ts). */
+  runeDud: { x: number; y: number; t: number } | null = null;
   private runeArtCache: SurfaceRuneArt | null = null;
   /** The surface rune's layered art (dormant / awakening / restored), built on first use. */
   get runeArt() { return (this.runeArtCache ??= new SurfaceRuneArt(this.circle.pixels)); }
@@ -246,7 +250,7 @@ export class Game {
     this.shudder = null;
     this.uiTimers = [];
     this.rumbleT = 45 + Math.random() * 30;
-    this.note = null; this.arriveFade = 0; this.doorFade = 0; this.hideGolem = false; this.runeAnim = null; this.gaze = null; this.skyT = 3;
+    this.note = null; this.arriveFade = 0; this.doorFade = 0; this.hideGolem = false; this.runeAnim = null; this.runeDud = null; this.gaze = null; this.skyT = 3;
     this.monologue.reset();
     this.bars = { v: 0, to: 0 };
   }
@@ -545,6 +549,7 @@ export class Game {
     this.world.events = [];
     for (const e of evs) {
       if (e.t === "travelled" && e.actor !== this.world.playerId) { this.workerTravelled(e); continue; }
+      if (e.t === "portal" && e.actor !== this.world.playerId) { this.workerWalked(e); continue; }
       const aud = eventAudience(this.world, e);
       if (aud === "player") this.onEvent(e);
       else if (aud === "nearby") this.onNearby(e);
@@ -566,7 +571,7 @@ export class Game {
       // shake, fizz timer or crack flash, because those belong to the player.
       if (e.cue === "clank") this.sfx.clank();
       else if (e.cue === "scrape") this.sfx.scrape();
-      else if (e.cue === "dud") this.sfx.fizzle();
+      else if (e.cue === "dud" || e.cue === "runeDud") this.sfx.fizzle();
       else if (e.cue === "scrapeDust") {
         this.sfx.scrape();
         for (let i = 0; i < 4; i++) this.spawn({ x: e.x, y: e.y, z: 2, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.8, kind: "dust", col: "#9a96a0", g: 20 });
@@ -725,6 +730,7 @@ export class Game {
         if (e.cue === "clank") { this.sfx.clank(); this.shake(0.1, 1); }
         else if (e.cue === "scrape") this.sfx.scrape();
         else if (e.cue === "dud") { this.sfx.fizzle(); this.fizzT = 0.5; }
+        else if (e.cue === "runeDud") this.runeRefused(e.x, e.y);
         else if (e.cue === "scrapeDust") {
           this.sfx.scrape();
           for (let i = 0; i < 4; i++) this.spawn({ x: e.x, y: e.y, z: 2, vx: (Math.random() - 0.5) * 20, vz: 8, life: 0.8, kind: "dust", col: "#9a96a0", g: 20 });
@@ -988,11 +994,19 @@ export class Game {
     return `${clockText(now)} ${phaseAt(now).toUpperCase()}`;
   }
 
-  /** The surface rune's presentation state: the arrival cutscene's, else its flag's. */
+  /**
+   * The surface rune's presentation state: the arrival cutscene's, else what the sim says of it (sim/runes.ts:
+   * runeState). Dormant: eroded and dark. Restored and linked: carved, its steady pulse. Restored but severed (the
+   * circle below is broken, so nothing answers): carved, burning low as embers. While it is refusing someone
+   * (`runeDud`), its sputter rides over whichever of those it rests at (view/runeFx.ts).
+   */
   surfaceRuneState(): { t: number; glow: number; column: number } {
     if (this.runeAnim) return this.runeAnim;
-    const on = hasFlag(this.world, RUNE_NODES.surface.flag);
-    return { t: on ? 1 : 0, glow: on ? 0.62 + 0.28 * Math.sin(this.t * 3) : 0, column: 0 };
+    const state = runeState(this.world, RUNE_NODES.surface);
+    const rest = state === "linked" ? linkedGlow(this.t) : state === "severed" ? severedGlow(this.t) : 0;
+    const d = this.runeDud, p = d ? this.area.prop(RUNE_NODES.surface.prop) : undefined;
+    const glow = d && p && Math.hypot(p.x - d.x, p.y - d.y) < 4 ? runeDudGlow(d.t, rest, state === "dormant" ? 0.5 : 1) : rest;
+    return { t: state === "dormant" ? 0 : 1, glow, column: 0 };
   }
 
   /** The crossing's arrival act (screens/crossing.ts), `t` seconds in: the overgrown rune wakes and redraws itself, then summons the golem. */
@@ -1162,12 +1176,22 @@ export class Game {
       cl.cur = cl.int * (0.8 + 0.2 * Math.sin(this.t * 1.3)) + (this.fizzT > 0 ? Math.random() * 0.6 : 0);
     }
     this.fizzT = Math.max(0, this.fizzT - dt);
+    // a rune that refused: its sputter runs its course, spitting sparks off the carvings while it gutters
+    if (this.runeDud) {
+      const d = this.runeDud;
+      if (d.t < RUNE_DUD.gutter && Math.random() < dt * 40) {
+        const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
+        this.spawn({ x: d.x + p.x, y: d.y + p.y, z: 1, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 30, vz: 20 + Math.random() * 30, life: 0.45, kind: "spark", col: Math.random() < 0.5 ? "#ff6a8a" : "#a070ff", emit: true, g: 120 });
+      }
+      if ((d.t += dt) >= RUNE_DUD.dur) this.runeDud = null;
+    }
     // surface rune glow: dark and dead while dormant (no baseline), driven by the cutscene, steady once restored
     const rg = this.view.byId("runeglow");
     if (rg) {
       const st = this.surfaceRuneState();
       rg.cur = rg.int * (st.glow * (0.92 + 0.08 * Math.sin(this.t * 2.3)) + st.column * 0.7);
-      if (!this.runeAnim && st.t >= 1 && Math.random() < dt * 8) {
+      // motes rise from the carvings only while the rune has somewhere to carry them
+      if (!this.runeAnim && runeState(this.world, RUNE_NODES.surface) === "linked" && Math.random() < dt * 8) {
         const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
         this.spawn({ x: rg.x + p.x, y: rg.y + p.y, z: 0, vz: 6 + Math.random() * 10, life: 1.4, kind: "rune", col: Math.random() < 0.6 ? "#a070ff" : "#70d0ff", emit: true, g: -2 });
       }
@@ -1782,6 +1806,36 @@ export class Game {
       this.spawn({ x, y, z: 2 + Math.random() * 10, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.5, vz: 10 + Math.random() * 30, life: 0.7, kind: "rune", col: Math.random() < 0.4 ? "#ffffff" : Math.random() < 0.5 ? "#c0a0ff" : "#80e0ff", emit: true, g: 10 });
     }
   }
+  /**
+   * E on a rune that will not carry (dark, or lit with nothing answering it): the fizzle, a jolt, sparks thrown off
+   * its ring, and the rune's own sputter (view/runeFx.ts), which updateWorldFx runs. The halls' circle flickers on
+   * `fizzT`, as it always did for a dud; a rune that is a prop (the surface's) reads `runeDud` in surfaceRuneState.
+   */
+  private runeRefused(x: number, y: number) {
+    this.sfx.fizzle();
+    this.fizzT = 0.5;
+    this.runeDud = { x, y, t: 0 };
+    this.shake(0.25, 1.2);
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2, rr = 44 + Math.random() * 13;
+      this.spawn({ x: x + Math.cos(a) * rr, y: y + Math.sin(a) * rr, z: 1, vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 40, vz: 30 + Math.random() * 30, life: 0.5, kind: "spark", col: Math.random() < 0.5 ? "#ff6a8a" : "#a070ff", emit: true, g: 120 });
+    }
+  }
+
+  /**
+   * Another body walked through a door or off along a road (a worker under orders: sim/jobs.ts). It is only heard:
+   * the latch or a footfall where it left, if that was here, else where it came out, if that is here. The view, the
+   * fade and the place's name are the player's own (onEvent, "portal").
+   */
+  private workerWalked(e: Extract<SimEvent, { t: "portal" }>) {
+    const here = this.pl.area, a = actorById(this.world, e.actor);
+    const from = e.fromArea === here ? portalById(this.area, e.from) : undefined;
+    const out = !from && a && e.toArea === here ? portalById(this.area, e.to) : undefined;
+    const at = from ? { x: from.x + from.w / 2, y: from.y + from.h / 2, door: !!from.door } : out && a ? { x: a.x, y: a.y, door: !!out.door } : null;
+    if (!at || this.volAt(at.x, at.y) < 0.15) return;
+    if (at.door) this.sfx.open(); else this.sfx.step(true);
+  }
+
   /** Another body went through a rune: a flash where it left (if that was in the player's area) and where it landed. */
   private workerTravelled(e: Extract<SimEvent, { t: "travelled" }>) {
     const a = actorById(this.world, e.actor), pa = this.pl.area;

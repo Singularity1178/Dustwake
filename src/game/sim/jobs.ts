@@ -14,8 +14,10 @@ import { AREAS } from "../world/areas";
 import { beginTask, faceTo } from "./tasks";
 import { countItem, roomFor } from "./inventory";
 import { powered } from "./actorStats";
-import { findPath, lineOfSight, walkTo } from "./navigation";
-import { runeRoute } from "./runes";
+import { findPath, lineOfSight, navGrid, walkTo } from "./navigation";
+import { firstHops, meansOf, type Hop } from "./routes";
+import { inPortal, portalById, portalStand, walkThrough } from "./portals";
+import type { Area } from "../world/area";
 import { craftEntry, craftLocked, orderCraft, outputFits } from "./crafting";
 import { inventoryHandle, storageRef } from "./storage";
 import { roomIn } from "./inventoryOps";
@@ -65,7 +67,7 @@ function argumentRefusal(order: JobOrder): string {
   if (order.kind === "gatherDeposit") {
     if (!text(p.resource) || !ITEMS[p.resource as ItemId]) return "NO SUCH RESOURCE";
     if (!text(p.fromArea) || !AREAS[p.fromArea]) return "NO SUCH SOURCE AREA";
-    if (!validRef(p.storage)) return "NO SUCH STORAGE";
+    if (p.storage !== null && !validRef(p.storage)) return "NO SUCH STORAGE";
   } else if (order.kind === "craftAt") {
     if (!validRef(p.station)) return "NO SUCH STATION";
     if (!CRAFT_RECIPES.some((r) => r.id === p.recipe)) return "NO SUCH RECIPE";
@@ -137,21 +139,49 @@ function work(a: Actor, spec: TaskSpec, target: Target) {
   stop(a);
 }
 
-/** Walk to a local target, or approach and channel the next hop of a route. */
+/** A way out of the area a body stands in: where it walks to (and how near) to take a hop, and the rune it then channels. */
+interface Way { hop: Hop; x: number; y: number; range: number; rune?: string }
+function wayIn(area: Area, a: Actor, hop: Hop): Way | null {
+  if (hop.via === "rune") {
+    const p = area.prop(RUNE_NODES[hop.from].prop);
+    return p ? { hop, x: p.x, y: p.y, range: 15, rune: p.id } : null;
+  }
+  // A portal is walked into: a place inside its box where this body can stand (sim/portals.ts).
+  const p = portalById(area, hop.portal), at = p && portalStand(p, navGrid(area, a).free);
+  return at ? { hop, x: at.x, y: at.y, range: 1 } : null;
+}
+
+/**
+ * Walk to a local target, or set out for another area: by rune (walk up, channel, travel) or on foot through a
+ * portal (a road, a door, the dug-out stair), whichever ways the route offers (sim/routes.ts). A body keeps to the
+ * way it has set out on (its saved walk goal); choosing afresh, it takes the nearest one it can walk to.
+ */
 function approach(w: World, a: Actor, goal: Destination, dt: number): boolean {
   if (a.area !== goal.area) {
-    if (!capable(a, "travel")) { block(w, a, "noTravel"); return false; }
-    const hop = runeRoute(w, a.area, goal.area)?.[0];
-    if (!hop) { block(w, a, "noRuneRoute"); return false; }
-    const node = RUNE_NODES[hop.from], p = areaOf(w, a).prop(node.prop);
-    if (!p) { block(w, a, "missingRune"); return false; }
-    const result = walkTo(w, a, { area: a.area, x: p.x, y: p.y, range: 15 }, dt);
+    const area = areaOf(w, a), hops = firstHops(w, meansOf(a), a.area, goal.area);
+    if (!hops.length) { block(w, a, capable(a, "travel") ? "noRoute" : "noTravel"); return false; }
+    const ways = hops.flatMap((h) => wayIn(area, a, h) ?? []);
+    if (!ways.length) { block(w, a, hops[0].via === "rune" ? "missingRune" : "pathBlocked"); return false; }
+    const heading = a.job!.nav?.goal;
+    let way = ways.find((x) => `${a.area}:${x.x},${x.y}:${x.range}` === heading);
+    if (!way) {
+      const near = [...ways].sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
+      way = near.find((x) => findPath(w, a, x, false) !== null) ?? near[0];
+    }
+    const result = walkTo(w, a, { area: a.area, x: way.x, y: way.y, range: way.range }, dt);
     if (result === "stuck") block(w, a, "pathBlocked");
     if (result === "arrived") {
-      beginTask(a, { kind: "channel", dur: 2.2, effect: { op: "travel", destination: hop.to } }, { kind: "rune", x: p.x, y: p.y, propId: p.id });
-      a.task!.jobId = a.job!.id;
-      a.job!.transit = true; a.job!.result = null;
-      stop(a);
+      if (way.hop.via === "rune" && way.rune) {
+        beginTask(a, { kind: "channel", dur: 2.2, effect: { op: "travel", destination: way.hop.to } }, { kind: "rune", x: way.x, y: way.y, propId: way.rune });
+        a.task!.jobId = a.job!.id;
+        a.job!.transit = true; a.job!.result = null;
+        stop(a);
+      } else if (way.hop.via === "portal") {
+        // Nothing is channelled: with its feet in the box it steps through, as the maintainer does by pushing on.
+        const p = portalById(area, way.hop.portal);
+        if (!p || !inPortal(p, a.x, a.y) || !walkThrough(w, a, area, p)) block(w, a, "arrivalBlocked");
+        else stop(a);
+      }
     }
     return false;
   }
@@ -161,7 +191,9 @@ function approach(w: World, a: Actor, goal: Destination, dt: number): boolean {
 }
 
 function gatherDeposit(w: World, a: Actor, j: Job, dt: number) {
-  const item = j.args.resource as ItemId, storage = refOf(j.args.storage)!;
+  // `storage` null: it keeps what it gathers in its own pack. There is no deposit phase then, and the harvest
+  // effect counts what each blow paid (sim/tasks.ts), so `completed` is what it gathered, not what it stored.
+  const item = j.args.resource as ItemId, storage = refOf(j.args.storage);
   if (j.waiting) {
     const failed = j.result === false;
     j.waiting = false; j.result = null;
@@ -171,8 +203,8 @@ function gatherDeposit(w: World, a: Actor, j: Job, dt: number) {
   if (j.completed >= quantity(j)) { finish(w, a); return; }
   const stock = countItem(a, item), remaining = quantity(j) - j.completed;
   const resource = j.target && w.areas.get(j.target.area)?.prop(j.target.prop);
-  if (stock > 0 && (stock >= remaining || roomFor(w, a, item) === 0 || resource?.taken)) { j.phase = "deposit"; j.target = null; }
-  if (j.phase === "deposit") {
+  if (storage && stock > 0 && (stock >= remaining || roomFor(w, a, item) === 0 || resource?.taken)) { j.phase = "deposit"; j.target = null; }
+  if (storage && j.phase === "deposit") {
     const area = getArea(w, storage.area), p = area.prop(storage.prop);
     if (!p?.inventory) { block(w, a, "missingStorage"); return; }
     if (!stock) { j.phase = "gather"; j.target = null; return; }
@@ -191,7 +223,7 @@ function gatherDeposit(w: World, a: Actor, j: Job, dt: number) {
       .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y) || (p.id < q.id ? -1 : 1));
     p = candidates.find((p) => findPath(w, a, { x: p.x, y: p.y, range: propReach(p.kind) + 2 }, false) !== null);
     if (!p) {
-      if (stock) { j.phase = "deposit"; return; }
+      if (stock && storage) { j.phase = "deposit"; return; }
       block(w, a, "noResource"); return;
     }
     j.target = { area: source.id, prop: p.id };
@@ -200,7 +232,7 @@ function gatherDeposit(w: World, a: Actor, j: Job, dt: number) {
   const hit = harvestStep(a, p);
   if (!hit) { block(w, a, "cannotHarvest"); return; }
   if (hit.rewards.some((r) => roomFor(w, a, r.item) < r.n)) {
-    if (stock) { j.phase = "deposit"; j.target = null; }
+    if (stock && storage) { j.phase = "deposit"; j.target = null; }
     else block(w, a, "packFull");
     return;
   }
@@ -228,7 +260,7 @@ function craftAt(w: World, a: Actor, j: Job, dt: number) {
 
 export const JOB_HANDLERS: Record<string, JobHandler> = {
   gatherDeposit: {
-    validate: (p) => text(p.resource) && !!ITEMS[p.resource as ItemId] && text(p.fromArea) && !!AREAS[p.fromArea] && validRef(p.storage) && (p.repeat === true || positive(p.amount)),
+    validate: (p) => text(p.resource) && !!ITEMS[p.resource as ItemId] && text(p.fromArea) && !!AREAS[p.fromArea] && (p.storage === null || validRef(p.storage)) && (p.repeat === true || positive(p.amount)),
     step: gatherDeposit,
   },
   craftAt: {
@@ -266,8 +298,9 @@ export function tickJob(w: World, a: Actor, dt: number) {
   handler.step(w, a, job, dt);
 }
 
-export const gatherOrder = (resource: ItemId, fromArea: string, storage: PropRef, amount: number, repeat = false): JobOrder => ({
-  kind: "gatherDeposit", args: { resource, fromArea, storage: { ...storage }, amount, repeat },
+/** `storage` null: the worker keeps what it gathers in its own pack (the order screen's INVENTORY), and the amount counts what it gathered. */
+export const gatherOrder = (resource: ItemId, fromArea: string, storage: PropRef | null, amount: number, repeat = false): JobOrder => ({
+  kind: "gatherDeposit", args: { resource, fromArea, storage: storage ? { ...storage } : null, amount, repeat },
 });
 export const craftOrder = (station: PropRef, recipe: string, amount: number, repeat = false): JobOrder => ({
   kind: "craftAt", args: { station: { ...station }, recipe, amount, repeat },

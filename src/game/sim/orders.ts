@@ -20,15 +20,28 @@ import { coreCheck } from "./power";
 import { powered } from "./actorStats";
 import { craftEntry, type CraftEntry } from "./crafting";
 import { actorBoxes, nearestFree } from "./collision";
-import { runeRoute } from "./runes";
+import { areaBase, meansOf, routeExists } from "./routes";
+import { portalOpen, portalsOf } from "./portals";
+import { AREAS } from "../world/areas";
 
 export const areaName = (id: string) => AREA_NAMES[id] ?? id.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 
 /** Does this body have what an order kind needs (JOB_KINDS capabilities)? */
 export const canTake = (a: Actor, kind: string) => !!JOB_KINDS[kind] && JOB_KINDS[kind].capabilities.every((c) => capable(a, c));
 
-/** Can this actor get to `area`: it is there, or can travel and a rune route leads there. */
-export const canReach = (w: World, a: Actor, area: string) => a.area === area || (capable(a, "travel") && !!runeRoute(w, a.area, area));
+/** Can this actor get to `area`: it is there, or a route leads there for its body, by rune or on foot (sim/routes.ts). */
+export const canReach = (w: World, a: Actor, area: string) => routeExists(w, meansOf(a), a.area, area);
+
+/**
+ * The areas an order may name: those visited, and those an open road or door out of a visited area leads to. The
+ * far end of a way one has stood at can be named (the waymark at the old road's mouth, the signs over the shops'
+ * doors); the far end of a rune cannot until it has been used, so the surface stays unknown until the first crossing.
+ */
+export function knownAreas(w: World): string[] {
+  const out = new Set(w.areas.keys());
+  for (const area of w.areas.values()) for (const p of portalsOf(area)) if (AREAS[p.to.area] && portalOpen(w, p)) out.add(p.to.area);
+  return [...out].sort();
+}
 
 const SHORT: Record<string, string> = { storage_chest: "CHEST", workbench: "BENCH" };
 /** A prop kind's name: the recipe that builds it, else its kind. */
@@ -80,6 +93,15 @@ export const storageOptions = (w: World, a: Actor) => propOptions(w, a, (p) => !
 /** Work stations the worker can craft at. */
 export const stationOptions = (w: World, a: Actor) => propOptions(w, a, (p) => !!propDef(p.kind).station);
 
+/** What the order screen calls a worker's own pack as the place to put what it gathers. */
+export const INVENTORY_LABEL = "INVENTORY";
+export interface GatherTarget { label: string; ref: PropRef | null }
+/**
+ * Where a gather order may put what it gathers: every storage prop the worker can get to, then its own pack
+ * (`ref: null`), which is always there, so a gather can be ordered before any chest is built.
+ */
+export const gatherTargets = (w: World, a: Actor): GatherTarget[] => [...storageOptions(w, a).map((o) => ({ label: o.label, ref: o.ref })), { label: INVENTORY_LABEL, ref: null }];
+
 /** Resources the world can yield: every item a harvestable pays, in data order. */
 export function gatherResources(): ItemId[] {
   const out: ItemId[] = [];
@@ -98,12 +120,12 @@ export function gatherSources(w: World, a: Actor, item: ItemId): { area: string;
   });
 }
 
-/** Why a gather from `from` into `storage` can't be run (text), or null. The worker walks the route there and back. */
-export function gatherRefusal(w: World, a: Actor, item: ItemId, from: string | undefined, storage: PropRef | undefined): string | null {
+/** Why a gather from `from` into `storage` (null: its own pack) can't be run (text), or null. The worker finds its own way there and back. */
+export function gatherRefusal(w: World, a: Actor, item: ItemId, from: string | undefined, storage: PropRef | null): string | null {
   if (!canTake(a, "gatherDeposit")) return "IT CANNOT DO THAT WORK";
-  if (!storage) return "BUILD A STORAGE CHEST FIRST";
   if (!from) return `NO ${ITEM_NAMES[item]} TO BE FOUND`;
-  if (!runeRoute(w, from, storage.area)) return "NO RUNE ROUTE FROM THERE";
+  // (keeping what it gathers, there is nowhere it has to get back to)
+  if (storage && !routeExists(w, meansOf(a), from, storage.area)) return "NO WAY BACK FROM THERE";
   return null;
 }
 
@@ -121,9 +143,16 @@ export function walkOptions(w: World, a: Actor): WalkOption[] {
   const size = actorDef(a).body.box, out: WalkOption[] = [];
   const spot = (area: Area, x: number, y: number) => nearestFree(area, x, y, actorBoxes(w, area.id, a.id), size);
   const add = (label: string, area: Area, x: number, y: number) => { const s = spot(area, x, y); if (s) out.push({ label, area: area.id, x: s.x, y: s.y }); };
-  for (const id of [...w.areas.keys()].sort()) {
+  for (const id of knownAreas(w)) {
     if (!canReach(w, a, id)) continue;
-    const area = w.areas.get(id)!;
+    const area = w.areas.get(id);
+    if (!area) {
+      // Known but not yet visited (the far end of a road): only where one comes in, read from its builder. Listing
+      // it instantiates nothing; the area comes into being when someone walks in.
+      const s = areaBase(id)?.start;
+      if (s) out.push({ label: `${areaName(id)} START`, area: id, x: s.x, y: s.y });
+      continue;
+    }
     add(`${areaName(id)} START`, area, area.start.x, area.start.y);
     for (const o of [...storageOptions(w, a), ...stationOptions(w, a)].filter((o) => o.area === id)) {
       const p = area.prop(o.ref.prop)!;
@@ -146,7 +175,7 @@ export type Tone = "ok" | "warn" | "bad" | "dim";
 /** Short reasons an order blocks (`Job.reason`), at most 15 characters so "BLOCKED: " fits beside them. */
 export const BLOCK_TEXT: Record<string, string> = {
   storageFull: "STORAGE FULL", missingStorage: "NO STORAGE", packFull: "PACK FULL", noResource: "NO RESOURCE",
-  cannotHarvest: "CAN'T HARVEST", noTravel: "CAN'T TRAVEL", noRuneRoute: "NO RUNE ROUTE", missingRune: "RUNE MISSING",
+  cannotHarvest: "CAN'T HARVEST", noTravel: "CAN'T TRAVEL", noRoute: "NO WAY THERE", missingRune: "RUNE MISSING",
   pathBlocked: "PATH BLOCKED", craftChanged: "CRAFT FAILED", missingStation: "NO STATION", cost: "NO MATERIALS",
   tools: "NEEDS TOOL", unknown: "UNKNOWN RECIPE", arrivalBlocked: "ARRIVAL BLOCKED", unknownJob: "UNKNOWN ORDER",
 };
@@ -189,7 +218,7 @@ export function jobView(w: World, a: Actor): JobView | null {
   let title = "ORDER", progress = "", lines: string[] = [];
   if (j.kind === "gatherDeposit") {
     title = `GATHER ${ITEM_NAMES[j.args.resource as ItemId] ?? "?"}`; progress = amountText(j);
-    lines = [`FROM ${areaName(String(j.args.fromArea))}`, `TO ${refLabel(w, j.args.storage as unknown as PropRef)}`];
+    lines = [`FROM ${areaName(String(j.args.fromArea))}`, `TO ${j.args.storage ? refLabel(w, j.args.storage as unknown as PropRef) : INVENTORY_LABEL}`];
   } else if (j.kind === "craftAt") {
     title = `CRAFT ${CRAFT_RECIPES.find((r) => r.id === j.args.recipe)?.name ?? "?"}`; progress = amountText(j);
     lines = [`AT ${refLabel(w, j.args.station as unknown as PropRef)}`];

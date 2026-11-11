@@ -82,8 +82,16 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      edge, and the cheek walls' footprints begin there. That moves solid
   *      footprints into the hall's last rows, so a body saved there is set down
   *      beside them, inside the passage (a frozen list again, as v15).
+  * v17: routes over runes and portals, and the rune network's ends agreeing. No
+  *      field changed shape (a gather order's `storage` may now be null: the
+  *      worker keeps what it gathers). But before v17 a trip down from the
+  *      surface rune "woke" the halls' circle even with a glyph out of it, so a
+  *      save could hold the circle's rune flag set over a ritual that was not
+  *      active; the flag follows the ritual again. And an order stopped for
+  *      want of a route carries the reason's new name (routes are no longer
+  *      runes alone).
   */
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 17;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -105,7 +113,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 16;
+  version: 17;
   seed: number;
   rng: number;
   time: number;
@@ -323,6 +331,18 @@ export const MIGRATIONS: Record<number, Migration> = {
   // The newel posts moved up into the hall (v16), so the footprints did too: a body saved in the hall's last rows beside
   // the passage wall is now inside a post. Same rule again, with the footprints as they were placed then.
   15: (s) => ({ ...s, version: 16, actors: (s.actors ?? []).map((a: any) => setDown(a, V16_SOLID, V16_ROOMS)) }),
+  // The rune network's two ends agree again (v17). The halls' circle is lit by its ritual and by nothing else: a save
+  // in which the surface rune had "woken" it with a glyph out (its flag set, its ritual not active) has the flag
+  // cleared, so the circle is dark and the surface rune severed, as they now would be. A circle that is lit keeps
+  // its flag. And an order stopped with no route to follow is renamed to the reason v17 gives. Names are frozen here.
+  16: (s) => {
+    const ritual = s.areas?.dungeon?.ritual;
+    return {
+      ...s, version: 17,
+      flags: (s.flags ?? []).filter((f: string) => f !== "rune.dungeon.active" || !ritual || ritual.active),
+      actors: (s.actors ?? []).map((a: any) => (a.job?.reason === "noRuneRoute" ? { ...a, job: { ...a.job, reason: "noRoute" } } : a)),
+    };
+  },
 };
 
 type Rect = [number, number, number, number];

@@ -2,9 +2,9 @@
 // map, a shop door, the way back out. A portal is a box of ground plus the
 // direction you push to go through it (map.ts: Portal); areas declare theirs in
 // `portals`, in pairs. Nothing is channelled and nothing is spent: unlike rune
-// travel this is just walking, so any body that can move may use one (the
-// player today; townsfolk and haulers later path to a portal and step through
-// the same function). Pure sim.
+// travel this is just walking, so any body that can move may use one: the
+// player by pushing on, a body under orders by walking into the box and stepping
+// through the same function (sim/jobs.ts, on a route from sim/routes.ts). Pure sim.
 import type { Portal } from "../map";
 import type { Facing } from "../golem";
 import { actorDef, capable } from "../content/actors";
@@ -21,6 +21,9 @@ export const portalById = (area: Area, id: string): Portal | undefined => portal
 /** Is a portal passable? One with a `flag` (a stair that has to be dug out first) only once that world flag is set. */
 export const portalOpen = (w: World, p: Portal) => !p.flag || hasFlag(w, p.flag);
 
+/** Are feet at (x, y) inside a portal's box? */
+export const inPortal = (p: Portal, x: number, y: number) => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
+
 /**
  * The portal someone standing at (x, y) and pushing (ix, iy) walks through, if any: feet in its box, pushing
  * mostly its way. `open` leaves out the ones that are shut (pass `(p) => portalOpen(w, p)`).
@@ -32,7 +35,24 @@ export function portalAt(area: Area, x: number, y: number, ix: number, iy: numbe
     if (!open(p)) continue;
     const [dx, dy] = PUSH[p.dir];
     if ((ix * dx + iy * dy) / mag < 0.7) continue;
-    if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return p;
+    if (inPortal(p, x, y)) return p;
+  }
+  return null;
+}
+
+/** Places in a portal's box, as fractions of its half-extents from its middle: the middle first, then toward the edges. */
+const STAND: readonly (readonly [number, number])[] = [[0, 0], [-0.5, 0], [0.5, 0], [0, 0.5], [0, -0.5], [-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+
+/**
+ * Where a body that means to go through a portal walks to: a place inside its box where it can stand (`free`: that
+ * body's own collision test), the middle first. Every candidate lies well inside the box, so a walker that stops a
+ * pixel short still has its feet in it. Null if the whole box is blocked.
+ */
+export function portalStand(p: Portal, free: (x: number, y: number) => boolean): { x: number; y: number } | null {
+  const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+  for (const [fx, fy] of STAND) {
+    const x = cx + fx * Math.max(0, p.w / 2 - 2), y = cy + fy * Math.max(0, p.h / 2 - 2);
+    if (free(x, y)) return { x, y };
   }
   return null;
 }

@@ -19,6 +19,7 @@ import { actorDef, capable } from "../content/actors";
 import { buildRows, scanSpec } from "./analysis";
 import { DIG_SITES, digLayerAt } from "../content/digging";
 import { digRules } from "./digging";
+import { runeState } from "./runes";
 
 export interface Interactable extends Target {
   r: number;
@@ -166,8 +167,9 @@ export function interact(w: World, a: Actor, area: Area, it: Interactable): Inte
   if (it.kind === "dig") { const key = digRules(area, it.propId); rules = key ? RULES[key] : []; }
   let first = false;
   if (it.kind === "rune") {
-    const node = runeAt(area.id, it.propId!);
-    if (!node || !hasFlag(w, node.flag)) rules = RULES.runeDormant;
+    // A rune carries only while it is lit and something answers it (sim/runes.ts); otherwise E gets its refusal.
+    const node = runeAt(area.id, it.propId!), state = node ? runeState(w, node) : "dormant";
+    if (state !== "linked") rules = state === "severed" ? RULES.runeSevered : RULES.runeDormant;
     else first = !hasFlag(w, FLAGS.tutorialDone);
   }
   const rule = rules && pick(w, a, rules);

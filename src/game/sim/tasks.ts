@@ -2,7 +2,7 @@
 // task advances; at its fire point its Effect is applied to the world. This is
 // the single path by which interactions change the world, for any actor.
 import { TS, T, TILE_INTERACT } from "../content/tiles";
-import { ITEMS, glyphItem, isDroppable } from "../content/items";
+import { ITEMS, glyphItem, isDroppable, type ItemId } from "../content/items";
 import { propDef, propReach } from "../content/props";
 import { HARVEST } from "../content/harvest";
 import { VISION_OFF_OPS } from "../content/vision";
@@ -12,7 +12,7 @@ import { meets } from "./requirements";
 import { emit, setFlag, setActorFlag, hasFlag, actorById, areaOf, getArea, type Actor, type World } from "../world/world";
 import type { Area, PropInst } from "../world/area";
 import { checkRune, deactivate } from "./ritual";
-import { addItems, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
+import { addItems, countItem, dropSpot, giveItem, removeItems, spawnLoose } from "./inventory";
 import { travel } from "./runes";
 import { applyBuild, applyDeconstruct } from "./build";
 import { actorBoxes } from "./collision";
@@ -309,7 +309,14 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       // A worker's blow at a chosen prop (jobs). The golem's own harvesting is the slam, which finds props itself.
       const p = target?.propId ? area.prop(target.propId) : undefined;
       if (!p || Math.hypot(p.x - a.x, p.y - a.y) > propReach(p.kind) + 8 || !lineOfSight(area, a, p)) return false;
-      return harvestProp(w, a, area, p);
+      // An order that keeps what it gathers (no storage: sim/jobs.ts) counts it here, where the blow pays out, as a
+      // deposit is counted where it lands: a save between the blow and the end of the swing never counts it twice.
+      // Only what reached the pack counts, and never past the amount asked for.
+      const job = a.job && a.task?.jobId === a.job.id && a.job.kind === "gatherDeposit" && a.job.args.storage === null ? a.job : null;
+      const want = job ? (job.args.resource as ItemId) : null, before = want ? countItem(a, want) : 0;
+      const ok = harvestProp(w, a, area, p);
+      if (job && want) job.completed = Math.min(job.args.repeat === true ? Infinity : Number(job.args.amount), job.completed + Math.max(0, countItem(a, want) - before));
+      return ok;
     }
     case "dig":
       return applyDig(w, a, area, target);

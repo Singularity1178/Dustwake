@@ -43,7 +43,7 @@ export const TASK_KINDS: Record<TaskKind, { fire: (dur: number) => number }> = {
 };
 
 /** Presentation-only cues an effect can request (sound/particles). */
-export type Cue = "clank" | "scrape" | "scrapeDust" | "push" | "dud";
+export type Cue = "clank" | "scrape" | "scrapeDust" | "push" | "dud" | /** a rune refused to carry: its sputter, at the rune */ "runeDud";
 
 export type Effect =
   | { op: "cue"; cue: Cue }

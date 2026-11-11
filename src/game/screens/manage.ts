@@ -36,8 +36,8 @@ import { craftReason } from "../sim/crafting";
 import { gatherOrder, craftOrder, walkOrder, workerRefusal } from "../sim/jobs";
 import { controlWorker, giveWorkerOrder, orderCoreSwap, renameActor } from "../sim/commands";
 import {
-  AMOUNTS, areaName, canTake, craftChoices, gatherRefusal, gatherResources, gatherSources, jobView, powerState, stationOptions,
-  storageOptions, walkOptions, workerStatus, type Tone,
+  AMOUNTS, areaName, canTake, craftChoices, gatherRefusal, gatherResources, gatherSources, gatherTargets, jobView, powerState, stationOptions,
+  walkOptions, workerStatus, type Tone,
 } from "../sim/orders";
 import { itemIcon } from "../art/items";
 import { slotIcon } from "../art/slots";
@@ -145,7 +145,7 @@ export class ManageUi {
     const resume = !!job && (job.status === "blocked" || (job.status === "paused" && job.reason === "manual"));
     return [
       coreRow,
-      kindRow("GATHER...", "gatherDeposit", "gather", ["SEND IT TO HARVEST A RESOURCE AND CARRY IT TO A", "STORAGE CHEST, ONCE OR UNTIL TOLD TO STOP."]),
+      kindRow("GATHER...", "gatherDeposit", "gather", ["SEND IT TO HARVEST A RESOURCE, INTO A STORAGE CHEST", "OR ITS OWN PACK, ONCE OR UNTIL TOLD TO STOP."]),
       kindRow("CRAFT...", "craftAt", "craft", ["HAVE IT CRAFT AT A BENCH FROM ITS PACK AND THE", "STORAGE BESIDE THE BENCH, ONCE OR ON REPEAT."]),
       kindRow("GO TO...", "walk", "walk", ["SEND IT SOMEWHERE AND LEAVE IT STANDING THERE."]),
       { label: "TRANSFER...", ok: true, note: ["SEE YOUR PACK BESIDE ITS PACK: GIVE IT ITEMS, TAKE", "THEM BACK, OR PUT A RUNE ON IT."], act: () => this.openTransfer?.(a.id) },
@@ -170,20 +170,24 @@ export class ManageUi {
     const resources = gatherResources();
     st.res = clamp(st.res, 0, resources.length - 1);
     const item = resources[st.res];
-    const sources = gatherSources(w, a, item), stores = storageOptions(w, a);
+    // TO: every chest it can get to, then INVENTORY (its own pack), which is always offered (sim/orders.ts: gatherTargets).
+    const sources = gatherSources(w, a, item), targets = gatherTargets(w, a);
     st.from = clamp(st.from, 0, Math.max(0, sources.length - 1));
-    st.to = clamp(st.to, 0, Math.max(0, stores.length - 1));
-    const from = sources[st.from], to = stores[st.to];
-    const why = gatherRefusal(w, a, item, from?.area, to?.ref);
+    st.to = clamp(st.to, 0, targets.length - 1);
+    const from = sources[st.from], to = targets[st.to];
+    const why = gatherRefusal(w, a, item, from?.area, to.ref);
     const amount = AMOUNTS[st.amt], repeat = amount === "REPEAT";
     return [
       { label: "RESOURCE", value: ITEM_NAMES[item], ok: true, step: (d) => { st.res = wrap(st.res, d, resources.length); st.from = 0; }, note: [`WHAT TO GATHER: ${resources.map((i) => ITEM_NAMES[i]).join(", ")}.`] },
       { label: "FROM", value: from ? from.label : "NONE", ok: !!from, step: (d) => { st.from = wrap(st.from, d, sources.length); }, note: from ? [`${from.count} SOURCES OF ${ITEM_NAMES[item]} LEFT IN ${from.label}.`] : [`NO ${ITEM_NAMES[item]} LEFT IN ANY AREA IT CAN REACH.`] },
-      { label: "TO", value: to ? to.label : "NONE", ok: !!to, step: (d) => { st.to = wrap(st.to, d, stores.length); }, note: to ? [`IT STORES WHAT IT GATHERS IN ${to.label}.`] : ["NO STORAGE YET. BUILD A STORAGE CHEST."] },
+      {
+        label: "TO", value: to.label, ok: true, step: (d) => { st.to = wrap(st.to, d, targets.length); },
+        note: to.ref ? [`IT STORES WHAT IT GATHERS IN ${to.label}.`] : ["IT KEEPS WHAT IT GATHERS IN ITS OWN PACK.", "TAKE IT FROM THERE WITH TRANSFER."],
+      },
       this.amountRow(st),
       {
-        label: "ISSUE ORDER", ok: !why, note: [why ? `${why}.` : `GATHER ${repeat ? "WITHOUT END" : String(amount)} ${ITEM_NAMES[item]} FROM ${from!.label}, TO ${to!.label}.`],
-        act: () => this.issue(gatherOrder(item, from!.area, { ...to!.ref }, repeat ? 1 : (amount as number), repeat)),
+        label: "ISSUE ORDER", ok: !why, note: [why ? `${why}.` : `GATHER ${repeat ? "WITHOUT END" : String(amount)} ${ITEM_NAMES[item]} FROM ${from!.label}, TO ${to.label}.`],
+        act: () => this.issue(gatherOrder(item, from!.area, to.ref ? { ...to.ref } : null, repeat ? 1 : (amount as number), repeat)),
       },
     ];
   }
@@ -217,7 +221,7 @@ export class ManageUi {
     st.where = clamp(st.where, 0, Math.max(0, spots.length - 1));
     const s = spots[st.where];
     return [
-      { label: "WHERE", value: s ? s.label : "NONE", ok: !!s, step: (d) => { st.where = wrap(st.where, d, spots.length); }, note: s ? [`IT WALKS THERE, BY RUNE IF IT MUST, AND STANDS.`, `${areaName(s.area)} AT ${Math.round(s.x)},${Math.round(s.y)}.`] : ["THERE IS NOWHERE FOR IT TO GO."] },
+      { label: "WHERE", value: s ? s.label : "NONE", ok: !!s, step: (d) => { st.where = wrap(st.where, d, spots.length); }, note: s ? [`IT WALKS THERE, BY ROAD, STAIR OR RUNE, AND STANDS.`, `${areaName(s.area)} AT ${Math.round(s.x)},${Math.round(s.y)}.`] : ["THERE IS NOWHERE FOR IT TO GO."] },
       { label: "ISSUE ORDER", ok: !!s, note: [s ? `SEND IT TO ${s.label}.` : "THERE IS NOWHERE FOR IT TO GO."], act: () => this.issue(walkOrder(s!.area, s!.x, s!.y)) },
     ];
   }
