@@ -5,7 +5,7 @@
 import { SIGNS } from "./town";
 import type { LightHabit } from "./daycycle";
 import type { StationId } from "./crafting";
-import { GATE_STAIR, STAIR_CHEEK } from "./geography";
+import { GATE_STAIR, STAIR_CHEEK, STAIR_CHEEK_TOP } from "./geography";
 
 export interface PropLightDef {
   dx: number; dy: number; rad: number; col: [number, number, number]; int: number; flick: number;
@@ -156,7 +156,7 @@ export const PROPS: Record<string, PropKindDef> = {
   // newel post it ends in at the foot of the flight.
   stairfall: { flat: true, examine: "A HALL RUNS SOUTH FROM HERE TO THE SURFACE STAIR. EARTH AND FALLEN VAULT CHOKE IT TO THE ROOF. IT CAN ONLY BE CLEARED FROM ABOVE." },
   stairpost: { box: [STAIR_CHEEK.post.w, STAIR_CHEEK.post.d - 1] },
-  staircheek: { flat: true, box: [STAIR_CHEEK.wall.w, GATE_STAIR.h * 16 - STAIR_CHEEK.post.d] },
+  staircheek: { flat: true, box: [STAIR_CHEEK.wall.w, GATE_STAIR.h * 16 - STAIR_CHEEK_TOP] },
   stairlight: { flat: true, alt: "lit", light: { dx: 0, dy: 0, rad: 120, col: [0.55, 0.68, 1], int: 0.9, flick: 0.02, when: "lit" } },
   slab: { box: [36, 10] }, hearth: { box: [36, 10] }, longtable: { box: [50, 10] }, bench: { box: [44, 4] },
   chest: { box: [16, 8] }, pot: { box: [10, 6] }, fountain: { box: [32, 14] }, pedestal: { box: [10, 5] },

@@ -76,8 +76,14 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      stands between two cheek walls that end in newel posts, and they are
   *      solid: a body saved on the edge of the open stair is set down beside
   *      them, inside the passage (a frozen list again, as v14).
+  * v16: the stair's newel posts raised off the flight. No field changed shape.
+  *      The posts stood 7 px too far south, their bases clipping into the lowest
+  *      step; they now stand in the hall with their feet on the flight's north
+  *      edge, and the cheek walls' footprints begin there. That moves solid
+  *      footprints into the hall's last rows, so a body saved there is set down
+  *      beside them, inside the passage (a frozen list again, as v15).
   */
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -99,7 +105,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 15;
+  version: 16;
   seed: number;
   rng: number;
   time: number;
@@ -314,6 +320,9 @@ export const MIGRATIONS: Record<number, Migration> = {
   // Nobody is left standing inside the stair's cheek walls or newel posts (v15), by the same rule: only a body on
   // the open stair's very edge can be, and it steps clear of them without leaving the passage.
   14: (s) => ({ ...s, version: 15, actors: (s.actors ?? []).map((a: any) => setDown(a, V15_SOLID, V15_ROOMS)) }),
+  // The newel posts moved up into the hall (v16), so the footprints did too: a body saved in the hall's last rows beside
+  // the passage wall is now inside a post. Same rule again, with the footprints as they were placed then.
+  15: (s) => ({ ...s, version: 16, actors: (s.actors ?? []).map((a: any) => setDown(a, V16_SOLID, V16_ROOMS)) }),
 };
 
 type Rect = [number, number, number, number];
@@ -341,6 +350,14 @@ function setDown(a: any, solid: Record<string, Rect[]>, rooms: Record<string, Re
  */
 const V15_SOLID: Record<string, Rect[]> = { dungeon: [[544, 833, 556, 839], [596, 833, 608, 839], [544, 839, 552, 896], [600, 839, 608, 896]] };
 const V15_ROOMS: Record<string, Rect[]> = { dungeon: [[544, 800, 608, 896]] };
+
+/**
+ * The same four footprints as v16 placed them, frozen: the newel posts now stand in the hall with their feet on the
+ * flight's north edge (y 832), and each cheek wall runs from there to the top of the flight. And the passage they
+ * stand in, as before.
+ */
+const V16_SOLID: Record<string, Rect[]> = { dungeon: [[544, 826, 556, 832], [596, 826, 608, 832], [544, 832, 552, 896], [600, 832, 608, 896]] };
+const V16_ROOMS: Record<string, Rect[]> = { dungeon: [[544, 800, 608, 896]] };
 
 /**
  * The collision footprints [x0, y0, x1, y1] (px) of the solid props v14 added, frozen as they were placed then (a

@@ -157,7 +157,7 @@ test("the town puts its lights out in the morning and lights them at dusk, each 
 
 // ------------------------------------------------------------------ saving
 test("save v13: the clock is saved; an older save resumes at night in the halls, at its first morning on the surface", () => {
-  assert.equal(SAVE_VERSION, 15);
+  assert.equal(SAVE_VERSION, 16);
   const w = newWorld();
   advanceDayTo(w, 15.25);
   const s = serialize(w);
@@ -170,7 +170,7 @@ test("save v13: the clock is saved; an older save resumes at night in the halls,
     return o;
   };
   const halls = migrate(old(false)) as { version: number; day: number }, up = migrate(old(true)) as { version: number; day: number };
-  assert.equal(halls.version, 15); assert.ok(near(hourOf(halls.day), START_HOUR));
+  assert.equal(halls.version, 16); assert.ok(near(hourOf(halls.day), START_HOUR));
   assert.ok(near(hourOf(up.day), FIRST_MORNING_HOUR));
   const loaded = deserialize(old(true));
   for (let i = 0; i < 30; i++) stepWorld(loaded, 1 / 60);

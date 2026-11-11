@@ -178,7 +178,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 15); // v15: the stair's cheek walls (tests/entrance.test.ts)
+  assert.equal(SAVE_VERSION, 16); // v16: the stair's newel posts raised (tests/entrance.test.ts)
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");

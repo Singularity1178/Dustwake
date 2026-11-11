@@ -38,8 +38,16 @@ export const GATE_STAIR = { x: GATE_PASSAGE.x, y: GATE_HALL.y + GATE_HALL.h, w: 
  * east wall, and from the flight's north edge): a newel post at the foot of
  * each cheek wall, then the cheek itself up the side of the flight. The
  * builder places them and art/stairs.ts draws the flight to the same numbers.
+ *
+ * A post's footprint is `w` wide and `d - 1` deep. Its feet stand `d - lift` px
+ * south of the flight's north edge: `lift` raises it off the flight (it first
+ * stood `d` px down, so the base of the sprite clipped into the lowest step).
+ * `lift: d` puts the feet exactly on that edge, in the hall, and the cheek
+ * wall's footprint then begins there too, so post and wall meet with no gap.
  */
-export const STAIR_CHEEK = { post: { w: 12, d: 7 }, wall: { w: 8 } } as const;
+export const STAIR_CHEEK = { post: { w: 12, d: 7, lift: 7 }, wall: { w: 8 } } as const;
+/** Where the cheek wall's footprint begins, in px south of the flight's north edge (where the post's feet stand). */
+export const STAIR_CHEEK_TOP = STAIR_CHEEK.post.d - STAIR_CHEEK.post.lift;
 
 /**
  * Entrances: a way between two areas that has to be opened first (dug out). One

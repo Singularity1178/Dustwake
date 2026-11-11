@@ -1,12 +1,12 @@
 // The entrance: digging the buried stair head out with a shovel head and a
 // pickaxe head, the stair it opens between the surface and the halls, how both
-// ends read before and after, and the save migrations (v13 -> v14, and v14 -> v15
-// for the stair's cheek walls).
+// ends read before and after, and the save migrations (v13 -> v14, v14 -> v15
+// for the stair's cheek walls, and v15 -> v16 for raising its newel posts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { player, currentArea, hasFlag, getArea, enterArea, actorById, type World } from "../src/game/world/world";
 import { DIG_SITES, DIG_MATERIALS, GROUND_COLUMN, digLayerAt, digStage, digTotal, propLook } from "../src/game/content/digging";
-import { ENTRANCES, GATE_CORRIDOR, GATE_HALL, GATE_PASSAGE, GATE_STAIR, STAIR_CHEEK, SURFACE_GATE, SURFACE_GATE_ZONE } from "../src/game/content/geography";
+import { ENTRANCES, GATE_CORRIDOR, GATE_HALL, GATE_PASSAGE, GATE_STAIR, STAIR_CHEEK, STAIR_CHEEK_TOP, SURFACE_GATE, SURFACE_GATE_ZONE } from "../src/game/content/geography";
 import { FS, T, TS } from "../src/game/content/tiles";
 import { propDef } from "../src/game/content/props";
 import { PROP_ART, propSprite } from "../src/game/art/props";
@@ -19,7 +19,7 @@ import { entranceOpen, openEntrance, digSpot } from "../src/game/sim/digging";
 import { portalById, portalOpen } from "../src/game/sim/portals";
 import { interactables } from "../src/game/sim/interact";
 import { visionTargets } from "../src/game/sim/analysis";
-import { serialize, deserialize, migrate, settle, saveToStorage, loadFromStorage, SAVE_VERSION } from "../src/game/world/save";
+import { serialize, deserialize, migrate, settle, saveToStorage, loadFromStorage, SAVE_VERSION, MIGRATIONS } from "../src/game/world/save";
 import { buildDungeon } from "../src/game/map";
 import { buildSurface } from "../src/game/surface";
 import { flightSteps, flightStepAt } from "../src/game/art/stairs";
@@ -223,11 +223,16 @@ test("both ends read as a stair: below, a hall to steps climbing south, under a 
   assert.ok(!earth.some((dc) => dc.y - (dc.h! >> 1) > GATE_STAIR.y * TS), "none of it out on the flight");
   // the flight stands between two cheek walls, each ending in a newel post at its foot, against the passage's walls
   const sy = GATE_STAIR.y * TS, x0 = GATE_STAIR.x * TS, x1 = (GATE_STAIR.x + GATE_STAIR.w) * TS, at = (id: string) => { const q = d.props.find((p) => p.id === id)!; return [q.kind, q.x, q.y]; };
-  assert.deepEqual(at("stairpost.w"), ["stairpost", x0 + STAIR_CHEEK.post.w / 2, sy + STAIR_CHEEK.post.d]);
-  assert.deepEqual(at("stairpost.e"), ["stairpost", x1 - STAIR_CHEEK.post.w / 2, sy + STAIR_CHEEK.post.d]);
+  assert.deepEqual(at("stairpost.w"), ["stairpost", x0 + STAIR_CHEEK.post.w / 2, sy + STAIR_CHEEK_TOP]);
+  assert.deepEqual(at("stairpost.e"), ["stairpost", x1 - STAIR_CHEEK.post.w / 2, sy + STAIR_CHEEK_TOP]);
+  // a post's feet stand on the flight's north edge or north of it, in the hall: its base never clips into the first step
+  // (it once stood `post.d` px down, with its lowest rows drawn over the step)
+  assert.equal(STAIR_CHEEK_TOP, STAIR_CHEEK.post.d - STAIR_CHEEK.post.lift);
+  for (const id of ["stairpost.w", "stairpost.e"]) assert.ok(at(id)[2] as number <= sy, `${id}: feet off the first step`);
+  assert.ok(STAIR_CHEEK.post.lift >= 5 && STAIR_CHEEK.post.lift <= 10, "raised by a few pixels, not moved away");
   assert.deepEqual(at("staircheek.w"), ["staircheek", x0 + STAIR_CHEEK.wall.w / 2, (GATE_STAIR.y + GATE_STAIR.h) * TS]);
   assert.deepEqual(at("staircheek.e"), ["staircheek", x1 - STAIR_CHEEK.wall.w / 2, (GATE_STAIR.y + GATE_STAIR.h) * TS]);
-  assert.deepEqual(propDef("staircheek").box, [STAIR_CHEEK.wall.w, GATE_STAIR.h * TS - STAIR_CHEEK.post.d]);
+  assert.deepEqual(propDef("staircheek").box, [STAIR_CHEEK.wall.w, GATE_STAIR.h * TS - STAIR_CHEEK_TOP]);
   assert.ok(propDef("staircheek").flat && !propDef("staircheek").examine && !propDef("stairpost").examine, "masonry, not things to use");
   const leak = d.lights.find((l) => l.id === "gateleak")!;
   assert.equal(leak.owner, "stairlight"); assert.ok(leak.sky, "daylight, when there is any");
@@ -254,17 +259,25 @@ test("the flight stands between its cheek walls: a body keeps off the wall faces
   const S = GATE_STAIR, K = STAIR_CHEEK, x0 = S.x * TS, x1 = (S.x + S.w) * TS, sy = S.y * TS, mid = sy + (S.h * TS) / 2;
   // the hall: wall to wall
   for (const x of [x0 + 5, x1 - 5]) assert.ok(boxFree(dungeon, x, GATE_HALL.y * TS + 12), `hall at ${x}`);
-  // the posts stand in the corners at the foot of the flight, and between them the way is open
-  for (const x of [x0 + 5, x1 - 5]) assert.ok(!boxFree(dungeon, x, sy + K.post.d - 1), `post at ${x}`);
-  for (let x = x0 + K.post.w + 5; x <= x1 - K.post.w - 5; x++) assert.ok(boxFree(dungeon, x, sy + K.post.d - 1), `between the posts at ${x}`);
+  // the posts stand in the corners at the foot of the flight (their feet on its north edge), and between them the way is open
+  const py = sy + STAIR_CHEEK_TOP;
+  for (const x of [x0 + 5, x1 - 5]) assert.ok(!boxFree(dungeon, x, py - 1), `post at ${x}`);
+  for (let x = x0 + K.post.w + 5; x <= x1 - K.post.w - 5; x++) assert.ok(boxFree(dungeon, x, py - 1), `between the posts at ${x}`);
+  // each cheek wall's footprint begins exactly where its post's ends: no gap to stand in between them, nothing overlapping
+  for (const side of ["w", "e"]) {
+    const post = dungeon.prop("stairpost." + side)!.box!, cheek = dungeon.prop("staircheek." + side)!.box!;
+    assert.equal(post[3], cheek[1], `${side}: the wall starts where the post ends`);
+    assert.ok(post[3] <= sy, `${side}: the post's footprint is in the hall`);
+    assert.equal(cheek[3], (S.y + S.h) * TS, `${side}: the wall runs to the top of the flight`);
+  }
   assert.ok(x1 - x0 - 2 * K.post.w >= 30, "room for three golems abreast");
   // up the flight: the wall's footprint down each side, the treads between
-  for (let y = sy + K.post.d + 5; y <= (S.y + S.h) * TS; y += 4) {
+  for (let y = py + 5; y <= (S.y + S.h) * TS; y += 4) {
     for (const x of [x0 + 5, x0 + K.wall.w + 4, x1 - 5, x1 - K.wall.w - 4]) assert.ok(!boxFree(dungeon, x, y), `in the wall at ${x},${y}`);
     for (const x of [x0 + K.wall.w + 5, x1 - K.wall.w - 5]) assert.ok(boxFree(dungeon, x, y), `on the tread at ${x},${y}`);
   }
   // the footprint never reaches past the face that is drawn beside the lowest step it runs along (art/stairs.ts)
-  assert.ok(K.wall.w <= flightStepAt(K.post.d, S.h * TS).inset && K.post.w >= flightSteps(S.h * TS)[0].inset);
+  assert.ok(K.wall.w <= flightStepAt(STAIR_CHEEK_TOP, S.h * TS).inset && K.post.w >= flightSteps(S.h * TS)[0].inset);
   // walked: pushing west half-way up stops at the cheek; the portal's arrival and the whole middle are clear
   enterArea(w, pl, "dungeon", x0 + 30, mid);
   frames(w, 90, { ix: -1, iy: 0, use: false });
@@ -281,11 +294,12 @@ test("the flight stands between its cheek walls: a body keeps off the wall faces
 
 // ------------------------------------------------------------------ saves
 test("save v15: a v14 save loads with the stair as it is now laid; a body saved in a cheek wall or a newel post is set down beside it, in the passage", () => {
-  assert.equal(SAVE_VERSION, 15);
+  assert.equal(SAVE_VERSION, 16);
   const base = () => { const { w } = atGate(); digOut(w); return w; };
   const old = (edit: (s: any, pl: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(base()))); s.version = 14; edit(s, s.actors.find((a: any) => a.id === s.playerId)); return s; };
-  // a body standing clear is not touched, nor is anything else in the save
-  const plain = old(), m = migrate(plain) as any;
+  // v15 only: a body standing clear is not touched, nor is anything else in the save
+  const to15 = (raw: unknown) => migrate(raw, MIGRATIONS, 15) as any;
+  const plain = old(), m = to15(plain);
   assert.equal(m.version, 15);
   assert.deepEqual(m.actors, plain.actors); assert.deepEqual(m.areas, plain.areas); assert.deepEqual(m.flags, plain.flags);
   // the stair dug out before v15: hall and flight open, the fall gone, the new stonework standing
@@ -297,8 +311,48 @@ test("save v15: a v14 save loads with the stair as it is now laid; a body saved 
   assert.equal(d0.props.filter((p) => p.kind === "rockpile").length, 2, "no rock pile came back onto the stair");
   // a save that still names the old foot (nothing ever did, but a hand-edited one might) loads all the same
   assert.doesNotThrow(() => deserialize(old((s) => { s.areas.dungeon.props.stairfoot = { open: true }; s.areas.dungeon.propsRemoved.push("stairfoot"); })));
-  // every new footprint: a golem saved on the old stair's edge, where that footprint now is, ends beside it
+  // every footprint v15 added, as v15 placed them (frozen here: the posts have moved since, in v16): a golem saved on the
+  // old stair's edge, inside one, ends beside it
   const S = GATE_STAIR, passage = [GATE_PASSAGE.x * TS, GATE_PASSAGE.y * TS, (GATE_PASSAGE.x + GATE_PASSAGE.w) * TS, (GATE_PASSAGE.y + GATE_PASSAGE.h) * TS];
+  const V15 = [[544, 833, 556, 839], [596, 833, 608, 839], [544, 839, 552, 896], [600, 839, 608, 896]];
+  const inV15 = (x: number, y: number) => V15.some((b) => x + 5 > b[0] && x - 5 < b[2] && y > b[1] && y - 5 < b[3]);
+  for (const [n, b] of V15.entries()) for (const fy of [0.1, 0.5, 1]) {
+    const x = b[0] < S.x * TS + 20 ? b[0] + 5 : b[2] - 5, y = b[1] + (b[3] - b[1]) * fy;
+    const s = old((_s, pl) => { pl.area = "dungeon"; pl.x = x; pl.y = y; });
+    const g = to15(s).actors.find((a: any) => a.id === s.playerId);
+    assert.ok(inV15(x, y), `footprint ${n}: the old spot is inside it`);
+    assert.ok(!inV15(g.x, g.y), `footprint ${n} ${fy}: set down clear of all four (${g.x},${g.y})`);
+    assert.ok(g.x - 5 >= passage[0] && g.x + 5 <= passage[2] && g.y - 5 >= passage[1] && g.y <= passage[3], `footprint ${n}: still in the passage`);
+    assert.ok(Math.hypot(g.x - x, g.y - y) <= 17, `footprint ${n}: a step aside, no further`);
+    assert.equal(g.area, "dungeon");
+  }
+  // a body in another area at the same coordinates is left alone
+  const far = old((_s, pl) => { pl.area = "surface"; pl.x = S.x * TS + 4; pl.y = S.y * TS + 40; });
+  assert.deepEqual((migrate(far) as any).actors, far.actors);
+  // v13 saves run every step
+  const v13 = old((s) => { s.version = 13; });
+  assert.equal((migrate(v13) as any).version, SAVE_VERSION);
+});
+
+test("save v16: a v15 save loads with the newel posts raised off the first step; a body saved where a post now stands is set down beside it, in the passage; nobody else moves", () => {
+  assert.equal(SAVE_VERSION, 16);
+  const base = () => { const { w } = atGate(); digOut(w); return w; };
+  const old = (edit: (s: any, pl: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(base()))); s.version = 15; edit(s, s.actors.find((a: any) => a.id === s.playerId)); return s; };
+  // a body standing clear is not touched, nor is anything else in the save
+  const plain = old(), m = migrate(plain) as any;
+  assert.equal(m.version, 16);
+  assert.deepEqual(m.actors, plain.actors); assert.deepEqual(m.areas, plain.areas); assert.deepEqual(m.flags, plain.flags);
+  // the dug-out stair loads as it is laid now: the posts' feet on the flight's north edge, the cheek walls running on from them
+  const S = GATE_STAIR, sy = S.y * TS, w0 = deserialize(plain), d0 = getArea(w0, "dungeon");
+  for (const side of ["w", "e"]) {
+    const post = d0.prop("stairpost." + side)!, cheek = d0.prop("staircheek." + side)!;
+    assert.equal(post.y, sy + STAIR_CHEEK_TOP, `${side}: post's feet`);
+    assert.ok(post.y <= sy, `${side}: off the first step`);
+    assert.equal(post.box![3], cheek.box![1], `${side}: the wall begins where the post ends`);
+  }
+  assert.ok(entranceOpen(w0, "surface_stair") && !d0.prop("stairfall"), "the stair is still dug out");
+  // every footprint, live: a golem saved inside one ends beside it, clear of all four, still in the passage
+  const passage = [GATE_PASSAGE.x * TS, GATE_PASSAGE.y * TS, (GATE_PASSAGE.x + GATE_PASSAGE.w) * TS, (GATE_PASSAGE.y + GATE_PASSAGE.h) * TS];
   const fresh = getArea(newWorld(), "dungeon"), solid = ["stairpost.w", "stairpost.e", "staircheek.w", "staircheek.e"].map((id) => fresh.prop(id)!);
   assert.deepEqual(fresh.props.filter((p) => p.kind === "stairpost" || p.kind === "staircheek").map((p) => p.id).sort(), solid.map((p) => p.id).sort(), "the frozen list is all of them");
   for (const p of solid) for (const fy of [0.1, 0.5, 1]) {
@@ -311,19 +365,32 @@ test("save v15: a v14 save loads with the stair as it is now laid; a body saved 
     assert.ok(Math.hypot(g.x - x, g.y - y) <= 17, `${p.id}: a step aside, no further`);
     assert.equal(g.area, "dungeon");
   }
+  // the case the move is for: standing in the hall's last rows against the passage wall, where a post now is, a body
+  // steps back up the hall
+  const inHall = old((_s, pl) => { pl.area = "dungeon"; pl.x = S.x * TS + 6; pl.y = sy - 3; });
+  const hall = (migrate(inHall) as any).actors.find((a: any) => a.id === inHall.playerId);
+  assert.ok(hall.y < sy - 3 && hall.y - 5 >= GATE_HALL.y * TS, `stepped up the hall (${hall.y})`);
+  // and nobody is moved who need not be: the east half of a v15 post's base is open floor now (the post stands in the hall
+  // and the wall is narrower than it was), as is the whole of the hall's middle and every tread
+  for (const [x, y] of [[558, 838], [578, sy - 3], [578, sy + 30], [S.x * TS + 20, sy + 4]]) {
+    const s = old((_s, pl) => { pl.area = "dungeon"; pl.x = x; pl.y = y; });
+    const a = getArea(deserialize(s), "dungeon");
+    assert.ok(boxFree(a, x, y), `${x},${y} is open floor in v16`);
+    assert.deepEqual((migrate(s) as any).actors, s.actors, `${x},${y}: left where it stood`);
+  }
   // a body in another area at the same coordinates is left alone
-  const far = old((_s, pl) => { pl.area = "surface"; pl.x = S.x * TS + 4; pl.y = S.y * TS + 40; });
+  const far = old((_s, pl) => { pl.area = "surface"; pl.x = S.x * TS + 6; pl.y = sy - 3; });
   assert.deepEqual((migrate(far) as any).actors, far.actors);
-  // v13 saves run both steps
-  const v13 = old((s) => { s.version = 13; });
-  assert.equal((migrate(v13) as any).version, 15);
+  // older saves run every step
+  const v14 = old((s) => { s.version = 14; });
+  assert.equal((migrate(v14) as any).version, 16);
 });
 
 test("save v14: a v13 save loads; a body saved where the new furniture or an iron vein stands is set down beside it; nothing else moves", () => {
-  assert.equal(SAVE_VERSION, 15);
+  assert.equal(SAVE_VERSION, 16);
   const old = (edit: (s: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(newWorld()))); s.version = 13; edit(s); return s; };
   const plain = old(), m = migrate(plain) as any;
-  assert.equal(m.version, 15);
+  assert.equal(m.version, 16);
   assert.deepEqual(m.actors, plain.actors, "a body standing clear is not touched");
   assert.deepEqual(m.areas, plain.areas); assert.deepEqual(m.flags, plain.flags);
   // the player on the spot the rune-cutter's table now takes, the worker where the slip vat stands

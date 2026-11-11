@@ -6,7 +6,7 @@ import type { ItemId } from "./content/items";
 import type { Slot } from "./content/inventory";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
-import { GATE_CORRIDOR, GATE_EXIT, GATE_HALL, GATE_PASSAGE, GATE_STAIR, STAIR_CHEEK, ENTRANCES } from "./content/geography";
+import { GATE_CORRIDOR, GATE_EXIT, GATE_HALL, GATE_PASSAGE, GATE_STAIR, STAIR_CHEEK, STAIR_CHEEK_TOP, ENTRANCES } from "./content/geography";
 
 export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
 export type { ItemId } from "./content/items";
@@ -507,12 +507,13 @@ export function buildMap(seed: number): MapData {
     D("earthspill", cx - 11, top + 22, 5, 24, 12);
     D("earthspill", cx + 14, top + GATE_HALL.h * TS - 2, 6, 14, 8);
     for (const [x, y, v] of [[cx - 17, top + 9, 1], [cx + 15, top + 21, 2], [cx + 4, top + 5, 0], [cx - 12, top + GATE_HALL.h * TS - 9, 3]] as const) D("stones", x, y, v);
-    // the stair's stonework: a newel post at the foot of each cheek wall (the east one broken off short), and
-    // the cheek walls' footprints up both sides of the flight
+    // the stair's stonework: a newel post at the foot of each cheek wall (the east one broken off short), standing
+    // in the hall with its feet on the flight's north edge, not down on the first step, and the cheek walls'
+    // footprints up both sides of the flight from there
     const S = GATE_STAIR, K = STAIR_CHEEK, sy = S.y * TS;
     for (const [side, x0, dir, v] of [["w", S.x * TS, 1, 0], ["e", (S.x + S.w) * TS, -1, 1]] as const) {
       ids.add("stairpost." + side); ids.add("staircheek." + side);
-      props.push({ id: "stairpost." + side, kind: "stairpost", x: x0 + (dir * K.post.w) / 2, y: sy + K.post.d, v });
+      props.push({ id: "stairpost." + side, kind: "stairpost", x: x0 + (dir * K.post.w) / 2, y: sy + STAIR_CHEEK_TOP, v });
       props.push({ id: "staircheek." + side, kind: "staircheek", x: x0 + (dir * K.wall.w) / 2, y: (S.y + S.h) * TS, v });
     }
     // the sky down the open stair (moonlight, or the sun by day): owned by `stairlight`, so dark until that is lit
