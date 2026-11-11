@@ -32,13 +32,14 @@ import type { ItemId } from "../src/game/content/items";
 // wallhooks, armorpile, stairfoot, stairfall, stairlight); the 123 other sprites hash as before. surface (was
 // "c332aec8"): only tiles inside 46-50,56-62 differ, where the round hollow and hump over the buried stair
 // were taken out (compared pixel by pixel against the bake as it was).
-// The stone retexture (docs/ARCHITECTURE.md: "The stone retexture"): props (was "b2f6aee3"): `rock` and `ironore`
-// are faceted rock, each variant a shape of its own (standing and broken up); `stairfoot` is the flight's own
-// steps; `buriedgate` differs from stage 3 on (its stone layer is the halls' tumbled fall, not coursed blocks;
-// stages 4 and 5, where the stair's steps show, lie outside this four-variant sweep and are held by
-// tests/stoneArt.test.ts). Sprite by sprite (scripts/artDiff.mjs): 26 sprites of those four kinds differ and the
-// 592 others are identical. tiles and surface: unmoved (no tile sprite was touched; the surface has no stair tile).
-const GOLDEN = { props: "1be409a2", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
+// The rock and stair retexture (docs/ARCHITECTURE.md: "Rocks and the stair, redrawn"): props (was "b2f6aee3"):
+// compared sprite by sprite with the tree as it was (trace hash per kind, six variants, both states), exactly six
+// kinds differ, all redrawn on purpose: `rock`, `ironore`, `boulder` and `outcrop` (cut stone instead of two
+// ellipses, art/rocks.ts), `stairfoot` (the flight's own steps) and `buriedgate` (the fall as boulders at dig
+// stage 3; stages 4 and 5, the breach and the open stair, are variants this list does not reach and are pinned
+// in tests/rockArt.test.ts). The 135 other sprites hash as before, and no kind was added or removed. surface:
+// unmoved, as it must be: the bake holds no props, and no tile of the surface changed (0 of 6912 differ).
+const GOLDEN = { props: "a5f81c69", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

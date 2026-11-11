@@ -7,9 +7,9 @@ import { TS, T, FS, WS, isWallMassT, isGroundFS } from "../content/tiles";
 import { hash2, makeSprite, Sprite, Pen, clamp } from "../util";
 import { S, WD, IR, GD } from "./palette";
 import { cached, stoneBlob } from "./common";
-import { stepPix, STEP_PX } from "./stone";
 import { decalBounds, drawDecal } from "./decals";
 import { townFloorPix, townWallFacePix, rampartTopPix } from "./tilesTown";
+import { flightPix, FOOT_STEPS } from "./stairs";
 
 // ---------------- Background baking ----------------
 /** What background baking reads from an area. */
@@ -90,27 +90,6 @@ function floorPix(style: number, tx: number, ty: number, lx: number, ly: number)
   return [60 + t + n + bev, 55 + t + n + bev, 50 + t * 0.9 + n + bev];
 }
 
-// ---- the stair
-/**
- * A tile of a flight of steps climbing south (FS.STAIR): two steps to a tile, drawn by the one function that
- * draws the stair wherever it shows (art/stone.ts: stepPix). A step runs the whole width of the flight, so the
- * tile is placed in its row's run of stair tiles: the kerb blocks stand at the run's two ends, the slab joints
- * and the trodden path are laid across all of it, and nothing repeats from tile to tile.
- * Memoised: the bake visits a tile's pixels together.
- */
-let stairM: BakeSource | null = null, stairTx = -1, stairTy = -1, stairX0 = 0, stairW = 0;
-function stairPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
-  if (m !== stairM || tx !== stairTx || ty !== stairTy) {
-    const step = (x: number) => x >= 0 && x < m.w && !isWall(m, x, ty) && m.style[ty * m.w + x] === FS.STAIR;
-    let a = tx, b = tx;
-    while (step(a - 1)) a--;
-    while (step(b + 1)) b++;
-    stairM = m; stairTx = tx; stairTy = ty; stairX0 = a * TS; stairW = (b - a + 1) * TS;
-  }
-  const wy = ty * TS + ly;
-  return stepPix(tx * TS + lx - stairX0, stairW, wy % STEP_PX, STEP_PX, Math.floor(wy / STEP_PX));
-}
-
 // ---- surface ground
 const LEAF_PAL: C3[] = [[78, 56, 32], [96, 70, 36], [66, 46, 28], [88, 52, 30], [104, 82, 44], [52, 64, 32]];
 let patchTx = -1, patchTy = -1, patchV = 0;
@@ -187,6 +166,25 @@ function groundBorder(m: BakeSource, st: number, tx: number, ty: number): boolea
     if (m.grid[k] === T.FLOOR && m.style[k] !== st && isGroundFS(m.style[k])) return true;
   }
   return false;
+}
+
+/**
+ * A stair tile (FS.STAIR): one pixel of the flight it is part of (art/stairs.ts). The flight is the run of stair
+ * tiles this one stands in, whatever lies on them: its kerbs are at the run's two sides, its wear down the run's
+ * middle, and its steps are numbered from the run's north end, where the foot leaves off. A fall of rubble on a
+ * step does not end the run (the steps are there under it). Memoised: the bake visits a tile's pixels together.
+ */
+let stairM: BakeSource | null = null, stairTx = -1, stairTy = -1, stairX0 = 0, stairW = 0, stairY0 = 0;
+function stairPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
+  if (m !== stairM || tx !== stairTx || ty !== stairTy) {
+    const is = (x: number, y: number) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.style[y * m.w + x] === FS.STAIR && !isWallMassT(m.grid[y * m.w + x]);
+    let x0 = tx, x1 = tx, y0 = ty;
+    while (is(x0 - 1, ty)) x0--;
+    while (is(x1 + 1, ty)) x1++;
+    while (is(tx, y0 - 1)) y0--;
+    stairM = m; stairTx = tx; stairTy = ty; stairX0 = x0; stairW = (x1 - x0 + 1) * TS; stairY0 = y0;
+  }
+  return flightPix((tx - stairX0) * TS + lx, (ty - stairY0) * TS + ly, stairW, FOOT_STEPS);
 }
 
 function thicketPix(tx: number, ty: number, lx: number, ly: number): C3 {

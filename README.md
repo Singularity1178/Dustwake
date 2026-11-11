@@ -70,9 +70,9 @@ Tool heads are for a golem's arms. A full tool (a head on a wooden haft, made at
 
 Developer preview: `node scripts/entrancePreview.mjs` renders the stair head at every dig stage, the open stair below, the smelter's and the anvil's screens and a sheet of the new sprites to `.preview/entrance/*.png`.
 
-How the stone reads: a rock you can break is broken, faceted stone (four shapes, two of them mossed: those are the woods' rocks), and an iron vein is the same kind of rock with rust-orange seams of ore through it (three shapes). The round, mossy boulders and outcrops are scenery. The stair is the same steps at both ends, and the fallen stone you dig through above is the same tumbled rock that chokes the stair's foot below; half way through it the first steps show.
+**How it looks.** Standing rock is cut stone, not blobs: a rock to be broken is an angular block with a lit top, a front face and a side in shade, usually with a piece already split from it; an iron vein is a broken tooth of dark ironstone with rust-red seams running through it (and rust washed down the face below); boulders are broad, worn and mossed, outcrops are bedrock with ledges. Only loose stone is round: rubble, cairns, and the fall that chokes the stair. That fall is the same heap from both ends: at the stair head the earth gives way to boulders, not masonry, and when the pick breaks through, the steps show down the breach. The stair is one flight drawn in three places (its head, the flight in the halls, its foot in the Vestibule) with the same stone steps in each: a lit lip, the tread falling into the shadow of the step above, kerbs down both sides, and at the head the steps going down into the dark under the lintel.
 
-Stone preview: `node scripts/stonePreview.mjs` renders every rock and iron vein variant, the rockiest stretch of the surface, the stair head at every dig stage, the stair's foot in the halls (choked and open) and the two ends of the open stair side by side to `.preview/stone/*.png` (give it a directory to keep a set to compare against). `node scripts/artDiff.mjs save before.json`, then `diff before.json` after an art change, names what moved, sprite by sprite and baked tile by baked tile: run it before updating a golden hash.
+Rock and stair preview: `node scripts/rockPreview.mjs` renders a labelled sheet of every rock sprite and dig stage, the surface where veins stand among rocks, the stair head stage by stage and the flight in the halls (choked and open, lit and full-bright) to `.preview/rocks/*.png`; `node scripts/rockPreview.mjs pick` adds contact sheets of candidate rock shapes by seed (how the shapes in `src/game/art/rocks.ts: ROCK_SEEDS` were chosen).
 
 ## Day and night
 
@@ -189,8 +189,9 @@ src/
     art/             procedural pixel art, by what it draws:
       palette.ts       shared colour ramps
       common.ts        sprite cache, registry types, shared stone blob
-      stone.ts         stone shared across families: faceted rock (rocks, iron veins), the stair's steps (one function for both ends), the tumbled fall
       tiles.ts         background bake (floors, walls, ground) + tile sprites (rubble, pillars, door, bars)
+      rocks.ts         standing rock (rocks, iron veins, boulders, outcrops): faceted chunks, shaded by face
+      stairs.ts        the stair's steps, shared by its head, its flight and its foot
       decals.ts        decals painted into the bake
       tilesTown.ts     the town's pavings, floors and wall materials (per pixel)
       town.ts          the town's buildings (roof + street front, painted once and cached) and ground decals

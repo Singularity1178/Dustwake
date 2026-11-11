@@ -4,7 +4,7 @@ import { rgb } from "../util";
 import type { Pen, Rng } from "../util";
 import { S, WD, IR, CL, GD, BN } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
-import { stepPix, STEP_PX } from "./stone";
+import { flightPix, FOOT_STEPS, STEP } from "./stairs";
 
 function books(p: Pen, x: number, y: number, w: number, h: number, r: Rng, sparse = 0) {
   const cols = ["#6a2a2a", "#2a3a6a", "#3a5a2a", "#6a5a2a", "#5a2a5a", "#7a6a50"];
@@ -686,13 +686,13 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
     });
   },
   // ---------- the stair up to the surface
-  // Its three lowest steps, standing clear in the Vestibule: the flight's own steps (art/stone.ts: stepPix, the
-  // stone the bake lays in the stairwell behind them, in step with it), so foot and flight are one stair. The
-  // flight climbs south, so from here only treads show; a kerb block closes each end of each step.
+  // Its three lowest steps, standing clear in the Vestibule: the same steps as the flight behind them
+  // (art/stairs.ts), narrower, between their own kerbs. The line along the north edge is the first step's
+  // shadow on the floor.
   stairfoot: (_v, _alt, M) => {
     return M(36, 25, (p) => {
-      p.r(3, 0, 30, 1, "rgba(0,0,0,0.35)");
-      for (let y = 0; y < 3 * STEP_PX; y++) for (let x = 0; x < 36; x++) { const c = stepPix(x, 36, y % STEP_PX, STEP_PX, 40 + Math.floor(y / STEP_PX)); p.p(x, y + 1, rgb(c[0], c[1], c[2])); }
+      p.r(1, 0, 34, 1, "rgba(0,0,0,0.4)");
+      for (let y = 0; y < FOOT_STEPS * STEP; y++) for (let x = 0; x < 36; x++) { const c = flightPix(x, y, 36, 0, 1); p.p(x, y + 1, rgb(c[0], c[1], c[2])); }
     });
   },
   // The foot of the fall: the last of the earth and vault stone, lying across the third step. It goes when the

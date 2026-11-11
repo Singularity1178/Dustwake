@@ -46,12 +46,13 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 //   bake (was "21fe34d"): 35 tiles differ, all meant to: the stair (tiles 34-37,50-55 and the two wall tiles
 //     beside its last row: steps under the fall, where there was earth and wall) and the six decals added to the
 //     two rooms (scorch 5-6,40-41; chalk and paper 6,8,9,44; fallen weapons 65,8 and 63,9).
-// The stone retexture (docs/ARCHITECTURE.md: "The stone retexture"): the flight of the stair up to the surface is
-// drawn by the one function that draws it at both of its ends (art/stone.ts: stepPix). Checked against the tree as
-// it was with scripts/artDiff.mjs, pixel by pixel:
-//   bake (was "d198b0dd"): 24 tiles differ, the flight itself (tiles 34-37,50-55), and no other tile of the 4032.
-//   props: unmoved. No legacy sprite was touched (the rocks, the veins and the stair's two props are not in this list).
-const GOLDEN = { props: "e200e828", items: "7dcab441", bake: "63edee74" };
+// The rock and stair retexture (docs/ARCHITECTURE.md: "Rocks and the stair, redrawn") gave the flight in the
+// halls the same steps as its head and its foot (art/stairs.ts). Checked against the tree as it was, pixel by
+// pixel:
+//   bake (was "d198b0dd"): 24 tiles differ, the stair's own (34-37,50-55) and nothing else; no tile, style or
+//     decal changed, only how a stair tile is drawn.
+//   props: unmoved. None of the legacy sprites was touched (the rocks and the stair's props came later).
+const GOLDEN = { props: "e200e828", items: "7dcab441", bake: "e5a0da2e" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();

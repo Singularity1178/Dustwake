@@ -1,11 +1,12 @@
 // Surface prop sprites (trees, rocks, foliage, ruins in the wild, the buried
 // gate) plus the dungeon's collapsed-gate rock piles, which share the stone and
 // overgrowth helpers. Registered into PROP_ART by art/props.ts.
-import { hash2, rgb } from "../util";
+import { hash2, mulberry, clamp, rgb } from "../util";
 import type { Pen, Rng } from "../util";
 import { S, WD, IR } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
-import { facetBody, paintStone, crackOn, traceOn, stoneTone, stepPix, stoneFall, type Facet, type StoneBody } from "./stone";
+import { paintRock, rockForm, ROCK_SEEDS, IRONSTONE, ORE } from "./rocks";
+import { stepShade, cornerShade, treadTone, stairRGB } from "./stairs";
 
 // ---- overgrowth helpers shared by the surface sprites
 const MOSS = ["#2e4a22", "#3e5e2a", "#527636", "#6e8e34"];
@@ -43,71 +44,14 @@ function leafBlob(p: Pen, r: Rng, cx: number, cy: number, rr: number, leaf: stri
   }
 }
 
-// ---- rocks and iron veins: the stone the golem breaks. Broken, faceted rock (art/stone.ts), where the boulders,
-// outcrops and cairns that are only scenery stay round and water-worn (the stone blob): what can be worked reads
-// as a node at a glance. Each variant is a rock of its own, not one shape nudged a pixel. Planes are listed back
-// to front; tones 0-1 face the sky, 2 is the face towards the light, 3 the face away from it.
-interface RockShape { w: number; h: number; facets: Facet[]; cracks: number[][] }
-const ROCKS: RockShape[] = [
-  // a squared block, its top tilted to the light and one corner sheared off
-  { w: 22, h: 18, facets: [[0, 5,6, 10,2, 17,3, 13,9], [1, 17,3, 20,7, 13,9], [2, 2,10, 5,6, 13,9, 11,16, 5,16, 2,13], [3, 13,9, 20,7, 20,13, 17,16, 11,16]],
-    cracks: [[9,4, 11,7, 12,9, 11,13], [5,10, 7,12, 6,15]] },
-  // split in two: a tall shard, and the block that came away from it lying against its foot
-  { w: 22, h: 19, facets: [[0, 3,9, 7,2, 11,6, 8,10], [2, 2,15, 3,9, 8,10, 7,17, 3,17], [3, 8,10, 11,6, 12,12, 11,17, 7,17],
-      [0, 11,11, 15,8, 20,10, 16,13], [2, 10,14, 11,11, 16,13, 15,17, 11,17], [3, 16,13, 20,10, 21,14, 19,17, 15,17]],
-    cracks: [[6,5, 7,9], [13,13, 13,16]] },
-  // a low ledge of bedded stone, wider than it is tall, a slab of it slid off the front
-  { w: 24, h: 16, facets: [[0, 3,8, 9,5, 18,4, 16,9, 7,10], [1, 18,4, 22,7, 16,9], [2, 2,11, 3,8, 7,10, 16,9, 15,13, 5,13], [3, 16,9, 22,7, 22,10, 19,13, 15,13],
-      [0, 1,11, 4,10, 9,11, 6,13], [2, 1,11, 6,13, 9,11, 9,14, 2,14]],
-    cracks: [[10,11, 15,11], [16,11, 21,9], [11,6, 12,8]] },
-  // a tooth of rock with a splinter at its foot
-  { w: 20, h: 22, facets: [[0, 6,10, 9,2, 10,10, 7,12], [1, 3,18, 6,10, 7,12, 10,10, 10,20, 5,20], [2, 9,2, 13,6, 12,11, 10,10], [3, 10,10, 12,11, 13,6, 16,12, 17,18, 14,20, 10,20],
-      [0, 1,17, 3,15, 6,16, 4,18], [2, 1,17, 4,18, 6,16, 6,20, 2,20]],
-    cracks: [[8,13, 7,17], [13,9, 14,14]] },
-];
-/** A vein: a rock, the seams of ore through it (a wide one is two pixels thick) and where the ore shows bright. */
-interface VeinShape extends RockShape { veins: [wide: boolean, ...line: number[]][]; glints: [number, number][] }
-const VEINS: VeinShape[] = [
-  // a block peaked to the right, a thick seam down its near corner
-  { w: 22, h: 18, facets: [[0, 3,8, 8,4, 15,2, 11,8], [1, 15,2, 19,5, 14,9, 11,8], [2, 2,12, 3,8, 11,8, 14,9, 12,16, 5,16], [3, 14,9, 19,5, 20,12, 17,16, 12,16]],
-    cracks: [[5,9, 4,13]], veins: [[true, 8,5, 10,8, 9,12, 7,15], [false, 15,4, 16,8, 18,11, 17,14], [false, 3,10, 6,11, 9,10]], glints: [[9,7], [8,13], [17,10]] },
-  // a spire, taller than it is wide, seamed from crown to root, a ledge broken off at its foot
-  { w: 20, h: 23, facets: [[0, 6,9, 10,2, 13,6, 10,11], [2, 4,19, 4,12, 6,9, 10,11, 9,21, 5,21], [3, 10,11, 13,6, 15,12, 15,19, 13,21, 9,21],
-      [0, 11,16, 14,14, 18,16, 15,18], [2, 11,16, 15,18, 15,21, 11,21], [3, 15,18, 18,16, 18,20, 15,21]],
-    cracks: [[5,12, 5,16]], veins: [[true, 9,4, 9,10, 7,15, 6,20], [false, 12,6, 12,11, 14,15], [false, 12,18, 14,17, 17,18]], glints: [[9,7], [7,14], [13,16]] },
-  // a low slab, wider than it is tall, with one thick seam bedded through it
-  { w: 24, h: 15, facets: [[0, 2,8, 7,5, 16,4, 20,5, 12,9], [1, 20,5, 22,8, 12,9], [2, 2,8, 12,9, 11,13, 4,13, 2,11], [3, 12,9, 22,8, 22,10, 19,13, 11,13]],
-    cracks: [[14,5, 15,8]], veins: [[true, 2,10, 7,10, 11,11, 16,10, 22,9], [false, 5,7, 9,7, 12,6], [false, 14,12, 17,12]], glints: [[5,10], [13,11], [19,9], [8,7]] },
-];
-/** Ore by the tone of the plane it crosses, and the rust it bleeds into the stone beside it. */
-const RUST = ["#e09a58", "#d08848", "#b86a36", "#8e4a2a"], STAIN = ["#9c8684", "#8a7274", "#7e6668", "#5e484c"];
-
-function drawRock(p: Pen, r: Rng, sh: RockShape): StoneBody {
-  p.r(2, sh.h - 3, sh.w - 4, 3, "rgba(0,0,0,0.35)");
-  const b = facetBody(sh.w, sh.h, sh.facets);
-  paintStone(p, r, b);
-  for (const c of sh.cracks) crackOn(p, b, c);
-  return b;
-}
-/** Moss on a rock: thick on the planes that face the sky, a little creeping down the others. */
-function mossOnStone(p: Pen, r: Rng, b: StoneBody, dens: number) {
-  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
-    const t = stoneTone(b, x, y);
-    if (t < 0 || r() > (t <= 1 ? dens : dens * 0.15) * (hash2(x >> 1, y >> 1, 140) * 0.8 + 0.4)) continue;
-    p.p(x, y, MOSS[(r() * 4) | 0]);
-  }
-}
-/** Chips lying at a rock's foot. */
-function scree(p: Pen, r: Rng, w: number, h: number, n: number, ore = false) {
-  for (let i = 0; i < n; i++) { const x = 1 + ((r() * (w - 4)) | 0); p.r(x, h - 2, 2, 1, S.m); p.p(x, h - 2, ore && i & 1 ? RUST[2] : S.h); }
-}
-/** A rock broken up: a few sharp pieces and their chips (rust-streaked if it was a vein). */
+/** What a rock leaves when it is broken up: a few angular chips, lit on top, and grit between them (flecked with ore for a vein). */
 function shards(p: Pen, r: Rng, ore: boolean) {
-  for (let i = 0; i < 6; i++) {
-    const x = 1 + ((r() * 13) | 0), y = 1 + ((r() * 5) | 0);
-    if (i < 2) { p.r(x, y + 1, 4, 2, S.o); p.r(x, y, 3, 2, S.m); p.r(x, y, 2, 1, S.h); p.p(x + 2, y + 1, S.d); if (ore) p.p(x + 1, y + 1, RUST[1]); }
-    else { p.r(x, y, 2, 1, S.l); p.p(x, y, S.h); p.p(x + 1, y + 1, S.d); if (ore && i & 1) p.p(x + 1, y, RUST[2]); }
-  }
+  for (let i = 0; i < 7; i++) p.p(1 + ((r() * 16) | 0), 3 + ((r() * 5) | 0), ore && i % 3 === 0 ? ORE[1] : i % 2 ? S.d : S.m);
+  ([[1, 4, 4], [7, 2, 3], [12, 5, 4], [6, 6, 3], [14, 2, 2]] as [number, number, number][]).forEach(([x, y, w], i) => {
+    const ox = x + ((r() * 2) | 0);
+    p.r(ox, y + 1, w, 1, S.d); p.r(ox, y, w - 1, 1, S.l); p.p(ox, y, S.h); p.p(ox + w - 1, y + 1, S.o);
+    if (ore && i % 2 === 0) p.p(ox + 1, y, ORE[2]);
+  });
 }
 
 export const SURFACE_PROP_ART: Record<string, PropArt> = {
@@ -135,39 +79,25 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       blob(17, 18, 10); blob(10, 22, 7); blob(24, 22, 7); blob(13, 11, 7); blob(22, 12, 6);
     });
   },
-  // A rock veined with iron (one of three, by variant): seams of ore run through the stone along its breaks,
-  // bright where they cross a lit plane and dark rust in the shade, and the stone beside them is stained with it.
+  // An iron vein: a broken tooth of dark ironstone standing out of the ground, a shelf against it and a piece
+  // fallen from it. The ore is in the rock, not on it: rust-red seams run through the mass and show on every
+  // face they cut, with brighter metal where a seam is richest and rust washed down the stone beneath.
   ironore: (v, alt, M) => {
     if (alt) return M(18, 8, (p, r) => shards(p, r, true));
-    const sh = VEINS[v % VEINS.length];
-    return M(sh.w, sh.h, (p, r) => {
-      const b = drawRock(p, r, sh);
-      const ore = new Set<number>();
-      for (const [, ...line] of sh.veins) traceOn(b, line, (x, y) => ore.add(y * b.w + x));
-      for (const i of ore) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-        const x = (i % b.w) + dx, y = ((i / b.w) | 0) + dy, t = stoneTone(b, x, y);
-        if (t >= 0 && !ore.has(y * b.w + x) && r() < 0.4) p.p(x, y, STAIN[t]);
-      }
-      // a wide seam is the body of the ore: bright along its top, dark rust under it. The thin ones are stringers:
-      // a tone duller, and broken, as a seam is that only shows where the rock happened to split along it.
-      for (const [wide, ...line] of sh.veins) traceOn(b, line, (x, y, t) => {
-        if (!wide) { if (hash2(x, y, 161) > 0.28) p.p(x, y, RUST[Math.min(3, t + 1)]); return; }
-        if (stoneTone(b, x, y + 1) >= 0 && hash2(x, y, 162) > 0.2) p.p(x, y + 1, t >= 2 ? "#6e3a22" : RUST[3]);
-        p.p(x, y, RUST[t]);
-      });
-      for (const [x, y] of sh.glints) if (stoneTone(b, x, y) >= 0) p.p(x, y, "#f4c88a");
-      scree(p, r, sh.w, sh.h, 4, true);
-      tufts(p, r, 1, sh.h - 1, sh.w - 2, 3);
+    return M(22, 18, (p, r) => {
+      p.r(3, 15, 17, 2, "rgba(0,0,0,0.35)"); p.r(5, 17, 14, 1, "rgba(0,0,0,0.35)");
+      paintRock(p, r, 22, 18, rockForm("ironore", ROCK_SEEDS.ironore[v % ROCK_SEEDS.ironore.length]), { ramp: IRONSTONE, cracks: 1, ore: { cols: ORE, seams: 2, pockets: 1 } });
+      tufts(p, r, 1, 17, 20, 3);
     });
   },
-  // A rock to break for stone (one of four, by variant; 2 and 3 are the mossed ones: all the woods have, some of the meadow's).
+  // A rock to be broken for stone: one angular block with clean faces (a lit top, a front, a side in shade), a
+  // piece or two already split from it, and fractures down its lit faces. Four shapes; the forest's (2, 3) are mossed.
   rock: (v, alt, M) => {
     if (alt) return M(18, 8, (p, r) => shards(p, r, false));
-    const sh = ROCKS[v % ROCKS.length];
-    return M(sh.w, sh.h, (p, r) => {
-      const b = drawRock(p, r, sh);
-      if (v >= 2) { mossOnStone(p, r, b, 0.6); tufts(p, r, 1, sh.h - 1, sh.w - 2, 5); }
-      else { scree(p, r, sh.w, sh.h, 3); tufts(p, r, 1, sh.h - 1, sh.w - 2, 2); }
+    return M(22, 18, (p, r) => {
+      p.r(3, 15, 17, 2, "rgba(0,0,0,0.35)"); p.r(5, 17, 14, 1, "rgba(0,0,0,0.35)");
+      paintRock(p, r, 22, 18, rockForm("rock", ROCK_SEEDS.rock[v % ROCK_SEEDS.rock.length]), { cracks: 2, moss: v >= 2 ? { cols: MOSS, dens: 0.6 } : undefined });
+      tufts(p, r, 1, 17, 20, v >= 2 ? 5 : 2);
     });
   },
   torch_post: (_v, alt, M) => M(8, 20, (p) => {
@@ -185,7 +115,8 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
   // arch top lies, with one weathered lintel corner just breaking the turf.
   // The head of the old stair, by how far it has been dug (the variant is its dig stage, content/digging.ts):
   // 0 buried: a square-cut sunken patch, kerb stones through the grass, a ward glyph cut in the lintel, dark;
-  // 1-2 the turf cut and the earth going down; 3-4 the fallen vault laid bare, then broken through;
+  // 1-2 the turf cut and the earth going down; 3 the fall laid bare: the same heap of boulders that chokes the
+  // stair below; 4 the heap broken through, the stair showing down the breach;
   // 5 open: stone steps going down to the north, into the dark under the lintel, and the glyph alight.
   buriedgate: (v, _alt, M) => M(72, 58, (p, r) => {
     const X0 = 6, X1 = 66, Y0 = 14, Y1 = 58, EARTH = ["#33261a", "#3e2e20", "#4e3c2a", "#5a4630"];
@@ -197,23 +128,59 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       for (let x = 4; x < 68; x += 8) if (x === 28 || x === 36 || r() < show) { p.o(x, 9, 8, 5, "#7a7268", "#141016"); p.r(x + 1, 10, 6, 1, "#9a9288"); p.p(x + 6, 12, "#5a544c"); if (v < 3 && r() < 0.6) p.r(x + 1, 9, 2 + ((r() * 4) | 0), 1, MOSS[1]); }
       for (let y = 14; y < 58; y += 8) for (const x of [2, 66]) if (r() < show) { p.o(x, y, 4, 8, "#6a645c", "#141016"); p.r(x + 1, y + 1, 1, 6, "#8a8278"); if (v < 3 && r() < 0.5) p.p(x + 1, y, MOSS[2]); }
     };
-    // The stair's own steps where they show (broken through, and open): the stone of the flight below, pixel for
-    // pixel (art/stone.ts: stepPix), going down away to the north from the south lip. Each step is a little
-    // shorter, narrower and darker than the one above it, and the side walls' inner faces come into view as the
-    // well deepens: the east wall's towards the light, the west wall's away from it. Returns where the last ends.
-    const HS = [8, 7, 6, 5, 4, 3], DIM = [1, 0.86, 0.72, 0.58, 0.44, 0.31];
-    const flight = (count: number) => {
+    // The open stairwell, looked down into from its south lip: the flight's top steps (art/stairs.ts, the same
+    // step as below), each lower one shorter, narrower and darker as it goes down under the lintel, between the
+    // well's two walls: the east one catching the light, the west one in its own shade. `dim` is how much of the
+    // day gets in (less while the fall still roofs most of it).
+    const well = (dim: number) => {
+      p.r(X0, Y0, X1 - X0, Y1 - Y0, "#050408");
       let y1 = Y1;
-      for (let j = 0; j < count; j++) {
-        const h = HS[j], y0 = y1 - h, wid = X1 - X0 - j * 2, f = DIM[j];
-        for (let s = 0; s < h; s++) {
-          for (let u = 0; u < wid; u++) { const c = stepPix(u, wid, s, h, 60 + j); p.p(X0 + j + u, y0 + s, rgb(c[0] * f, c[1] * f, c[2] * f)); }
-          const k = f * (((y0 + s) & 7) === 7 ? 0.6 : 1);
-          for (let i = 0; i < j; i++) { p.p(X0 + i, y0 + s, rgb(26 * k, 23 * k, 30 * k)); p.p(X1 - 1 - i, y0 + s, rgb(75 * k, 69 * k, 82 * k)); }
+      [8, 7, 6, 5, 5, 4, 3, 3].forEach((pitch, i) => {
+        const y0 = y1 - pitch, inset = 3 + Math.round(i * 1.5), x0 = X0 + inset, w = X1 - X0 - inset * 2, f = Math.pow(0.79, i) * dim;
+        const tread = (treadTone(14 - i) - 2) * f, tone = (k: number) => { const c = stairRGB(Math.max(4, tread + k * f)); return rgb(c[0], c[1], c[2]); };
+        for (let s = 0; s < pitch; s++) {
+          const k = stepShade(s, pitch);
+          p.r(x0, y0 + s, w, 1, tone(k));
+          // worn down the middle, as below: paler, the lip rounded off
+          if (i < 6) p.r(x0 + Math.round(w * 0.33), y0 + s, Math.round(w * 0.34), 1, tone(k + (s === 0 ? -9 : s === 1 && pitch >= 6 ? 11 : s < pitch - 3 ? 5 : 0)));
         }
+        for (let n = 0; n < 6 - i; n++) { const cx = x0 + 1 + ((r() * (w - 2)) | 0); if (r() < 0.4) p.p(cx, y0, tone(8)); else p.p(cx, y0 + 1 + ((r() * Math.max(1, pitch - 3)) | 0), tone(-12)); }
+        if (i < 5) p.r(x0 + 4 + ((r() * (w - 8)) | 0), y0 + 1, 1, Math.max(1, pitch - 3), tone(-13));
+        // the walls: a course of blocks to each step, the west face shaded and throwing its shadow on the tread ends
+        const wl = 30 * f, wr = 74 * f, wall = (v: number) => { const c = stairRGB(Math.max(4, v)); return rgb(c[0], c[1], c[2]); };
+        p.r(X0, y0, inset, pitch, wall(wl)); p.r(x0 + w, y0, inset, pitch, wall(wr));
+        p.r(X0, y1 - 1, inset, 1, wall(wl - 14 * f)); p.r(x0 + w, y1 - 1, inset, 1, wall(wr - 30 * f));
+        p.r(x0 + w, y0, 1, pitch, wall(wr + 26 * f)); p.r(x0, y0, 2, pitch, tone(-40));
+        // the wedge of shadow in each corner, as on the flight below
+        for (let s = 0; s < pitch; s++) { const c = cornerShade(s, pitch); if (c) { p.r(x0, y0 + s, c + 2, 1, tone(-64)); p.r(x0 + w - c, y0 + s, c, 1, tone(-64)); } }
+        if (i & 1) { p.p(X0 + (inset >> 1), y0 + 1, wall(wl - 14 * f)); p.p(X1 - 1 - (inset >> 1), y0 + 1, wall(wr - 30 * f)); }
         y1 = y0;
+      });
+    };
+    // The fall, as it is met from below (the dungeon's `rockpile`): boulders heaped to the kerb, earth packed
+    // between them, a block or two of the vault's dressed stone among them and roots through the lot. Broken
+    // through, the same heap with a breach in it and the stair showing down the hole.
+    const heap = (broken: boolean) => {
+      const hr = mulberry(0x57a1e), W = X1 - X0, top = Y0 + 7;
+      if (!broken) fill(top, Y1, EARTH[0], EARTH[1], "#241a12");
+      p.r(X0, Y0, W, 7, EARTH[1]); for (let x = X0; x < X1; x++) if (hr() < 0.5) p.p(x, Y0 + 2 + ((hr() * 4) | 0), EARTH[2]);
+      p.r(X0, Y0, W, 1, "#241a12"); p.r(X0, top, W, 1, "#141016");
+      const gone = (x: number, y: number, k: number) => broken && Math.hypot((x - 37) / 1.4, y - 42) < 7.5 + k * 3.5;
+      const rocks: [number, number, number, number, number][] = [];
+      for (let row = 0; row < 5; row++) for (let col = 0; col < 7; col++) {
+        const w = 9 + ((hr() * 6) | 0), h = 7 + ((hr() * 4) | 0);
+        rocks.push([clamp(X0 - 3 + col * 9 + ((hr() * 5) | 0) + (row & 1 ? 4 : 0), X0, X1 - w), clamp(top - 1 + row * 7 + ((hr() * 4) | 0), top, Y1 - h), w, h, hr()]);
       }
-      return y1;
+      rocks.sort((a, b) => a[1] + a[3] - (b[1] + b[3]));
+      rocks.forEach(([x, y, w, h, k], i) => {
+        if (gone(x + w / 2, y + h / 2, k)) return;
+        if (i % 11 === 5) { p.o(x, y, 12, 8, "#5e5850", "#141016"); p.r(x + 1, y + 1, 10, 1, "#7a7268"); p.r(x + 5, y + 2, 1, 5, "#3e3a36"); }
+        else stoneBlob(p, x, y, w, h, hr);
+      });
+      for (let i = 0; i < 9; i++) { const w = 4 + ((hr() * 3) | 0), x = X0 + ((hr() * (W - w)) | 0), y = top + 1 + ((hr() * (Y1 - top - 6)) | 0); if (!gone(x + 2, y + 2, 1.6)) stoneBlob(p, x, y, w, w - 1, hr); }
+      for (let i = 0; i < 4; i++) { let x = X0 + 6 + ((hr() * (W - 12)) | 0), y = top + 2 + ((hr() * 22) | 0); for (let k = 0; k < 7; k++) { if (!gone(x, y, 1.6)) p.p(x, y, "#3e2c1a"); x += ((hr() * 3) | 0) - 1; y += 1; } }
+      // stone the pick has split, lying on the steps in the breach
+      if (broken) for (const [x, y] of [[31, 45], [42, 39], [38, 49]] as [number, number][]) { p.r(x, y, 3, 2, S.m); p.p(x, y, S.h); p.p(x + 2, y + 1, S.o); }
     };
     if (v === 0) {
       // square, not round: straight sunken edges and a faint settling of the turf between them
@@ -233,37 +200,17 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       if (v === 2) { p.r(X0, Y0 + wall, 3, Y1 - Y0 - wall, "rgba(0,0,0,0.28)"); p.r(X1 - 3, Y0 + wall, 3, Y1 - Y0 - wall, "rgba(0,0,0,0.28)"); for (const [x, y] of [[20, 40], [44, 33], [52, 48]] as [number, number][]) { p.r(x, y, 3, 2, S.m); p.p(x, y, S.h); } }
       for (let x = X0; x < X1; x++) if (r() < 0.5) p.p(x, Y1 - 1, MOSS[(r() * 3) | 0]);
       kerb(v === 1 ? 0.6 : 0.85);
-    } else if (v <= 4) {
-      // The vault that fell into the stairwell, laid bare: the same tumbled stone that chokes the stair's foot in
-      // the halls below (art/stone.ts: stoneFall, the rock piles' boulders), earth packed between them, roots
-      // through it. Then (4) broken through: the same fall with stones gone, most of them from the south lip where
-      // the digging is, the dark of the stairwell in the gaps and the stair's own top steps bare under it.
-      fill(Y0, Y1, EARTH[0], EARTH[1], "#241a12");
-      p.r(X0, Y0, X1 - X0, 9, EARTH[1]); for (let x = X0; x < X1; x++) if (r() < 0.5) p.p(x, Y0 + 2 + ((r() * 6) | 0), EARTH[2]);
-      p.r(X0, Y0, X1 - X0, 1, "#241a12"); p.r(X0, Y0 + 9, X1 - X0, 1, "#141016");
-      if (v === 4) {
-        for (let x = X0; x < X1; x++) { const top = Y0 + 21 + Math.round(Math.sin(x * 0.45) * 2 + hash2(x, 3, 163) * 3); p.r(x, top, 1, Y1 - top, "#07060a"); }
-        flight(2);
-      }
-      for (let i = 0; i < 16; i++) { const x = X0 + ((r() * 56) | 0), y = Y0 + 11 + ((r() * (v === 4 ? 12 : 31)) | 0); p.r(x, y, 4, 2, r() < 0.5 ? "#4e3c2a" : "#5a4630"); }
-      stoneFall(p, X0, Y0 + 9, X1 - X0, Y1 - Y0 - 9, v === 3 ? undefined : (fx, fy, i) => hash2(i, 1, 160) < 0.12 + 0.88 * Math.min(1, Math.max(0, 1.2 - fy * 1.45 + Math.abs(fx - 0.5) * 0.8)));
-      for (let i = 0; i < 4; i++) { let x = X0 + 6 + ((r() * 46) | 0), y = Y0 + 10 + ((r() * 8) | 0); for (let k = 0; k < 7; k++) { p.p(x, y, "#3e2c1a"); x += ((r() * 3) | 0) - 1; y += 1; } }
-      p.r(X0, Y0 + 10, 2, Y1 - Y0 - 10, "rgba(0,0,0,0.3)"); p.r(X1 - 2, Y0 + 10, 2, Y1 - Y0 - 10, "rgba(0,0,0,0.3)");
+    } else if (v === 3) {
+      heap(false);
+      kerb(1);
+    } else if (v === 4) {
+      well(0.6);
+      heap(true);
       kerb(1);
     } else {
-      // Open: the flight going down under the lintel into the dark, between the side walls. Past the last step that
-      // can be made out, two more nosings all but lost, and the walls running on down.
-      p.r(X0, Y0, X1 - X0, Y1 - Y0, "#050408");
-      const top = flight(HS.length), deep = HS.length;
-      for (let y = Y0 + 5; y < top; y++) { p.r(X0, y, deep, 1, "#09080c"); p.r(X1 - deep, y, deep, 1, "#14111a"); }
-      for (const [dy, f, id] of [[2, 0.17, 70], [4, 0.09, 71]]) {
-        const wid = X1 - X0 - deep * 2;
-        for (let u = 0; u < wid; u++) { const c = stepPix(u, wid, 0, 2, id); p.p(X0 + deep + u, top - dy, rgb(c[0] * f, c[1] * f, c[2] * f)); }
-      }
-      // the lintel's south face, the top of the far wall, over the dark: the halls' own stone, in the kerb's shade
-      p.r(X0, Y0 + 1, X1 - X0, 4, "#322d38"); p.r(X0, Y0 + 1, X1 - X0, 1, S.m); p.r(X0, Y0 + 4, X1 - X0, 1, "#1c1820");
-      for (let x = X0 + 9; x < X1; x += 12) p.r(x, Y0 + 2, 1, 2, "#1c1820");
-      for (const [x, y] of [[18, 53], [47, 47], [33, 56]] as [number, number][]) { p.r(x, y, 2, 1, EARTH[2]); p.p(x, y, EARTH[3]); }
+      well(1);
+      // what the digging left: crumbs of earth on the upper steps
+      for (const [x, y] of [[18, 52], [47, 47], [33, 55], [26, 41]] as [number, number][]) { p.r(x, y, 2, 1, EARTH[2]); p.p(x, y, EARTH[3]); }
       kerb(1);
       p.r(X0, Y0, X1 - X0, 1, "#141016");
     }
@@ -335,23 +282,16 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       tufts(p, r, 2, 14, 30, 6);
     });
   },
+  // Scenery, not a resource: an old stone long settled, broad and many-faced with its shoulders worn off, under moss.
   boulder: (v, _alt, M) => M(28, 22, (p, r) => {
     p.r(3, 18, 22, 4, "rgba(0,0,0,0.32)");
-    stoneBlob(p, 1, 4 + (v & 1), 26, 17, r);
-    if (v % 3 !== 1) stoneBlob(p, 15, 2, 10, 9, r);
-    p.r(7, 12, 5, 1, S.d); p.p(17, 9, S.d); p.p(8, 13, S.o);
-    mossOver(p, r, 3, 3 + (v & 1), 22, 7, 0.55);
-    if (v & 1) ivyOn(p, r, 20, 5, 10);
+    paintRock(p, r, 28, 22, rockForm("boulder", ROCK_SEEDS.boulder[v % ROCK_SEEDS.boulder.length]), { cracks: 1, moss: { cols: MOSS, dens: 0.75 } });
     tufts(p, r, 1, 20, 26, 6);
   }),
+  // Bedrock breaking the surface: one tilted mass with ledges stepping down either side of it.
   outcrop: (v, _alt, M) => M(48, 32, (p, r) => {
     p.r(4, 27, 40, 5, "rgba(0,0,0,0.32)");
-    stoneBlob(p, 0, 12, 22, 18, r); stoneBlob(p, 24, 13, 23, 17, r);
-    stoneBlob(p, 10, 2 + (v & 1) * 2, 24, 24, r);
-    p.line(18, 8, 22, 22, S.o); p.line(22, 22, 20, 26, S.d);
-    p.r(5, 22, 6, 1, S.d); p.r(32, 20, 7, 1, S.d);
-    mossOver(p, r, 12, 2 + (v & 1) * 2, 20, 8, 0.6); mossOver(p, r, 2, 12, 18, 5, 0.5); mossOver(p, r, 26, 13, 18, 5, 0.5);
-    ivyOn(p, r, 30, 6, 16); ivyOn(p, r, 8, 14, 12);
+    paintRock(p, r, 48, 32, rockForm("outcrop", ROCK_SEEDS.outcrop[v % ROCK_SEEDS.outcrop.length]), { cracks: 4, moss: { cols: MOSS, dens: 0.7 } });
     fernTuft(p, r, 3, 30); fernTuft(p, r, 42, 30); tufts(p, r, 2, 30, 44, 10);
   }),
   // ---------- remains breaking the surface
