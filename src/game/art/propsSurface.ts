@@ -6,7 +6,7 @@ import type { Pen, Rng } from "../util";
 import { S, WD, IR } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
 import { paintRock, rockForm, ROCK_SEEDS, IRONSTONE, ORE } from "./rocks";
-import { stepShade, cornerShade, treadTone, stairRGB } from "./stairs";
+import { stepShade, cornerShade, treadTone, stairRGB, TOP_LEVEL } from "./stairs";
 
 // ---- overgrowth helpers shared by the surface sprites
 const MOSS = ["#2e4a22", "#3e5e2a", "#527636", "#6e8e34"];
@@ -137,7 +137,7 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
       let y1 = Y1;
       [8, 7, 6, 5, 5, 4, 3, 3].forEach((pitch, i) => {
         const y0 = y1 - pitch, inset = 3 + Math.round(i * 1.5), x0 = X0 + inset, w = X1 - X0 - inset * 2, f = Math.pow(0.79, i) * dim;
-        const tread = (treadTone(14 - i) - 2) * f, tone = (k: number) => { const c = stairRGB(Math.max(4, tread + k * f)); return rgb(c[0], c[1], c[2]); };
+        const tread = (treadTone(TOP_LEVEL - i) - 2) * f, tone = (k: number) => { const c = stairRGB(Math.max(4, tread + k * f)); return rgb(c[0], c[1], c[2]); };
         for (let s = 0; s < pitch; s++) {
           const k = stepShade(s, pitch);
           p.r(x0, y0 + s, w, 1, tone(k));

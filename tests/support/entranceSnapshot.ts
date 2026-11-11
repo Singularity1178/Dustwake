@@ -15,7 +15,7 @@ import { openEntrance } from "../../src/game/sim/digging";
 import { addItems } from "../../src/game/sim/inventory";
 import { DIG_SITES, digTotal } from "../../src/game/content/digging";
 import { FLAGS } from "../../src/game/content/flags";
-import { GATE_STAIR } from "../../src/game/content/geography";
+import { GATE_PASSAGE } from "../../src/game/content/geography";
 import { TS } from "../../src/game/content/tiles";
 import { ITEM_IDS, ITEMS, type ItemId } from "../../src/game/content/items";
 import { propSprite } from "../../src/game/art/props";
@@ -53,7 +53,7 @@ export function run(dir = ".preview/entrance"): number {
   save("stairhead-stages", sheet, 3);
 
   // ---- the stair below, open
-  enterArea(w, pl, "dungeon", (GATE_STAIR.x + 2) * TS, (GATE_STAIR.y + 3) * TS);
+  enterArea(w, pl, "dungeon", (GATE_PASSAGE.x + 2) * TS, (GATE_PASSAGE.y + 3) * TS);
   pl.facing = "down";
   run(90);
   save("stair-open", both(), 4);
@@ -80,7 +80,7 @@ export function run(dir = ".preview/entrance"): number {
   const props: [string, number, boolean][] = [
     ["forge", 0, false], ["anvil", 0, false], ["toolboard", 0, false], ["runetable", 0, false], ["clayvat", 0, false], ["husk", 0, false],
     ["weaponrack", 0, false], ["weaponrack", 1, false], ["armorstand", 0, false], ["armorstand", 1, false], ["armorstand", 2, false], ["staffrack", 0, false],
-    ["wallhooks", 0, false], ["wallhooks", 1, false], ["armorpile", 0, false], ["stairfoot", 0, false], ["stairfall", 0, false],
+    ["wallhooks", 0, false], ["wallhooks", 1, false], ["armorpile", 0, false], ["stairpost", 0, false], ["stairpost", 1, false], ["stairfall", 0, false],
     ["ironore", 0, false], ["ironore", 1, false], ["ironore", 2, false], ["ironore", 0, true],
   ];
   const out = mk(300, 150), oc = cx(out);

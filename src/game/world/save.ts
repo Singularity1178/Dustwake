@@ -70,8 +70,14 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      armory were refurnished and iron veins stand on the surface, and a body
   *      saved where one of those now stands could never move again: any such
   *      actor is set down beside it (a frozen list of the new footprints).
+  * v15: the stair below, redrawn with depth. No field changed shape here either,
+  *      and tile diffs hold no floor style, so a stair dug out before v15 loads
+  *      as the hall and the flight the builder now lays. But the flight now
+  *      stands between two cheek walls that end in newel posts, and they are
+  *      solid: a body saved on the edge of the open stair is set down beside
+  *      them, inside the passage (a frozen list again, as v14).
   */
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -93,7 +99,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 14;
+  version: 15;
   seed: number;
   rng: number;
   time: number;
@@ -304,23 +310,37 @@ export const MIGRATIONS: Record<number, Migration> = {
   // of the new footprints steps to the nearest place clear of all of them, in a fixed order, 8 px at a time. Bodies
   // elsewhere, the areas' diffs and everything a save holds are untouched: the new props, the loose rusted heads
   // and the stair's steps come from the builders, as any authored change does.
-  13: (s) => ({
-    ...s, version: 14,
-    actors: (s.actors ?? []).map((a: any) => {
-      const boxes = V14_SOLID[a.area];
-      const hit = (x: number, y: number) => !!boxes && boxes.some((b) => x + 5 > b[0] && x - 5 < b[2] && y > b[1] && y - 5 < b[3]);
-      if (typeof a.x !== "number" || typeof a.y !== "number" || !hit(a.x, a.y)) return a;
-      // (it stays in the room it was in: a step out of the furniture must not be a step into the wall behind it)
-      const within = (r: number[], x: number, y: number) => x - 5 >= r[0] && x + 5 <= r[2] && y - 5 >= r[1] && y <= r[3];
-      const room = (V14_ROOMS[a.area] ?? []).find((r) => within(r, a.x, a.y));
-      for (let r = 1; r <= 8; r++) for (const [dx, dy] of [[0, -r], [0, r], [r, 0], [-r, 0], [r, -r], [-r, -r], [r, r], [-r, r]]) {
-        const x = a.x + dx * 8, y = a.y + dy * 8;
-        if (!hit(x, y) && (!room || within(room, x, y))) return { ...a, x, y, vx: 0, vy: 0 };
-      }
-      return a;
-    }),
-  }),
+  13: (s) => ({ ...s, version: 14, actors: (s.actors ?? []).map((a: any) => setDown(a, V14_SOLID, V14_ROOMS)) }),
+  // Nobody is left standing inside the stair's cheek walls or newel posts (v15), by the same rule: only a body on
+  // the open stair's very edge can be, and it steps clear of them without leaving the passage.
+  14: (s) => ({ ...s, version: 15, actors: (s.actors ?? []).map((a: any) => setDown(a, V15_SOLID, V15_ROOMS)) }),
 };
+
+type Rect = [number, number, number, number];
+/**
+ * A body whose feet box overlaps one of `solid`'s footprints for its area steps to the nearest place clear of all of
+ * them, in a fixed order, 8 px at a time. It stays in the room (of `rooms`) it was in: a step out of the furniture
+ * must not be a step into the wall behind it. Any other body is returned as it is.
+ */
+function setDown(a: any, solid: Record<string, Rect[]>, rooms: Record<string, Rect[]>): any {
+  const boxes = solid[a.area];
+  const hit = (x: number, y: number) => !!boxes && boxes.some((b) => x + 5 > b[0] && x - 5 < b[2] && y > b[1] && y - 5 < b[3]);
+  if (typeof a.x !== "number" || typeof a.y !== "number" || !hit(a.x, a.y)) return a;
+  const within = (r: number[], x: number, y: number) => x - 5 >= r[0] && x + 5 <= r[2] && y - 5 >= r[1] && y <= r[3];
+  const room = (rooms[a.area] ?? []).find((r) => within(r, a.x, a.y));
+  for (let r = 1; r <= 8; r++) for (const [dx, dy] of [[0, -r], [0, r], [r, 0], [-r, 0], [r, -r], [-r, -r], [r, r], [-r, r]]) {
+    const x = a.x + dx * 8, y = a.y + dy * 8;
+    if (!hit(x, y) && (!room || within(room, x, y))) return { ...a, x, y, vx: 0, vy: 0 };
+  }
+  return a;
+}
+
+/**
+ * The footprints v15 added, frozen as they were placed then: the two newel posts at the foot of the surface stair
+ * and the cheek wall running up the flight from each. And the passage they stand in (hall and flight).
+ */
+const V15_SOLID: Record<string, Rect[]> = { dungeon: [[544, 833, 556, 839], [596, 833, 608, 839], [544, 839, 552, 896], [600, 839, 608, 896]] };
+const V15_ROOMS: Record<string, Rect[]> = { dungeon: [[544, 800, 608, 896]] };
 
 /**
  * The collision footprints [x0, y0, x1, y1] (px) of the solid props v14 added, frozen as they were placed then (a
@@ -328,8 +348,8 @@ export const MIGRATIONS: Record<number, Migration> = {
  * vat and unfinished body; the armory's second rack, staff rack, bare stand and armour heap; the surface's iron veins.
  */
 /** The floors of the two refurnished rooms (px), frozen likewise: the artificery and the armory. */
-const V14_ROOMS: Record<string, [number, number, number, number][]> = { dungeon: [[64, 576, 272, 736], [992, 48, 1104, 176]] };
-const V14_SOLID: Record<string, [number, number, number, number][]> = {
+const V14_ROOMS: Record<string, Rect[]> = { dungeon: [[64, 576, 272, 736], [992, 48, 1104, 176]] };
+const V14_SOLID: Record<string, Rect[]> = {
   dungeon: [
     [65, 601, 79, 608], [72, 649, 88, 656], [114, 726, 142, 736], [69, 729, 83, 736], [75, 683, 85, 688],
     [1072, 78, 1096, 84], [1002, 98, 1022, 104], [1003, 163, 1013, 168], [1069, 138, 1083, 144],

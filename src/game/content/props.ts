@@ -5,6 +5,7 @@
 import { SIGNS } from "./town";
 import type { LightHabit } from "./daycycle";
 import type { StationId } from "./crafting";
+import { GATE_STAIR, STAIR_CHEEK } from "./geography";
 
 export interface PropLightDef {
   dx: number; dy: number; rad: number; col: [number, number, number]; int: number; flick: number;
@@ -149,10 +150,13 @@ export const PROPS: Record<string, PropKindDef> = {
   staffrack: { box: [20, 6], examine: "A RACK FOR STAVES. MOST OF ITS SOCKETS ARE EMPTY. ONE STAFF IS LEFT, ITS STONE DEAD AND GREY." },
   wallhooks: { wallMounted: true, examine: "IRON PEGS, AND PALE SHAPES ON THE STONE WHERE BLADES AND SHIELDS HUNG FOR AN AGE." },
   armorpile: { box: [14, 6], examine: "PLATE AND MAIL, RUSTED INTO ONE LUMP. IT CRUMBLES WHERE YOU TOUCH IT." },
-  // ---- the stair up to the surface (content/geography.ts: GATE_STAIR). Its foot stands in the Vestibule; the fall
-  // that chokes it goes when the stair is dug out from above, and daylight comes down it from then on.
-  stairfoot: { flat: true },
-  stairfall: { flat: true, examine: "A STAIR CLIMBS SOUTH FROM HERE TO THE SURFACE. EARTH AND FALLEN VAULT CHOKE IT TO THE ROOF. IT CAN ONLY BE CLEARED FROM ABOVE." },
+  // ---- the way up to the surface (content/geography.ts: GATE_HALL, GATE_STAIR). The fall that chokes it goes when
+  // the stair is dug out from above, and daylight comes down it from then on. The flight stands between two cheek
+  // walls: `staircheek` is one's footprint (its picture is baked with the steps, art/stairs.ts), `stairpost` the
+  // newel post it ends in at the foot of the flight.
+  stairfall: { flat: true, examine: "A HALL RUNS SOUTH FROM HERE TO THE SURFACE STAIR. EARTH AND FALLEN VAULT CHOKE IT TO THE ROOF. IT CAN ONLY BE CLEARED FROM ABOVE." },
+  stairpost: { box: [STAIR_CHEEK.post.w, STAIR_CHEEK.post.d - 1] },
+  staircheek: { flat: true, box: [STAIR_CHEEK.wall.w, GATE_STAIR.h * 16 - STAIR_CHEEK.post.d] },
   stairlight: { flat: true, alt: "lit", light: { dx: 0, dy: 0, rad: 120, col: [0.55, 0.68, 1], int: 0.9, flick: 0.02, when: "lit" } },
   slab: { box: [36, 10] }, hearth: { box: [36, 10] }, longtable: { box: [50, 10] }, bench: { box: [44, 4] },
   chest: { box: [16, 8] }, pot: { box: [10, 6] }, fountain: { box: [32, 14] }, pedestal: { box: [10, 5] },

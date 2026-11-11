@@ -52,7 +52,11 @@ const LEGACY_ITEMS: ItemId[] = ["chisel", "arm", "key", "core", "glyph0", "glyph
 //   bake (was "d198b0dd"): 24 tiles differ, the stair's own (34-37,50-55) and nothing else; no tile, style or
 //     decal changed, only how a stair tile is drawn.
 //   props: unmoved. None of the legacy sprites was touched (the rocks and the stair's props came later).
-const GOLDEN = { props: "e200e828", items: "7dcab441", bake: "e5a0da2e" };
+// bake: updated deliberately for the stair below, redrawn with depth (docs/ARCHITECTURE.md): compared tile by tile
+// with the bake as it was, 32 tiles differ, all within x 34-37, y 48-55: the passage's own 24 (two rows of flags,
+// then the flight with its cheek walls) and the earth laid at its mouth, where the stair's foot used to be drawn.
+// The other 4000 tiles are unchanged (was "e5a0da2e").
+const GOLDEN = { props: "e200e828", items: "7dcab441", bake: "6623af73" };
 
 test("legacy prop sprites are pixel-identical", () => {
   resetTrace();

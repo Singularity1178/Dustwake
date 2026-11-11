@@ -6,7 +6,7 @@ import type { ItemId } from "./content/items";
 import type { Slot } from "./content/inventory";
 import { propDef } from "./content/props";
 import { socketPositions } from "./content/ritual";
-import { GATE_CORRIDOR, GATE_EXIT, GATE_STAIR, ENTRANCES } from "./content/geography";
+import { GATE_CORRIDOR, GATE_EXIT, GATE_HALL, GATE_PASSAGE, GATE_STAIR, STAIR_CHEEK, ENTRANCES } from "./content/geography";
 
 export { TS, T, FS, isSolidT, isOpaqueT } from "./content/tiles";
 export type { ItemId } from "./content/items";
@@ -183,8 +183,10 @@ export function buildMap(seed: number): MapData {
   rect(51, 33, 2, 2, T.FLOOR, B);
   rect(51, 46, 2, 2, T.FLOOR, B);
   rect(35, 41, 2, 3, T.FLOOR, FS.MARBLE);
-  // The stair up to the surface: the halls are the first cellar floor, and this flight climbs south out of the
-  // Vestibule to the buried stair head above (content/geography.ts). As built it is open, steps all the way.
+  // The way up to the surface (content/geography.ts): the halls are the first cellar floor. A short flagged hall
+  // leaves the Vestibule to the south, and from its end the stair climbs south to the buried stair head above.
+  // As built it is open: hall, then steps all the way.
+  rect(GATE_HALL.x, GATE_HALL.y, GATE_HALL.w, GATE_HALL.h, T.FLOOR, FS.FLAG);
   rect(GATE_STAIR.x, GATE_STAIR.y, GATE_STAIR.w, GATE_STAIR.h, T.FLOOR, FS.STAIR);
   rect(29, 48, 2, 1, T.FLOOR, FS.FLAG);
   rect(34, 16, 4, 4, T.FLOOR, FS.MARBLE);
@@ -214,9 +216,10 @@ export function buildMap(seed: number): MapData {
   rect(49, 1, 2, 3, R);
   rect(34, 16, 4, 4, R);
   rect(44, 36, 3, 2, R);
-  // the stair to the surface: the vault came down into it, and it is choked with rock and earth from its
-  // second step to the top (the steps are still there under the fall: digging it out from above clears them)
-  rect(GATE_STAIR.x, GATE_STAIR.y, GATE_STAIR.w, GATE_STAIR.h, R, FS.STAIR);
+  // the way up to the surface: the vault came down into it, and hall and stair are choked with rock and earth
+  // from the Vestibule's wall to the top (the flags and the steps are still there under the fall: digging it out
+  // from above clears them)
+  rect(GATE_PASSAGE.x, GATE_PASSAGE.y, GATE_PASSAGE.w, GATE_PASSAGE.h, R);
   rect(69, 46, 2, 2, R);
   for (const [x, y] of [
     [43, 2], [44, 2], [45, 2], [44, 3], [45, 3], [45, 4], [43, 3],
@@ -461,13 +464,18 @@ export function buildMap(seed: number): MapData {
   props.push({ id: "rune.dungeon", kind: "runesite", x: ritual.x, y: ritual.y, v: 0 });
 
   // ---- The choked SURFACE STAIR (added after the procedural pass, with its
-  // own rng, so nothing else in the dungeon changes). The flight is heaped
-  // with boulders and fallen vault; rubble and spilled earth reach a few
-  // tiles into the Vestibule; roots force their way through the broken roof.
-  // What shows it is a stair and not a gate at ground level: its two lowest
-  // steps stand clear in the Vestibule (`stairfoot`) with the fall lying on
-  // them (`stairfall`, which says what it is), and no night air comes through:
-  // the daylight down the stair (`stairlight`) only burns once it is dug out.
+  // own rng, so nothing else in the dungeon changes). Hall and flight are
+  // heaped with boulders and fallen vault; rubble and spilled earth reach a
+  // few tiles into the Vestibule; roots force their way through the broken
+  // roof. No step shows from the Vestibule: where the hall opens into it there
+  // is only the earth that poured in, and the toe of the fall lying on it
+  // (`stairfall`, which says what lies behind). The earth stays when the
+  // stair is dug out, trodden along the hall to the foot of the flight, so
+  // the Vestibule's floor, the dirt and the first step are met in that order.
+  // The flight stands between two cheek walls that end in a newel post each
+  // (`stairpost`, `staircheek`: content/geography.ts STAIR_CHEEK). No night
+  // air comes through: the daylight down the stair (`stairlight`) only burns
+  // once it is dug out.
   {
     const gr = mulberry(seed ^ 0x6a7e);
     const C = GATE_CORRIDOR;
@@ -488,9 +496,24 @@ export function buildMap(seed: number): MapData {
       [C.x + 1.6, C.y + 3.2, 2], [C.x + 0.5, C.y + 4, 0], [C.x + 2.8, C.y + 4.2, 1], [C.x - 0.5, C.y - 1.9, 1], [C.x + C.w - 0.1, C.y - 1.8, 2],
     ];
     for (const [x, y, v] of piles) P("rockpile", x, y, { v });
-    for (const [id, kind, y] of [["stairfoot", "stairfoot", top], ["stairfall", "stairfall", top + 2], ["stairlight", "stairlight", top + 3 * TS]] as const) {
+    for (const [id, kind, y] of [["stairfall", "stairfall", top + 2], ["stairlight", "stairlight", top + 3 * TS]] as const) {
       ids.add(id);
       props.push({ id, kind, x: cx, y, v: 0 });
+    }
+    // earth where the hall opens (the stair's foot used to be drawn out here; it is dirt now) and along the hall,
+    // thinning toward the flight, with the last crumbs of it on the first step
+    D("earthspill", cx - 4, top - 13, 3, 50, 30);
+    D("earthspill", cx + 2, top + 7, 4, 58, 24);
+    D("earthspill", cx - 11, top + 22, 5, 24, 12);
+    D("earthspill", cx + 14, top + GATE_HALL.h * TS - 2, 6, 14, 8);
+    for (const [x, y, v] of [[cx - 17, top + 9, 1], [cx + 15, top + 21, 2], [cx + 4, top + 5, 0], [cx - 12, top + GATE_HALL.h * TS - 9, 3]] as const) D("stones", x, y, v);
+    // the stair's stonework: a newel post at the foot of each cheek wall (the east one broken off short), and
+    // the cheek walls' footprints up both sides of the flight
+    const S = GATE_STAIR, K = STAIR_CHEEK, sy = S.y * TS;
+    for (const [side, x0, dir, v] of [["w", S.x * TS, 1, 0], ["e", (S.x + S.w) * TS, -1, 1]] as const) {
+      ids.add("stairpost." + side); ids.add("staircheek." + side);
+      props.push({ id: "stairpost." + side, kind: "stairpost", x: x0 + (dir * K.post.w) / 2, y: sy + K.post.d, v });
+      props.push({ id: "staircheek." + side, kind: "staircheek", x: x0 + (dir * K.wall.w) / 2, y: (S.y + S.h) * TS, v });
     }
     // the sky down the open stair (moonlight, or the sun by day): owned by `stairlight`, so dark until that is lit
     lights.push({ x: cx, y: top + 4 * TS, rad: 120, col: [0.55, 0.68, 1], int: 0.9, flick: 0.02, id: "gateleak", owner: "stairlight", sky: true });
@@ -541,14 +564,15 @@ export function buildMap(seed: number): MapData {
     id: "dungeon", w: MW, h: MH,
     grid, plan, style, tvar, rooms, props, decals, lights, loose, ritual, drips, npcs,
     // The stair's upper end: walk south off the top of the flight and you come out of the stair head on the surface
-    // (and back). Shut until the stair is dug out. The spot is for whoever finds the way in later.
+    // (and back). Shut until the stair is dug out. The spot (in the Vestibule, where the hall to the stair opens)
+    // is for whoever finds the way in later.
     portals: [{
       id: ENTRANCES.surface_stair.below.portal, x: GATE_STAIR.x * TS + 2, y: (GATE_STAIR.y + GATE_STAIR.h) * TS - 10, w: GATE_STAIR.w * TS - 4, h: 10, dir: "down",
       to: { area: ENTRANCES.surface_stair.above.area, portal: ENTRANCES.surface_stair.above.portal },
       arrive: { x: (GATE_STAIR.x + GATE_STAIR.w / 2) * TS, y: (GATE_STAIR.y + GATE_STAIR.h) * TS - 14 },
       flag: ENTRANCES.surface_stair.flag, label: "THE HALLS: FIRST CELLAR",
     }],
-    spots: [{ id: "stairfoot", kind: "door", x: (GATE_STAIR.x + GATE_STAIR.w / 2) * TS, y: GATE_STAIR.y * TS - 4, facing: "up" }],
+    spots: [{ id: "stairfoot", kind: "door", x: (GATE_PASSAGE.x + GATE_PASSAGE.w / 2) * TS, y: GATE_PASSAGE.y * TS - 4, facing: "up" }],
     start: { x: 9 * TS + 8, y: 38 * TS + 14 },
     exits: [
       { x: 22, y: 1, label: "UPPER WARD", dir: "n" },

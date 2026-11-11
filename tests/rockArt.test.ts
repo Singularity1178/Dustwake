@@ -13,7 +13,7 @@ installFakeCanvas();
 import { PROP_ART, propSprite } from "../src/game/art/props";
 import { bakeRegion } from "../src/game/art/tiles";
 import { chunk, rockForm, ROCK_SEEDS, ROCK_SIZE, STONE, IRONSTONE, ORE } from "../src/game/art/rocks";
-import { stepShade, cornerShade, treadTone, flightPix, STEP, FOOT_STEPS, KERB } from "../src/game/art/stairs";
+import { stepShade, cornerShade, treadTone, flightPix, flightSteps, flightStepAt, STEP, KERB, TOP_LEVEL } from "../src/game/art/stairs";
 import { RCanvas } from "./support/uiSnapshot";
 import { Pen, mulberry, hex, makeCanvas, type Sprite } from "../src/game/util";
 import { FS, T, TS } from "../src/game/content/tiles";
@@ -22,10 +22,13 @@ import { HARVEST } from "../src/game/content/harvest";
 import { DIG_SITES, digStage, digTotal } from "../src/game/content/digging";
 import { buildSurface } from "../src/game/surface";
 import { buildDungeon } from "../src/game/map";
-import { GATE_STAIR } from "../src/game/content/geography";
+import { GATE_HALL, GATE_STAIR, STAIR_CHEEK } from "../src/game/content/geography";
 import { SAVE_VERSION } from "../src/game/world/save";
 
-const GOLDEN = { rocks: "9fc9a08c", stair: "e6925303" };
+// stair: moved deliberately when the stair below was redrawn with depth (docs/ARCHITECTURE.md: "The stair below, with
+// depth"): the list it hashes lost `stairfoot` (the three steps that stood out in the Vestibule are gone) and gained
+// the two `stairpost`s. The stair head's six stages in it are pixel for pixel as they were (was "e6925303").
+const GOLDEN = { rocks: "9fc9a08c", stair: "5bef3221" };
 const KINDS = Object.keys(ROCK_SEEDS);
 
 /** One pass of one prop sprite with real pixels (the seed is art/props.ts makeProp's). */
@@ -58,13 +61,13 @@ test("the retextured sprites are pixel-stable", () => {
   for (const k of KINDS) for (let v = 0; v < 4; v++) for (const alt of [false, true]) propSprite(k, v, alt);
   assert.equal(traceHash(), GOLDEN.rocks);
   resetTrace();
-  propSprite("stairfoot", 0, false);
+  propSprite("stairpost", 0, false); propSprite("stairpost", 1, false);
   for (let v = 0; v <= 5; v++) propSprite("buriedgate", v, false);
   assert.equal(traceHash(), GOLDEN.stair);
 });
 
 test("art only: sizes, footprints and what is harvested are as they were, and nothing saved changed", () => {
-  assert.equal(SAVE_VERSION, 14, "no migration: the retexture changes no saved field");
+  assert.equal(SAVE_VERSION, 15, "the retexture changed no saved field (v15 is the stair's cheek walls: tests/entrance.test.ts)");
   assert.deepEqual(ROCK_SIZE, { rock: [22, 18], ironore: [22, 18], boulder: [28, 22], outcrop: [48, 32] });
   for (const k of KINDS) {
     const s = propSprite(k, 0, false)!;
@@ -72,7 +75,7 @@ test("art only: sizes, footprints and what is harvested are as they were, and no
   }
   assert.deepEqual([propDef("rock").box, propDef("ironore").box, propDef("boulder").box, propDef("outcrop").box], [[16, 8], [16, 8], [22, 9], [40, 12]]);
   assert.deepEqual(Object.keys(HARVEST).sort(), ["ironore", "log", "rock", "tree"], "boulders and outcrops stay scenery");
-  for (const [k, w, h] of [["stairfoot", 36, 25], ["buriedgate", 72, 58]] as const) { const s = propSprite(k, 0, false)!; assert.deepEqual([s.w, s.h], [w, h], k); }
+  for (const [k, w, h] of [["stairpost", 12, 19], ["buriedgate", 72, 58]] as const) { const s = propSprite(k, 0, false)!; assert.deepEqual([s.w, s.h], [w, h], k); }
   // every variant a builder places has a shape of its own, and the builders place what they placed
   const placed = buildSurface().props.filter((p) => KINDS.includes(p.kind));
   for (const k of KINDS) assert.ok(placed.some((p) => p.kind === k), `${k} stands on the surface`);
@@ -164,48 +167,73 @@ test("a step is a solid: a lit lip, then a steady fall into the shadow of the st
   for (let l = 1; l < 20; l++) assert.ok(treadTone(l) > treadTone(l - 1), "each step lighter than the one below");
 });
 
-test("the flight: kerbs both sides, toothed corners, worn down the middle, and one stone to a step (no courses)", () => {
-  const W = 64, px = (x: number, y: number) => flightPix(x, y, W, FOOT_STEPS)[0];
-  for (let step = 0; step < 12; step++) {
-    const y = step * STEP;
-    // the lip is the lightest row of the tread and the row under the next lip the darkest
-    assert.ok(px(20, y) > px(20, y + 3) && px(20, y + 3) > px(20, y + 7), `step ${step}: lip, tread, shadow`);
-    // the corner against each kerb: lit at the lip, a wedge of shadow by the foot of the next step
-    for (const x of [KERB + 1, W - KERB - 2]) assert.ok(px(x, y) - px(x, y + 7) > 60 && px(x, y + 7) < px(20, y + 7) + 8, `step ${step}: toothed at x ${x}`);
-    assert.ok(px(KERB + 3, y + 5) > px(KERB, y + 5) + 20, `step ${step}: the wedge ends`);
-    // a tread is one stone: at most one crack through it, and never a joint in line with the step below's
-    // (a crack runs the depth of the tread and jogs a pixel aside halfway; a pit is one row deep)
-    const dark = (x: number, r: number) => px(x, r) < px(x - 2, r) - 7 && px(x, r) < px(x + 2, r) - 7;
-    const cracks = (s: number) => { const out: number[] = []; for (let x = KERB + 5; x < W - KERB - 5; x++) if (dark(x, s * STEP + 2) && dark(x, s * STEP + 3) && dark(x + 1, s * STEP + 5)) out.push(x); return out; };
-    assert.ok(cracks(step).length <= 1, `step ${step}: ${cracks(step).length} joints`);
-    if (step) assert.ok(!cracks(step).some((x) => cracks(step - 1).includes(x)), `step ${step}: no joint over a joint`);
+test("the flight has depth: each step up is deeper, wider and lighter, between a coping and a wall face each side; toothed corners, wear down the middle, one stone to a step", () => {
+  const W = 64, H = 64, L = flightSteps(H), px = (x: number, y: number) => flightPix(x, y, W, H)[0];
+  const med = (v: number[]) => [...v].sort((p, q) => p - q)[v.length >> 1], mean = (v: number[]) => v.reduce((p, q) => p + q, 0) / v.length;
+  const cols = (x0: number, x1: number, y: number) => Array.from({ length: x1 - x0 }, (_, i) => px(x0 + i, y));
+  // the layout: nine steps in the halls' four tiles, end to end; the lowest five rows deep and narrowest, each one
+  // up no shallower and a pixel wider each side, to the top one, which runs from coping to coping
+  assert.equal(L.length, 9);
+  assert.equal(L[0].y0, 0); assert.equal(L[8].y0 + L[8].pitch, H);
+  L.forEach((st, i) => {
+    if (i) { const lo = L[i - 1]; assert.equal(st.y0, lo.y0 + lo.pitch); assert.ok(st.pitch >= lo.pitch, `step ${i} is no shallower`); assert.equal(st.inset, lo.inset - 1); assert.ok(st.level > lo.level); }
+    assert.equal(flightStepAt(st.y0, H), st); assert.equal(flightStepAt(st.y0 + st.pitch - 1, H), st);
+  });
+  assert.deepEqual([L[0].pitch, L[0].inset, L[0].level], [5, KERB + 8, 1]);
+  assert.ok(L[8].pitch >= L[0].pitch + 4, "the top step is nearly twice as deep as the lowest");
+  assert.deepEqual([L[8].inset, L[8].level], [KERB, TOP_LEVEL], "the top step is the one the head on the surface starts from");
+  // a run of any length is the whole stair, foot to top
+  for (const h of [16, 32, 48, 64, 96]) {
+    const l = flightSteps(h), last = l[l.length - 1];
+    assert.equal(last.y0 + last.pitch, h); assert.equal(last.level, TOP_LEVEL); assert.equal(last.inset, KERB);
+    assert.ok(l.every((st, i) => st.pitch >= 4 && (!i || st.pitch >= l[i - 1].pitch)), `${h} rows`);
   }
-  // worn pale down the middle of the flight (not of each tile): averaged over the treads, the centre is lighter
-  const mean = (x0: number, x1: number) => { let s = 0, n = 0; for (let y = 0; y < 96; y++) if (y % STEP > 1 && y % STEP < 5) for (let x = x0; x < x1; x++) { s += px(x, y); n++; } return s / n; };
-  assert.ok(mean(26, 38) > mean(8, 20) + 2 && mean(26, 38) > mean(44, 56) + 2);
-  // the kerb does not step: its rows differ only at its own joints, which sit between the treads' lips
-  assert.ok(Math.abs(px(KERB - 1, 1) - px(KERB - 1, 2)) < 8);
-  assert.ok(px(KERB - 1, 4) < px(KERB - 1, 3) - 15, "the kerb's joint is half a step off the lip");
-  // each step up is lighter (a tread's row, averaged across the flight)
-  const tread = (step: number) => { let s = 0; for (let x = 8; x < 56; x++) s += px(x, step * STEP + 3); return s / 48; };
-  for (let step = 1; step < 12; step++) assert.ok(tread(step) > tread(step - 1) + 1, `step ${step} is lighter than step ${step - 1}`);
-  assert.ok(tread(11) > tread(0) + 25, "the top of the flight is well lighter than its foot");
-  // somewhere a stone has cracked, or the test above proves nothing
+  const cracks = (st: (typeof L)[number]) => {
+    const dark = (x: number, r: number) => px(x, r) < px(x - 2, r) - 7 && px(x, r) < px(x + 2, r) - 7, out: number[] = [];
+    for (let x = st.inset + 7; x < W - st.inset - 7; x++) if (dark(x, st.y0 + 1) && dark(x + 1, st.y0 + st.pitch - 2)) out.push(x);
+    return out;
+  };
   let cracked = 0;
-  for (let step = 0; step < 12; step++) for (let x = KERB + 5; x < W - KERB - 5; x++) if (px(x, step * STEP + 2) < px(x - 2, step * STEP + 2) - 7 && px(x, step * STEP + 3) < px(x + 2, step * STEP + 3) - 7 && px(x + 1, step * STEP + 5) < px(x - 1, step * STEP + 5) - 7) cracked++;
-  assert.ok(cracked >= 1 && cracked <= 8, `${cracked} cracked treads in twelve`);
+  L.forEach((st, i) => {
+    const y = st.y0, last = y + st.pitch - 1;
+    // the lip is the lightest row of the tread and the row under the next lip the darkest
+    assert.ok(px(24, y) > px(24, y + (st.pitch >> 1)) && px(24, y + (st.pitch >> 1)) > px(24, last), `step ${i}: lip, tread, shadow`);
+    // the corner against each wall: lit at the lip, a wedge of shadow by the foot of the next step, and it ends
+    for (const x of [st.inset + 3, W - 2 - st.inset]) assert.ok(px(x, y) - px(x, last) > 60 && px(x, last) < px(24, last) + 8, `step ${i}: toothed at x ${x}`);
+    assert.ok(px(st.inset + 8, last - 1) > px(st.inset + 1, last - 1) + 15, `step ${i}: the wedge ends`);
+    // the walls beside it: the east face catches the light, the west is in its own shade, and both are darker than
+    // the tread they stand on; a bed joint runs along the foot of each course
+    if (st.inset > KERB + 1) {
+      const face = (east: boolean) => { const v: number[] = []; for (let r = y; r < last; r++) for (let k = KERB; k < st.inset; k++) v.push(px(east ? W - 1 - k : k, r)); return mean(v); };
+      assert.ok(face(true) > face(false) + 15, `step ${i}: east face lit, west shaded (${face(true) | 0} / ${face(false) | 0})`);
+      assert.ok(face(true) < px(24, y + 1) - 10 && face(false) > 20, `step ${i}: faces darker than the tread, and not black`);
+    }
+    if (st.inset > KERB) assert.ok(px(W - 1 - KERB, last) < px(W - 1 - KERB, last - 1) - 8, `step ${i}: a bed joint`);
+    else assert.ok(Math.max(...cols(W - 8 - KERB, W - 1 - KERB, y)) > treadTone(st.level) + 20, `step ${i}: no face left, the tread's lip runs to the coping`);
+    // a tread is one stone: at most one crack through it, and never over the crack of the step below
+    const c = cracks(st);
+    assert.ok(c.length <= 1, `step ${i}: ${c.length} joints`);
+    if (i) assert.ok(!c.some((x) => cracks(L[i - 1]).includes(x)), `step ${i}: no joint over a joint`);
+    cracked += c.length;
+    // each step up is lighter (the lip's row, its median: a chip is not the stone's tone)
+    if (i) assert.ok(med(cols(22, 42, y)) > med(cols(22, 42, L[i - 1].y0)) + 2, `step ${i} is lighter than step ${i - 1}`);
+  });
+  assert.ok(med(cols(22, 42, L[8].y0)) > med(cols(22, 42, 0)) + 30, "the top of the flight is well lighter than its foot");
+  assert.ok(cracked >= 1 && cracked <= 6, `${cracked} cracked treads in nine`);
+  // worn pale down the middle of the flight (not of each tile): the first tread row, averaged over the steps
+  const worn = (x0: number, x1: number) => mean(L.map((st) => mean(cols(x0, x1, st.y0 + 1))));
+  assert.ok(worn(26, 38) > worn(16, 21) + 2 && worn(26, 38) > worn(43, 48) + 2);
+  // the coping does not step: its rows differ only at its own joints, which sit between the treads' lips; it is
+  // lit along its inner edge the whole way, and climbs into the light with the flight
+  assert.ok(Math.abs(px(KERB - 1, 1) - px(KERB - 1, 2)) < 8);
+  assert.ok(px(KERB - 1, 4) < px(KERB - 1, 3) - 15, "the coping's joint is not on a lip");
+  for (let y = 0; y < H; y++) for (const [edge, out] of [[KERB - 1, 0], [W - KERB, W - 1]]) assert.ok(px(edge, y) > px(out, y) + 20, `coping lit at row ${y}`);
+  assert.ok(px(KERB - 1, H - 2) > px(KERB - 1, 1) + 25);
 });
 
-test("the three places are one stair: the foot and the baked flight are the flight's own pixels", () => {
-  // the foot: its three steps are the flight's first three, between their own kerbs
-  const foot = raster("stairfoot", 0);
-  assert.equal(foot.height, FOOT_STEPS * STEP + 1);
-  for (let y = 0; y < FOOT_STEPS * STEP; y++) for (let x = 0; x < 36; x++) {
-    const c = flightPix(x, y, 36, 0, 1);
-    assert.equal(at(foot, x, y + 1), `${c[0] | 0},${c[1] | 0},${c[2] | 0}`, `foot ${x},${y}`);
-  }
-  // the flight in a bake: a run four tiles wide in a wall, as in the halls. Its steps are numbered on from the
-  // foot, its kerbs lie at the run's edges and nowhere between (the old tile had a worn stripe to every tile).
+test("one stair in the halls: a baked run is the flight's own pixels, nothing of it stands out in the Vestibule, and it ends in two newel posts", () => {
+  // the flight in a bake: a run four tiles wide and four long in a wall, as in the halls. Its steps are laid over
+  // the run's whole length and its walls lie at the run's edges and nowhere between.
   const w = 8, h = 6, grid = new Uint8Array(w * h).fill(T.WALL), style = new Uint8Array(w * h);
   for (let y = 1; y <= 4; y++) for (let x = 2; x <= 5; x++) { grid[y * w + x] = y === 3 ? T.RUBBLE : T.FLOOR; style[y * w + x] = FS.STAIR; }
   const c = makeCanvas(w * TS, h * TS);
@@ -216,12 +244,26 @@ test("the three places are one stair: the foot and the baked flight are the flig
   for (let ty = 2; ty <= 4; ty++) for (let tx = 2; tx <= 5; tx++) for (let ly = 0; ly < TS; ly++) for (let lx = 0; lx < TS; lx++) {
     if ((tx === 2 && lx < 2) || (tx === 5 && lx > 13)) continue;                  // the wall's shade on the floor beside it
     const f = ty === 3 ? 0.7 : 1;                                                  // a fall lying on a step darkens it and does not end the run
-    const e = flightPix((tx - 2) * TS + lx, (ty - 1) * TS + ly, 4 * TS, FOOT_STEPS).map((v) => Math.max(0, Math.min(255, Math.round(v * f))));
+    const e = flightPix((tx - 2) * TS + lx, (ty - 1) * TS + ly, 4 * TS, 4 * TS).map((v) => Math.max(0, Math.min(255, Math.round(v * f))));
     assert.deepEqual(baked(tx * TS + lx, ty * TS + ly), e, `tile ${tx},${ty} pixel ${lx},${ly}`);
   }
-  // and the halls' stair is such a run: stair tiles from wall to wall, choked (rubble) as built
+  // and the halls' stair is such a run: stair tiles from wall to wall, choked (rubble) as built, at the end of a
+  // flagged hall; no step is drawn anywhere else (the three that stood out in the Vestibule are gone)
   const d = buildDungeon();
   for (let y = GATE_STAIR.y; y < GATE_STAIR.y + GATE_STAIR.h; y++) for (let x = GATE_STAIR.x; x < GATE_STAIR.x + GATE_STAIR.w; x++) assert.equal(d.style[y * d.w + x], FS.STAIR);
+  for (let y = GATE_HALL.y; y < GATE_HALL.y + GATE_HALL.h; y++) for (let x = GATE_HALL.x; x < GATE_HALL.x + GATE_HALL.w; x++) assert.equal(d.style[y * d.w + x], FS.FLAG);
+  assert.equal(GATE_STAIR.h * TS, 64, "the length the flight's nine steps are laid out for");
+  assert.ok(!("stairfoot" in PROP_ART) && !d.props.some((p) => p.kind === "stairfoot"));
+  // the newel posts: the stair's stone, standing (a lit top over a darker south face); the whole one fills its
+  // sprite, the east one is broken off short; each is as wide as the wall face it ends, and emits nothing
+  const whole = raster("stairpost", 0), broken = raster("stairpost", 1);
+  const topRow = (s: RCanvas) => { for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) if (at(s, x, y)) return y; return -1; };
+  assert.deepEqual([whole.width, whole.height, broken.width, broken.height], [STAIR_CHEEK.post.w, 19, STAIR_CHEEK.post.w, 19]);
+  assert.equal(topRow(whole), 0); assert.ok(topRow(broken) >= 5, "broken off below the capstone");
+  assert.ok(lum(whole, 1, 1, 10, 5) > lum(whole, 3, 9, 8, 16) + 30, "top lit, face in shade");
+  for (const s of [whole, broken]) for (let x = 2; x < 10; x++) assert.ok(at(s, x, 18), "it stands on the floor");
+  for (const v of [0, 1]) { const e = raster("stairpost", v, false, true); assert.ok(e.data.every((x, i) => i % 4 === 3 || x === 0), "no glow"); }
+  assert.equal(STAIR_CHEEK.post.w, flightSteps(GATE_STAIR.h * TS)[0].inset + 1, "a post covers the face beside the lowest step, and its edge");
 });
 
 test("the head goes down into the dark, and the fall above is the fall below: boulders, never courses", () => {

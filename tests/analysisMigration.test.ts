@@ -134,7 +134,7 @@ function oldSave(knowledge: boolean) {
 
 test("v9 migrates body flags onto only the player, preserves gear and grants only frozen legacy analyses", () => {
   const raw = oldSave(true), original = JSON.stringify(raw), w = deserialize(raw), pl = player(w), guardian = actorById(w, "npc.guardian")!;
-  assert.equal(SAVE_VERSION, 14); assert.equal(serialize(w).version, 14); // v14: the entrance (tests/entrance.test.ts)
+  assert.equal(SAVE_VERSION, 15); assert.equal(serialize(w).version, 15); // v15: the stair's cheek walls (tests/entrance.test.ts)
   assert.equal(JSON.stringify(raw), original, "migrating never mutates the caller's JSON");
   assert.equal(pl.definition, "golem"); assert.equal(guardian.definition, "guardian");
   assert.deepEqual(pl.upgrades, ["golem.arm", "golem.slot.rune1"]); assert.deepEqual(guardian.upgrades, []);

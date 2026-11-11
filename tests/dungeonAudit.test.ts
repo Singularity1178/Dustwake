@@ -21,7 +21,12 @@ const props = (kind: string) => d.props.filter((p) => p.kind === kind);
 test("the layout audit finds nothing in the dungeon but what is there by design", () => {
   const found = auditArea("dungeon");
   // boulders heaped on the collapsed SURFACE GATE's rubble, and the seam of night air buried in it
-  const gate = found.filter((f) => (f.check === "in-wall" && f.msg.startsWith("rockpile@")) || f.check === "light");
+  // and under the same fall the stair's own stonework: its two newel posts and two cheek walls stand in the rubble
+  // that buries the flight (floor once it is dug out), and the fall's boulders lie heaped against them
+  const stonework = /stair(post|cheek)\.[we] /;
+  const buried = found.filter((f) => stonework.test(f.msg) && (f.check === "in-wall" || ((f.check === "crowded" || f.check === "overlap") && f.msg.startsWith("rockpile@"))));
+  assert.equal(buried.filter((f) => f.check === "in-wall").length, 4, buried.map((f) => f.msg).join("\n"));
+  const gate = found.filter((f) => (f.check === "in-wall" && f.msg.startsWith("rockpile@")) || f.check === "light" || buried.includes(f));
   // the throne hall (behind the cracked wall), the treasury (behind the locked door) and two gaol cells (behind bars)
   const sealed = found.filter((f) => f.check === "sealed");
   assert.equal(sealed.length, 4, sealed.map((f) => f.msg).join("\n"));

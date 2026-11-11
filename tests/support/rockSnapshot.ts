@@ -4,7 +4,8 @@
 //   surface-N.png          the surface at noon where ore veins stand among rocks and boulders
 //   stairhead-stages.png   the stair head at each dig stage (buried, earth, earth, rock, rock broken through, open)
 //   stair-above.png        the open stair head with the golem beside it
-//   stair-below-*.png      the flight in the halls: choked and open, lit as in play and full-bright
+//   stair-below-*.png      the hall and the flight in the halls: choked and open, lit as in play and full-bright,
+//                          and close up (clear, and with the golem against a cheek wall)
 //   pick-KIND.png          only when asked for: candidate shapes for a kind, each under its seed number
 //                          (how art/rocks.ts ROCK_SEEDS was chosen)
 // Nothing is asserted here; tests/rockArt.test.ts holds what the art has to keep.
@@ -16,11 +17,12 @@ import { installDom } from "./daySnapshot";
 import { Game } from "../../src/game/game";
 import { createWorld, enterArea, getArea, player, setFlag, type World } from "../../src/game/world/world";
 import { teleportTo } from "../../src/game/sim/debug";
+import { stepPlayer } from "../../src/game/sim/step";
 import { advanceDayTo } from "../../src/game/sim/daytime";
 import { openEntrance } from "../../src/game/sim/digging";
 import { DIG_SITES, digTotal } from "../../src/game/content/digging";
 import { FLAGS } from "../../src/game/content/flags";
-import { GATE_STAIR } from "../../src/game/content/geography";
+import { GATE_PASSAGE } from "../../src/game/content/geography";
 import { TS } from "../../src/game/content/tiles";
 import { propSprite } from "../../src/game/art/props";
 import { spriteCache } from "../../src/game/art/common";
@@ -72,7 +74,7 @@ const ROWS: [string, string, Cell[]][] = [
   ["ROCK (HARVESTED FOR STONE)", GRASS, [["rock", 0, false, "V0"], ["rock", 1, false, "V1"], ["rock", 2, false, "V2"], ["rock", 3, false, "V3"], ["rock", 0, true, "BROKEN"], ["rock", 1, true, "BROKEN"]]],
   ["IRON VEIN (HARVESTED FOR ORE)", GRASS, [["ironore", 0, false, "V0"], ["ironore", 1, false, "V1"], ["ironore", 2, false, "V2"], ["ironore", 0, true, "BROKEN"], ["ironore", 1, true, "BROKEN"]]],
   ["BOULDER, OUTCROP, CAIRN (SCENERY)", GRASS, [["boulder", 0, false, "V0"], ["boulder", 1, false, "V1"], ["boulder", 2, false, "V2"], ["outcrop", 0, false, "V0"], ["outcrop", 1, false, "V1"], ["cairn", 0, false, "CAIRN"], ["cairn", 1, false, "CAIRN"]]],
-  ["THE FALL ON THE STAIR BELOW", FLOOR, [["rockpile", 0, false, "V0"], ["rockpile", 1, false, "V1"], ["rockpile", 2, false, "V2"], ["stairfall", 0, false, "FALL"], ["stairfoot", 0, false, "FOOT"]]],
+  ["THE FALL ON THE STAIR BELOW", FLOOR, [["rockpile", 0, false, "V0"], ["rockpile", 1, false, "V1"], ["rockpile", 2, false, "V2"], ["stairfall", 0, false, "FALL"], ["stairpost", 0, false, "POST"], ["stairpost", 1, false, "BROKEN"]]],
   ["STAIR HEAD BY DIG STAGE", GRASS, [0, 1, 2, 3, 4, 5].map((v) => ["buriedgate", v, false, `STAGE ${v}`] as Cell)],
 ];
 function spriteSheet(): RCanvas {
@@ -173,7 +175,7 @@ export function run(dir = ".preview/rocks", only: string[] = []): number {
   // ---- the flight in the halls: choked (seen from the Vestibule) and open (the golem on it), lit and full-bright
   if (want("below")) {
     const { g, w } = host(12), pl = player(w);
-    const sx = (GATE_STAIR.x + GATE_STAIR.w / 2) * TS, sy = GATE_STAIR.y * TS;
+    const sx = (GATE_PASSAGE.x + GATE_PASSAGE.w / 2) * TS, sy = GATE_PASSAGE.y * TS;
     const shot = (mode: Mode) => { const f = frame(g, mode), cam = (g as any).cam, c = mk(150, 150); cx(c).drawImage(f, Math.round(sx - 75 - cam.x), Math.round(sy - 46 - cam.y), 150, 150, 0, 0, 150, 150); return c; };
     if (!teleportTo(w, pl, "dungeon", sx - 30, sy - 22)) throw new Error("no room in the Vestibule");
     pl.facing = "down";
@@ -183,6 +185,15 @@ export function run(dir = ".preview/rocks", only: string[] = []): number {
     pl.x = sx - 14; pl.y = sy + 3 * TS; pl.facing = "down";
     steps(g, 90);
     save("stair-below-open", row([shot("lit"), shot("flat")]), 4);
+    // close up, full-bright: the golem in the hall and the flight clear, then the golem walked as far west
+    // as the cheek wall lets it, half-way up
+    const close = () => { const f = frame(g, "flat"), cam = (g as any).cam, c = mk(84, 116); cx(c).drawImage(f, Math.round(sx - 42 - cam.x), Math.round(sy - 14 - cam.y), 84, 116, 0, 0, 84, 116); return c; };
+    pl.x = sx + 18; pl.y = sy + 20; pl.facing = "down";
+    steps(g, 30);
+    const clear = close();
+    pl.x = sx - 10; pl.y = sy + 4 * TS; pl.facing = "left";
+    for (let i = 0; i < 60; i++) { stepPlayer(w, DT, { ix: -1, iy: 0, use: false } as any); g.update(DT); }
+    save("stair-below-close", row([clear, close()]), 8);
   }
   return 0;
 }

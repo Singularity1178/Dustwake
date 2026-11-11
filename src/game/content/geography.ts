@@ -20,11 +20,26 @@ export const GATE_CORRIDOR = { x: 34, y: 50, w: 4, h: 5 } as const;
 export const GATE_EXIT = { x: 36, y: 55 } as const;
 
 /**
- * The stair itself, in dungeon tiles: the corridor plus the exit row. The halls
- * are the first cellar floor; this flight climbs south to the surface. It is
- * choked with earth and fallen vault until it is dug out from above.
+ * The whole way up, in dungeon tiles: the corridor plus the exit row. This is
+ * what the fall filled (earth and fallen vault, to the roof) and what digging
+ * the stair out from above clears.
  */
-export const GATE_STAIR = { x: GATE_CORRIDOR.x, y: GATE_CORRIDOR.y, w: GATE_CORRIDOR.w, h: GATE_CORRIDOR.h + 1 } as const;
+export const GATE_PASSAGE = { x: GATE_CORRIDOR.x, y: GATE_CORRIDOR.y, w: GATE_CORRIDOR.w, h: GATE_CORRIDOR.h + 1 } as const;
+/** Its north end: a short flagged hall from the Vestibule to the foot of the stair, earth still trodden along it. */
+export const GATE_HALL = { x: GATE_PASSAGE.x, y: GATE_PASSAGE.y, w: GATE_PASSAGE.w, h: 2 } as const;
+/**
+ * The stair itself: the rest of the passage. The halls are the first cellar
+ * floor; this flight climbs south to the surface, from the hall's end to the
+ * exit row, between two cheek walls that end in a newel post each.
+ */
+export const GATE_STAIR = { x: GATE_PASSAGE.x, y: GATE_HALL.y + GATE_HALL.h, w: GATE_PASSAGE.w, h: GATE_PASSAGE.h - GATE_HALL.h } as const;
+/**
+ * The stair's stonework that stands in the way (px from the passage's west or
+ * east wall, and from the flight's north edge): a newel post at the foot of
+ * each cheek wall, then the cheek itself up the side of the flight. The
+ * builder places them and art/stairs.ts draws the flight to the same numbers.
+ */
+export const STAIR_CHEEK = { post: { w: 12, d: 7 }, wall: { w: 8 } } as const;
 
 /**
  * Entrances: a way between two areas that has to be opened first (dug out). One
@@ -41,7 +56,7 @@ export const ENTRANCES: Record<string, EntranceDef> = {
   surface_stair: {
     flag: "entrance.surface_stair.open",
     above: { area: "surface", portal: "stair_down" },
-    below: { area: "dungeon", portal: "stair_up", clear: GATE_STAIR, removes: ["rockpile", "stairfall"], lights: "stairlight" },
+    below: { area: "dungeon", portal: "stair_up", clear: GATE_PASSAGE, removes: ["rockpile", "stairfall"], lights: "stairlight" },
   },
 };
 

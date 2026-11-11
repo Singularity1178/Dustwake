@@ -4,7 +4,7 @@ import { rgb } from "../util";
 import type { Pen, Rng } from "../util";
 import { S, WD, IR, CL, GD, BN } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
-import { flightPix, FOOT_STEPS, STEP } from "./stairs";
+import { stairRGB } from "./stairs";
 
 function books(p: Pen, x: number, y: number, w: number, h: number, r: Rng, sparse = 0) {
   const cols = ["#6a2a2a", "#2a3a6a", "#3a5a2a", "#6a5a2a", "#5a2a5a", "#7a6a50"];
@@ -686,17 +686,29 @@ export const DUNGEON_PROP_ART: Record<string, PropArt> = {
     });
   },
   // ---------- the stair up to the surface
-  // Its three lowest steps, standing clear in the Vestibule: the same steps as the flight behind them
-  // (art/stairs.ts), narrower, between their own kerbs. The line along the north edge is the first step's
-  // shadow on the floor.
-  stairfoot: (_v, _alt, M) => {
-    return M(36, 25, (p) => {
-      p.r(1, 0, 34, 1, "rgba(0,0,0,0.4)");
-      for (let y = 0; y < FOOT_STEPS * STEP; y++) for (let x = 0; x < 36; x++) { const c = flightPix(x, y, 36, 0, 1); p.p(x, y + 1, rgb(c[0], c[1], c[2])); }
+  // The newel post at the foot of a cheek wall: a squared block of the stair's own stone (art/stairs.ts), seen as
+  // everything standing is, its top and its south face. The west one (0) is whole, under a capstone. The east
+  // one (1) broke off short when the vault came down: a stump with a raked, split top.
+  stairpost: (v, _alt, M) => {
+    return M(12, 19, (p) => {
+      const g = (t: number) => { const c = stairRGB(t); return rgb(c[0], c[1], c[2]); }, O = "#141016";
+      if (!(v & 1)) {
+        p.o(0, 0, 12, 8, g(132), O); p.r(1, 1, 10, 1, g(164)); p.r(1, 6, 10, 1, g(112)); p.p(1, 2, g(150)); p.p(8, 4, g(116)); p.p(4, 3, g(142));
+        p.o(1, 7, 10, 12, g(74), O); p.r(2, 8, 8, 1, g(46)); p.r(2, 9, 1, 9, g(96)); p.r(2, 13, 8, 1, g(42)); p.p(6, 10, g(52)); p.p(6, 11, g(52)); p.p(4, 15, g(52)); p.p(4, 16, g(52)); p.p(8, 16, g(60));
+        p.r(2, 17, 8, 1, g(54)); p.p(3, 17, "#4e3c2a"); p.p(7, 17, "#5a4630"); p.p(9, 17, "#3e2e20");
+      } else {
+        p.o(1, 7, 10, 12, g(70), O);
+        p.r(1, 7, 10, 2, O); p.r(1, 6, 5, 1, O); p.r(1, 5, 3, 1, O);                 // the break: raked down to the east
+        p.r(2, 7, 4, 1, g(140)); p.r(2, 6, 2, 1, g(150)); p.r(2, 8, 7, 1, g(124)); p.r(6, 9, 4, 1, g(108)); p.p(9, 9, O); p.p(5, 8, g(84)); p.p(4, 7, g(96));
+        p.r(2, 10, 1, 8, g(92)); p.r(2, 13, 8, 1, g(40)); p.p(7, 10, g(46)); p.p(7, 11, g(46)); p.p(6, 12, g(46)); p.p(5, 15, g(50)); p.p(5, 16, g(50));
+        p.r(2, 17, 8, 1, g(52)); p.p(4, 17, "#5a4630"); p.p(8, 17, "#4e3c2a");
+      }
     });
   },
-  // The foot of the fall: the last of the earth and vault stone, lying across the third step. It goes when the
-  // stair is dug out.
+  // A cheek wall's footprint: nothing to draw (the wall is baked with the steps it stands beside).
+  staircheek: (_v, _alt, M) => M(2, 2, () => {}),
+  // The toe of the fall: the last of the earth and vault stone, spilled out of the hall's mouth onto the
+  // Vestibule's floor. It goes when the stair is dug out.
   stairfall: (_v, _alt, M) => {
     return M(40, 11, (p, r) => {
       for (let j = 0; j < 8; j++) {

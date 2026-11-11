@@ -9,7 +9,7 @@ import { S, WD, IR, GD } from "./palette";
 import { cached, stoneBlob } from "./common";
 import { decalBounds, drawDecal } from "./decals";
 import { townFloorPix, townWallFacePix, rampartTopPix } from "./tilesTown";
-import { flightPix, FOOT_STEPS } from "./stairs";
+import { flightPix } from "./stairs";
 
 // ---------------- Background baking ----------------
 /** What background baking reads from an area. */
@@ -170,21 +170,23 @@ function groundBorder(m: BakeSource, st: number, tx: number, ty: number): boolea
 
 /**
  * A stair tile (FS.STAIR): one pixel of the flight it is part of (art/stairs.ts). The flight is the run of stair
- * tiles this one stands in, whatever lies on them: its kerbs are at the run's two sides, its wear down the run's
- * middle, and its steps are numbered from the run's north end, where the foot leaves off. A fall of rubble on a
- * step does not end the run (the steps are there under it). Memoised: the bake visits a tile's pixels together.
+ * tiles this one stands in, whatever lies on them: its walls are at the run's two sides, its wear down the run's
+ * middle, and its steps are laid out over the run's length, foot at the north end and top at the south. A fall
+ * of rubble on a step does not end the run (the steps are there under it). Memoised: the bake visits a tile's
+ * pixels together.
  */
-let stairM: BakeSource | null = null, stairTx = -1, stairTy = -1, stairX0 = 0, stairW = 0, stairY0 = 0;
+let stairM: BakeSource | null = null, stairTx = -1, stairTy = -1, stairX0 = 0, stairW = 0, stairY0 = 0, stairH = 0;
 function stairPix(m: BakeSource, tx: number, ty: number, lx: number, ly: number): C3 {
   if (m !== stairM || tx !== stairTx || ty !== stairTy) {
     const is = (x: number, y: number) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.style[y * m.w + x] === FS.STAIR && !isWallMassT(m.grid[y * m.w + x]);
-    let x0 = tx, x1 = tx, y0 = ty;
+    let x0 = tx, x1 = tx, y0 = ty, y1 = ty;
     while (is(x0 - 1, ty)) x0--;
     while (is(x1 + 1, ty)) x1++;
     while (is(tx, y0 - 1)) y0--;
-    stairM = m; stairTx = tx; stairTy = ty; stairX0 = x0; stairW = (x1 - x0 + 1) * TS; stairY0 = y0;
+    while (is(tx, y1 + 1)) y1++;
+    stairM = m; stairTx = tx; stairTy = ty; stairX0 = x0; stairW = (x1 - x0 + 1) * TS; stairY0 = y0; stairH = (y1 - y0 + 1) * TS;
   }
-  return flightPix((tx - stairX0) * TS + lx, (ty - stairY0) * TS + ly, stairW, FOOT_STEPS);
+  return flightPix((tx - stairX0) * TS + lx, (ty - stairY0) * TS + ly, stairW, stairH);
 }
 
 function thicketPix(tx: number, ty: number, lx: number, ly: number): C3 {
