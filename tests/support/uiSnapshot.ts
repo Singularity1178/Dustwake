@@ -65,7 +65,23 @@ class RCtx {
       if (al > 0) this.blend((ty * W + tx) * 4, [src.data[si], src.data[si + 1], src.data[si + 2], al], this.globalAlpha);
     }
   }
-  save() {} restore() {} beginPath() {} rect() {} clip() {}
+  // Drawing state and paths, as far as the game uses them: save/restore keep the state (vision mode sets a
+  // composite operation and an alpha inside a save), and a path is rects (vision's rings and ticks are 1 px rects),
+  // filled once as their union. Anything else the browser has is left out, so a new use fails loudly here.
+  private stack: [string, number, string, boolean][] = [];
+  private path: [number, number, number, number][] = [];
+  save() { this.stack.push([this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled]); }
+  restore() { const s = this.stack.pop(); if (s) [this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled] = s; }
+  beginPath() { this.path = []; }
+  rect(x: number, y: number, w: number, h: number) { this.path.push([x, y, w, h]); }
+  fill() {
+    const c = parseColor(this.fillStyle), W = this.canvas.width, H = this.canvas.height, done = new Set<number>();
+    for (const [x, y, w, h] of this.path) {
+      const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y)), x1 = Math.min(W, Math.round(x + w)), y1 = Math.min(H, Math.round(y + h));
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) { const i = yy * W + xx; if (!done.has(i)) { done.add(i); this.blend(i * 4, c, this.globalAlpha); } }
+    }
+  }
+  clip() {}
 }
 export class RCanvas {
   width: number; height: number; data: Uint8ClampedArray; private ctx?: RCtx;

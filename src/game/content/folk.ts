@@ -15,7 +15,8 @@
 //     are drawn from the world seed by hash, so each new world has its own town.
 //
 // Places are the area's `spots` (map.ts: Spot): a query names spot kinds and,
-// optionally, an id prefix and how near home to look.
+// optionally, an id prefix and how near home to look. A stool, an anvil or a
+// bedroll holds one person at a time (EXCLUSIVE_KINDS); meeting places are shared.
 
 import type { Spot } from "../map";
 
@@ -322,6 +323,16 @@ export const INTERIOR_OF: Partial<Record<Activity, string>> = { tavern: "tavern"
 
 /** Each area's people: the habitat they belong to. */
 export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: ["town", "town_tavern"], forest: ["surface"] };
+
+/**
+ * Places one person holds at a time: a stool or a bench, a work place (an anvil, a haul pile), a chore, a bedroll, a
+ * place by the fire, a blind, a patch to forage, a stall and the customer's place in front of it, a place in the knot
+ * at the tavern door, and (by id: they are `idle` spots) the gate's two watch posts. sim/folk.ts never sends anyone
+ * to one that someone else stands at or is heading for. Every other kind (the meeting places, a stroll's corners,
+ * the watch's rounds, doorsteps) is shared: a knot, each person a few px off the spot, never a stack.
+ */
+export const EXCLUSIVE_KINDS: Spot["kind"][] = ["seat", "bench", "work", "chore", "bed", "camp", "hunt", "forage", "stall", "customer", "keeper", "gather"];
+export const EXCLUSIVE_IDS: string[] = ["watch."];
 
 /** Lines by what they are doing when the golem talks to them (added to the archetype's and the traits'). */
 export const ACTIVITY_LINES: Partial<Record<Activity, string[]>> = {

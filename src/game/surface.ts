@@ -483,7 +483,8 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
     place("peltrack", "camp.rack", C.x + 72, C.y - 4);
     place("seatlog", "camp.log", C.x, C.y + 24);
     const beds: [number, number][] = [[C.x - 44, C.y + 14], [C.x + 42, C.y - 24], [C.x + 46, C.y + 22]];
-    beds.forEach(([x, y], i) => { const b = place("bedroll", `camp.bed.${i + 1}`, x, y, { v: i }); if (b) spots.push({ id: `bed.${i + 1}`, kind: "bed", x: b.x, y: b.y - 3, facing: "down" }); });
+    // a sleeper's feet a little below the bedroll: the head lies on the pillow (its north end), the blanket over the wool
+    beds.forEach(([x, y], i) => { const b = place("bedroll", `camp.bed.${i + 1}`, x, y, { v: i }); if (b) spots.push({ id: `bed.${i + 1}`, kind: "bed", x: b.x, y: b.y + 2, facing: "down" }); });
     // where people stand: the nearest tile with floor under it and nothing solid on it or beside it
     const stand = (id: string, kind: Spot["kind"], tx: number, ty: number, facing: Spot["facing"] = "down") => {
       for (let r = 0; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {

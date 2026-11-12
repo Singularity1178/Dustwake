@@ -21,7 +21,10 @@ import { FONT_GLYPHS } from "../src/game/font";
 import { reachable, type Box } from "../src/game/sim/reach";
 import { propBlocks, boxFree } from "../src/game/sim/collision";
 import { portalArrival, portalById, portalsOf } from "../src/game/sim/portals";
-import { player, enterArea, type World } from "../src/game/world/world";
+import { createWorld, getArea, player, enterArea, type World } from "../src/game/world/world";
+import { CENSUS } from "../src/game/content/folk";
+import { isFolk } from "../src/game/sim/folk";
+import { actorDef, capable } from "../src/game/content/actors";
 import { serialize, deserialize } from "../src/game/world/save";
 import { debugPlaces } from "../src/game/sim/debug";
 import { TOWN_PROP_ART } from "../src/game/art/propsTown";
@@ -215,10 +218,10 @@ test("light is the town's map of itself: runes for the bright side, fire for eve
 });
 
 // ------------------------------------------------------------------ scope
-test("appearance only: nobody lives here yet, and nothing can be bought, stored, crafted, taken or cut down", () => {
+test("lived in, but no shops yet: the census's townsfolk are the only people, and nothing can be bought, stored, crafted, taken or cut down", () => {
   for (const id of TOWN_AREAS) {
     const d = AREAS[id]();
-    assert.equal((d.npcs ?? []).length, 0, `${id}: no NPCs, shopkeepers, townsfolk or golems`);
+    assert.equal((d.npcs ?? []).length, 0, `${id}: the builder places nobody (no shopkeeper, golem or special NPC); townsfolk come from the census`);
     assert.equal(d.loose.length, 0, `${id}: nothing to pick up`);
     assert.equal(d.ritual, undefined);
     for (const p of d.props) {
@@ -227,6 +230,19 @@ test("appearance only: nobody lives here yet, and nothing can be bought, stored,
       assert.ok(!HARVEST[p.kind], `${id}: ${p.id} is not harvestable`);
       assert.ok(!p.item && !p.container, `${id}: ${p.id} holds nothing`);
     }
+  }
+  // who does live here: exactly the census's Westwake rows, all townsfolk (sim/folk.ts), none of them a golem, a
+  // shopkeeper or anyone with a dialogue script or a pack (talking to one is a line in a bubble, not a shop)
+  const w = createWorld(7);
+  for (const id of TOWN_AREAS) getArea(w, id);
+  const here = w.actors.filter((a) => TOWN_AREAS.includes(a.area));
+  const rows = CENSUS.filter((r) => TOWN_AREAS.includes(r.area));
+  assert.ok(rows.length >= 10, "people live in Westwake");
+  assert.deepEqual(here.map((a) => a.id).sort(), rows.map((r) => r.id).sort(), "everyone in Westwake is a census row, and every row is there");
+  for (const a of here) {
+    assert.ok(isFolk(a), `${a.id} is a townsperson`); assert.equal(a.npc, undefined, `${a.id}: no dialogue script`);
+    assert.ok(!capable(a, "worker") && !capable(a, "craft") && !actorDef(a).power, `${a.id}: not a golem, makes nothing`);
+    assert.equal(actorDef(a).inventory.slots, 0, `${a.id}: carries nothing to sell or store`);
   }
 });
 

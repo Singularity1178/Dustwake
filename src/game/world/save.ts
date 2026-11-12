@@ -92,9 +92,13 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      want of a route carries the reason's new name (routes are no longer
   *      runes alone).
   * v18: townsfolk (sim/folk.ts). Generic NPCs are actors of kind "folk" with
-  *      `person` (who) and `life` (what they are doing); `census.<area>` flags
-  *      record that an area's people were made. A pre-v18 save gets the people
-  *      of every area it had visited on load (populateFolk), from its own seed.
+  *      `person` (who they are, generated once from the world seed) and `life`
+  *      (what they are doing, and the place they hold); a `census.<area>` flag
+  *      records that an area's people were made. No older field changed, so
+  *      MIGRATIONS[17] only bumps the version: `deserialize` makes the people of
+  *      every area a save has visited and has no census flag for (populateFolk:
+  *      from the save's own seed, never its rng), so the town and the camp of a
+  *      save from before v18 are lived in on load, and a v18 save is untouched.
   */
 export const SAVE_VERSION = 18;
 

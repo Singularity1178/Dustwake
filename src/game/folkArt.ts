@@ -11,7 +11,7 @@ import type { Facing } from "./golem";
 import type { ChatIcon, Garb } from "./content/folk";
 import { drawText, textWidth } from "./font";
 import { wrapText } from "./ui/textWrap";
-import type { FolkLook, FolkPose } from "./sim/folk";
+import { naturalHead, type FolkLook, type FolkPose } from "./sim/folk";
 
 const OUT = "#1a1418";
 const BW = 36, BH = 50, OX = 18, OY = 45;
@@ -38,7 +38,7 @@ function colours(garb: Garb, l: FolkLook): Garbs {
 }
 
 /** The pixel grid one sprite is painted into, coordinates relative to the feet (x 0 is the middle column, y -1 the ground row). */
-class Grid {
+export class FolkGrid {
   c: (string | null)[] = new Array(BW * BH).fill(null);
   g = new Uint8Array(BW * BH);
   /** 1: takes the outline (body and gear); 0: thin things (shafts, strings) stay unoutlined. */
@@ -96,7 +96,7 @@ export interface FolkArtPose {
 }
 
 /** Paint one person. Exported for the preview sheet and tests. */
-export function paintFolk(gd: Grid, garb: Garb, l: FolkLook, age: "young" | "adult" | "old", p: FolkArtPose) {
+export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | "adult" | "old", p: FolkArtPose) {
   const C = colours(garb, l), [skin, skinD] = SKIN[l.skin % SKIN.length], hair = HAIR[l.hair % HAIR.length], hairD = shade(hair, 0.72);
   const side = p.facing === "left" || p.facing === "right", back = p.facing === "up";
   const young = age === "young", old = age === "old";
@@ -347,8 +347,8 @@ export function paintFolk(gd: Grid, garb: Garb, l: FolkLook, age: "young" | "adu
   for (const k of held) tool(k);
   if (garb === "watch" && !p.pole && pose !== "lean" && pose !== "stand" && pose !== "walk") { const t = main; main = off; off = t; }
 
-  // ---- the head (it may look elsewhere than the body faces)
-  const hf: Facing = p.head ?? p.facing;
+  // ---- the head (it may look elsewhere than the body faces, a quarter turn at most: never round to the back)
+  const hf: Facing = naturalHead(p.facing, p.head) ?? p.facing;
   const hside = hf === "left" || hf === "right", hback = hf === "up";
   // the sprite of a body facing right is painted facing left and mirrored at the end: paint the head in that space
   const mirrorF = (x: Facing): Facing => (x === "left" ? "right" : x === "right" ? "left" : x);
@@ -456,11 +456,12 @@ const cache = new Map<string, Sprite>();
 const lookKey = (l: FolkLook) => `${l.skin}${l.hair}${l.style}${l.beard}${l.build}${l.tall}${l.cloth}${l.trim}${l.hat}${l.acc}${l.fem}`;
 
 export function folkSprite(garb: Garb, age: "young" | "adult" | "old", l: FolkLook, p: FolkArtPose): Sprite {
+  p = { ...p, head: naturalHead(p.facing, p.head) }; // one sprite (and cache entry) for every head that draws the same
   const key = `${garb}|${age}|${lookKey(l)}|${p.facing}|${p.head ?? "-"}|${p.pose}|${p.frame}|${+p.carry}${+p.lantern}${+p.pole}${+p.blink}`;
   let s = cache.get(key);
   if (s) return s;
   if (cache.size > 6000) cache.clear();
-  const gd = new Grid();
+  const gd = new FolkGrid();
   paintFolk(gd, garb, l, age, p);
   s = makeSprite(BW, BH, OX, OY, 0, (pen) => {
     for (let y = 0; y < BH; y++) {

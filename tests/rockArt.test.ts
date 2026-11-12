@@ -67,7 +67,7 @@ test("the retextured sprites are pixel-stable", () => {
 });
 
 test("art only: sizes, footprints and what is harvested are as they were, and nothing saved changed", () => {
-  assert.equal(SAVE_VERSION, 17, "the retexture changed no saved field (v15 is the stair's cheek walls, v16 raises its newel posts: tests/entrance.test.ts; v17 is routes: tests/routes.test.ts)");
+  assert.equal(SAVE_VERSION, 18, "the retexture changed no saved field (v15 is the stair's cheek walls, v16 raises its newel posts: tests/entrance.test.ts; v17 is routes: tests/routes.test.ts; v18 is townsfolk: tests/folk.test.ts)");
   assert.deepEqual(ROCK_SIZE, { rock: [22, 18], ironore: [22, 18], boulder: [28, 22], outcrop: [48, 32] });
   for (const k of KINDS) {
     const s = propSprite(k, 0, false)!;

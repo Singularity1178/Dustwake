@@ -10,7 +10,7 @@ src/game/
   content/     data: tiles, items, props, glyphs, flags, tasks,       no DOM
                interaction rules, actors, power, jobs, vision, ritual geometry, NPCs, dialogue,
                monologue lines, cutscene scripts, the day/night cycle (daycycle.ts),
-               tools (tools.ts), dig sites (digging.ts), stations (crafting.ts), entrances (geography.ts)
+               tools (tools.ts), dig sites (digging.ts), stations (crafting.ts), entrances (geography.ts), townsfolk (folk.ts)
   map.ts       tutorial dungeon builder -> AreaData (deterministic)  no DOM
   world/       runtime state that is simulated and saved              no DOM
     area.ts      Area: one area's mutable state + change notifications
@@ -36,6 +36,7 @@ src/game/
     tools.ts     which tools are working for an actor (heads on arms, hafted tools carried by a wielder)
     digging.ts   the dig stroke, dig sites, opening an entrance
     routes.ts    routes between areas over runes and portals (every first hop of the shortest route)
+    folk.ts      townsfolk: people from the census, plans off the clock, places held one at a time, heads, chat, settling
     step.ts      stepPlayer / stepWorld, locomotion
   view/        Area presentation, actor drawing, event audience, vision overlay, browser persistence, zoom, the rune's glow by state (runeFx.ts)
   ui/          screen stack, overlay kit + UiHost, text wrap, dialogue layout,
@@ -46,7 +47,7 @@ src/game/
   art/         procedural sprites by family: palette, common (cache), tiles (bake +
                tile sprites), decals, props (+ propsSurface / propsDungeon), items,
                rocks (standing rock), stairs (the one stair's steps)
-  light.ts golem.ts npcArt.ts workerArt.ts circle.ts schematic.ts font.ts audio.ts   procedural art/audio (light.ts also applies the golem's glow;
+  light.ts golem.ts npcArt.ts folkArt.ts workerArt.ts circle.ts schematic.ts font.ts audio.ts   procedural art/audio (light.ts also applies the golem's glow;
                workerArt.ts is BODY_ART: bodies with power and work, the worker golem; workerAnim.ts is its animation sequencer)
 tests/         headless sim tests (npm test)
 ```
@@ -199,6 +200,8 @@ The page stacks two canvases with the same display rect. The **UI layer** stays 
 
 **v17** (routes, and the rune network's ends agreeing): no field changed shape (a gather order's `storage` may now be `null`: the worker keeps what it gathers). `MIGRATIONS[16]` clears `rune.dungeon.active` in a save whose circle is not active (before v17 a trip down from the surface rune set it over a broken circle), and renames a stopped order's reason `noRuneRoute` to `noRoute`. See "Routes, the severed rune and the pack (v17)".
 
+**v18** (townsfolk): actors may carry `person` and `life`, and the world `census.<area>` flags; no older field changed shape, so `MIGRATIONS[17]` only bumps the version. `deserialize` makes the people of every area a save has visited that has no census flag yet (`populateFolk`, from the save's own seed), so a town or camp visited before v18 is lived in on load and a v18 save is untouched. See "Townsfolk (v18)".
+
 Player-facing save/load is deliberately minimal: `K` on the play screen writes the one localStorage slot (`saveToStorage`), and `L` on the play or title screen loads it (`loadFromStorage` -> `Game.resume`). It is the same format and the same functions as the debug hooks; no slots, no autosave, no menu. Open the game with `?debug` to get `window.dustwake.save() / load() / serialize()`.
 
 ### Inventory
@@ -286,7 +289,7 @@ A tile edit costs about 9 bytes in the diff (3000 surface edits: about 27 KB). T
 - *Interaction*: `npcInteractables(w, area)` derives one interactable per actor standing in the area (actors live on the World, not the Area, so these are not in the area's revision cache): `"worker"` for an actor with the `worker` capability (`RULES.worker` -> `manageActor`), else `"npc"` for one with an NpcDef. The talk target carries `actorId` and `npc`. `RULES.npc` starts a short `talk` task whose `talk` effect opens the NPC's dialogue. Every talk first emits `talkedTo` `{actor, npc}`, whether a segment follows (`dialogue`) or only the idle line (a plain `message`), so something that must react to every interaction listens to that. The task is area-bound like every other task.
 - *Rendering*: `view/actors.ts` looks up the ActorDef's art key, drawing albedo and emissive passes. The guardian still uses `NPC_ART` and the host's eased `NpcLook`; workers derive their minimal pose from their task, job and power. The guardian's eye glow remains a dynamic AreaView light. No golem or guardian golden hash changed.
 - *State*: an NPC's runtime state is a flag under its id (`npc.<id>.awake`; absent = dormant), set only through the `npcAwake` effect. I chose a flag over an actor field because dialogue requirements already read flags, saves need no actor schema change, and "dormant" stays a plain reversible switch: repair or speech later only sets it again.
-- *Special vs generic*: `NpcType` is `"special"` only. Generic NPCs (archetypes, stats, randomized looks, personality) will add `"generic"` and their own fields. None of that exists yet.
+- *Special vs generic*: `NpcType` is `"special" | "generic"`. A special NPC is a row here; generic NPCs (townsfolk, v18) carry their identity on the actor (`Actor.person`: archetype, traits, name, look, generated from the world seed) and have no row. They reuse the actor, collision, interaction and drawing paths with their own data: see "Townsfolk (v18)".
 
 **Dialogue** (`content/dialogue.ts`, `sim/dialogue.ts`): scripts are data keyed by script id. A script is ordered **segments** (`when`: a `Requirement`, `done`: completion flag, `pages`). Talking plays *the first segment whose requirement is met and whose done flag is unset*, so progress is derived from flags and there is no saved cursor. A page has lines, an optional speaker, optional `when` (flavour pages, e.g. the guardian noticing the iron arm), and optional **beats**: `beat` fires when the page shows, `then` when it is dismissed. Beats are a registry (`BEATS`) of named handlers that return plain Effects (`npcAwake`, `repairEye`, `npcGive` with a `once` guard flag, `segmentDone`). Every effect is idempotent, so replaying or resuming never repeats a gift. The commands `talkTo`, `dialogueBeat` (validated: the segment must be playable and contain the beat) and `finishSegment` are what the screen calls. Tests call them too, through `playSegment`.
 
@@ -312,7 +315,7 @@ The foundation suite adds `actorsStorage.test.ts`, `jobs.test.ts`, `analysisMigr
 - **Entity/component framework.** `Actor` remains a plain record with optional dialogue identity and durable order, selected by a data definition and capabilities. No ECS or inheritance hierarchy is needed for these foundations.
 - **Job board / automatic allocation.** Durable explicit orders and pathfinding exist; priorities, assignment UI and autonomous selection of orders wait for content.
 - **A job board, recruitment and the final vision renderer.** The worker and storage screens exist (see "Worker management and storage screens"); orders are still one per worker, given by hand. A board of open jobs, automatic allocation and recruitment are later.
-- **Archetype, stats and personality data for generic NPCs.** Dialogue exists (special NPCs). Generic-NPC data waits for the generic-NPC work.
+- **Stats and dialogue for generic NPCs.** Archetypes, traits and generated looks exist (townsfolk, v18); a townsperson answers with one line, not a dialogue script, and has no stats.
 - **Recruiting and following.** Jobs and pathfinding exist; recruitment story conditions and follow behaviour are later handlers/content.
 - **Save slots, autosave, a save menu.** Only the single K/L slot exists.
 
@@ -321,7 +324,7 @@ The foundation suite adds `actorsStorage.test.ts`, `jobs.test.ts`, `analysisMigr
 - **Management and storage polish**: taking items out of a worker's own pack from its screen, a rune picker for its worn slot, and walk spots the player picks on the map. Any later analysis gate needs its own frozen grant in a migration, like v12's. Do not reuse the dungeon's `chest` kind for storage. Z is used for scan because V is already quick placement.
 - **A source for `know.masonry`** (a book or an NPC): until then the brazier can't be learned in normal play.
 - **Guardian repair and recruitment**: the effect for `know.repair` (the flag and its book exist), then guardian segments gated on it, plus speech. These are data rows plus a repair effect.
-- **Generic NPCs**: add `"generic"` to `NpcType` with their own generated data. Spawning, collision, talk and drawing already go through the generic NPC paths.
+- ~~**Generic NPCs**~~ **Done** (v18): "Townsfolk (v18)". Next for them: shopkeepers at the `keeper` spots, and contracts and recruitment through `Life.duty`.
 - More rune sites are rows in `RUNE_NODES` / `RUNE_LINKS`. More recipes, rows in `RECIPES`. Repair is a new effect gated by `know.repair` (the flag and its book exist; the effect does not).
 - ~~Splitting `game.ts` into per-screen modules~~ **Done**: build, crafting, pack, books, schematic and dialogue live in `screens/` behind `UiHost`; the title and chapter cards are in `screens/cards.ts`; `art.ts` is split into `art/`. Next candidates if the host keeps growing: world rendering (`renderWorld` and the `draw*` helpers) into a `view/` renderer, and the arrival cutscene into its own screen. The opening now lives in `screens/intro.ts` behind `CutsceneHost`, with its script in `content/cutscenes.ts`. The arrival can follow the same pattern: add the rune redraw, column and summon as tracks, and add the cues it needs to `CutsceneHost`.
 - **Equipment for the helm, core and extra rune slots**, and whatever opens `rune1..3` (the arm slots take tool heads since v14, and the iron arm opens the left one): only the slots, their rules and the two runes exist. Items are `ITEMS` rows with `wear`, unlocks are flags.
@@ -334,7 +337,7 @@ The foundation suite adds `actorsStorage.test.ts`, `jobs.test.ts`, `analysisMigr
 
 ## The market town (Westwake)
 
-West of the surface, where the Treasury Guardian said a village was. One outdoor area (`town`, 96 x 68) plus six interior areas (`town_smithy`, `town_armory`, `town_jeweler`, `town_tailor`, `town_tavern`, `town_guild`). Appearance only for now: no NPCs, no shop systems, no day/night. Everything below is used by the town or its tests.
+West of the surface, where the Treasury Guardian said a village was. One outdoor area (`town`, 96 x 68) plus six interior areas (`town_smithy`, `town_armory`, `town_jeweler`, `town_tailor`, `town_tavern`, `town_guild`). No shop systems yet; since v13 it keeps the hours ("Day and night (v13)") and since v18 it is lived in ("Townsfolk (v18)"). Everything below is used by the town or its tests.
 
 **The edge and the wall.** The town has no `THICKET` border: every tile that is not wall or building is ground, right up to the last row and column, and the map simply ends there. Nothing else is needed to hold the player in: `boxFree` treats out of bounds as solid and the camera is clamped to the area, so the golem and the view both stop at the last tile. (The bake does not shade ground at the map's edge as if a wall stood beyond it; scatter keeps solid and tall props off the outermost ring so no sprite is cut by the edge.) The wall (`content/town.ts: STREETS.wall`) is a closed ring of `WALL` tiles styled `WS.RAMPART`, two tiles thick, with a third row on the north and south runs for the visible south face. It is open only on the High Street's rows, where it passes between a pair of `tower` buildings at each end: the east gate (the `east_road` portal beyond it) and the West Bar, where the `tollbar` prop spans the passage exactly (its box is the width of the street), so the only way through the wall is the east gate. `art/tilesTown.ts: rampartTopPix` takes a bitmask of the eight neighbours that drop away from a wall-walk tile (open ground, or the wall's own south face) and draws a parapet on each such side plus a corner post on the inside corners of the ring. Building decals are moved to the end of the town's decal list, so houses are painted over the shade, moss, straw and wear around them rather than under them. `world/save.ts: settle` (run by `loadFromStorage`; `deserialize` stays the exact inverse of `serialize`) sets the player down on the nearest free ground if a save made in an older layout would load them inside a solid tile.
 
@@ -355,13 +358,13 @@ West of the surface, where the Treasury Guardian said a village was. One outdoor
 
 **Light as class.** Two kinds of light, never mixed by accident: light runes (`rune_lamp`, `rune_sconce`, `runestand`, `winglow_rune`: blue-white, `flick: 0`) and fire (the dungeon's `torch`, the surface's `torch_post`, `lantern`, `candlestand`, hearths: orange, flickering). `Building.light` and `HIGH_END` decide which a house gets; `tests/town.test.ts` checks the split (no rune lamp south of the square, no torch on the High Street, high-end rooms burn nothing). There is no day/night system; the town uses the surface's dusk ambient so the contrast is always on show.
 
-**Laid out for later.** `AreaData.spots` (`map.ts: Spot`) names the standing places the next systems need: `keeper` behind every counter and `customer` in front of it, a `seat` at every stool, a `stall` pitch behind every market stall, a `door` step at every house, `idle` corners (the Charter Stone, the well, the gate watch), `work` places (anvil, hoist, the golem stands). Nothing reads them yet; the tests prove each is free and can be walked to. Streets are two or more tiles wide, counters run east-west with a way round one end, and the line from each door to its counter is clear. Adding shopkeepers is: an `npcs` row per shop at its `keeper` spot, plus a dialogue script. Adding a shop screen is: a `station` on the counter kind.
+**Laid out for later.** `AreaData.spots` (`map.ts: Spot`) names the standing places the next systems need: `keeper` behind every counter and `customer` in front of it, a `seat` at every stool, a `stall` pitch behind every market stall, a `door` step at every house, `idle` corners (the Charter Stone, the well, the gate watch), `work` places (anvil, hoist, the golem stands). The townsfolk read them (with places of their own appended after the scatter: `content/town.ts: TOWN_FOLK_SPOTS`); the tests prove each is free and can be walked to. Streets are two or more tiles wide, counters run east-west with a way round one end, and the line from each door to its counter is clear. Adding shopkeepers is: an `npcs` row per shop at its `keeper` spot, plus a dialogue script. Adding a shop screen is: a `station` on the counter kind.
 
 **Labour golems.** The lore has only plain hauling golems here, and none are placed. Their absence is authored instead: `golempad` stands and the `bays` building in the stone yard, `yokerack`, `tallyboard`, `crane`, `stonestack` (lifting rings), `hauler` doors (`DOOR.hauler`), `golemtrack` decals along the haul road, the smithy's `bellows`, the tavern's `cellarhatch`. Most carry an `examine` line.
 
 **Adding to the town.** A house: one `BUILDINGS` row (the builder stamps, paints, lights and gives it a doorstep). A seventh shop: add it to `ESTABLISHMENTS`, give its building an `interior`, add a `ROOMS` layout and an `AREA_NAMES` row; the registry, portals and tests pick it up. A new prop: a `TOWN_PROPS` row and a `TOWN_PROP_ART` entry (keep sprites within 96 x 60 px, the renderer's culling margin).
 
-**Deferred.** NPCs and their pathing over `spots`; shop screens; a day/night cycle (the rune / fire split is built for it: runes never go out, fires would); a second rune site in the town; interiors for ordinary houses.
+**Deferred.** Shopkeepers and shop screens; a second rune site in the town; interiors for ordinary houses. (The day/night cycle came with v13, people and their pathing over `spots` with v18.)
 
 ### Day and night (v13)
 
@@ -566,3 +569,57 @@ A gather order's `storage` may be `null`: the worker keeps what it gathers (`gat
 `node scripts/runePreview.mjs` (`tests/support/runeSnapshot.ts`) renders the rune left alone in its three states and a frame from each beat of a refusal, through the real host, to `.preview/rune/*.png`.
 
 **Left alone on purpose.** `runeRoute` (runes alone) stays for its callers and tests. A worker does not try the other way after a failed arrival until its order is retried. Workers still cannot dig, so the stair has to be opened by the golem. Nothing in Westwake can be harvested, so it is a place to be sent, not yet a place to work.
+
+## Townsfolk (v18)
+
+Westwake and the north-west wood are lived in: twenty generic NPCs, seventeen in the town and three at a hunters' camp. The work was interrupted before it was finished; finishing it found two bugs seen in play, both fixed below. `tests/folk.test.ts` holds all of it.
+
+### What they are
+
+- **Data (`content/folk.ts`).** A person is an `ARCHETYPES` row (what they do: the watch, labourer, apprentice, adventurer, resident, elder, hunter, forager), two `TRAITS` from different groups (dials the runner reads: an early riser's day runs early, a thirsty one stays at the tavern, the reserved talk less, the curious come to look), a name from `NAMES` and a generated look, living by a `ROUTINES` row: blocks of the day, each an activity and a place query (spot kinds, an id prefix, how near home). `CENSUS` says who lives where (area, archetype, home), `ROUTES` the watch's rounds. A person, an archetype, a trait or a routine is a row; a new activity is a case in `sim/folk.ts`. The routines must tile the day, every trait's stretch included (tested).
+- **Actors (`sim/folk.ts`).** A person is an ordinary Actor of kind `folk` (definition `townsfolk`) with `person` (who: made once from the world seed by hash, never from `w.rng`, so the story's draws are untouched) and `life` (what they are doing now: saved, so a load resumes mid-stride). `getArea` makes an area's people on its first instantiation (`populateFolk`, once, under the `census.<area>` flag: whatever becomes of someone after that is theirs). They are soft: `actorBox` gives them no box, so they never block the golem or a worker; they steer round, step aside when walked at (`makeWay`) and never stop in a doorway.
+- **The plan comes from the clock** (`planAt`): the routine at the person's own hour (traits and a small daily jitter shift it), so nobody has to be caught up. Only the player's area is stepped; everyone else waits, and a person not simulated for `STALE` seconds is set down where the hour says (`settle`) when the golem arrives. The tavern block takes its drinkers into the tavern's room (`FOLK_INTERIORS`), by the door if it has only just begun. A task or order (the ordinary work system) outranks a `duty` (an activity at a place until a time: the seam for contracts and recruitment), which outranks the routine.
+- **Between the hours.** Roving activities (patrol, errands, work, chores, hunting, foraging, a stroll) move on after each stop; the rest stay and fidget. The watch's day shift lights and douses the fire lights in the order `litLevel` gives them, one round for each side of the town. They chat among themselves (a pictogram of one of their topics in a bubble: `folkChat`), notice the golem (a glance, a wave, a step back, a closer look) and answer it: E on someone is `RULES.folk`, whose `folkTalk` effect turns them to the golem and says one of their lines (archetype, traits, what they are doing) in a speech bubble, with their name and trade as a note. Whoever is indoors (`folkPresent` false) is not drawn, scanned or talked to. The camp sleeps outdoors, on its bedrolls, in sight (its homes are `bed` spots, not doors).
+- **Presentation.** `folkArt.ts` paints a person from look, garb and pose into a pixel grid, outlines it and caches the sprite by everything that changes a pixel. `view/actors.ts: folkArtPose` adds the timing (step, motion frame, blink); the host draws speech bubbles, pictograms and sleepers' Zs on the world layer, and the watch's lantern lights the street round them after dark.
+- **The camp (`surface.ts`).** In the clearing in the north-west wood, out of sight of the rune and the stair: a lit campfire, a lean-to, a pelt rack, a seat log and three bedrolls, with bed, camp, hunt and forage spots, all by fixed positions and after everything else, so nothing else in the wild moved. `buildSurface({ camp: false })` is the wild as it was. The fire's light, like every prop's light in every builder, names its owner and has no `id`: that was the id-less light `tests/wild.test.ts` tripped over. The test was wrong, not the code: it now holds the camp-less wild to the old rule and checks that the camp adds one light, the fire's, nowhere near the rune or the stair head.
+
+### Places held one at a time (bug)
+
+Seen in play: two apprentices hammering at one anvil, overlapping, walking into each other. `pick` chose a place by hash and skipped places others held, but when nothing else was free it fell back on its first candidate, whoever held it. Since a roving person never re-picks the place they are at, two apprentices with exactly two anvils were each sent to the other's anvil and crossed on the way. Sharing was also decided per activity, not per place: a stroll shared everything, benches included, and the gate's two watch posts were shared by whoever stood post.
+
+- **Exclusivity is data:** `EXCLUSIVE_KINDS` (seat, bench, work, chore, bed, camp, hunt, forage, stall, customer, keeper, gather) and `EXCLUSIVE_IDS` (the `watch.` posts). `Life.spot` is the claim, held while at the place or on the way to it. Meeting places, a stroll's corners, the rounds and doorsteps stay shared (a knot, each person jittered off the spot).
+- **`pick` never falls back on a held place.** With nowhere else free a person keeps the place they hold, else gets none, stands where they are and looks again a few seconds later. A lamplighter skips a lamp the other holds. A pause on the way (a dawdle, a chat, a step aside) now carries on to the place, where before the place's pose was struck wherever the pause happened (people sat down on the cobbles).
+- **Across a save:** the claims are `Life.spot`, saved with the actor, so a load holds exactly what was held. `Life.seen` starts at a finite "never": it used to be `-Infinity`, which a save turned into `null`.
+
+### Heads (bug)
+
+Seen in play: townsfolk looking straight back over their own backs. A glance at the golem set the head to wherever the golem was (`faceTo`), whatever the body faced. Behind someone seated, working, drinking or chatting, the head turned 180 degrees; a person stepping aside walked one way and looked the other; a head set before the body turned stayed set. Seated people in a chat also turned their whole body round on the seat to face each other. The painter drew whatever head it was given.
+
+- `naturalHead(facing, head)` is the rule: a quarter turn either way, never round to the back. `gazeAt(facing, dx, dy)` looks at something within it, over the shoulder on its side when it is behind. Every glance, step aside and chat uses them. A seated body (or one warming at the fire) keeps its seat and turns its head, and a head left over from before a turn is taken back at the end of every tick. `folkArt.ts` (and `folkArtPose`) apply the same rule when painting, so no caller can draw an owl.
+- Also finished from the interrupted work: a drawn bow is side-on (hunters were turned on arriving at a blind, but not when set down by the hour), and a look about lasts a moment instead of a single frame.
+
+### Saves (v18)
+
+`SAVE_VERSION` is 18. Actors may carry `person` and `life`, and the world `census.<area>` flags. `MIGRATIONS[17]` only bumps the version: `deserialize` calls `populateFolk` for every area a save has visited, so a pre-v18 save's town and camp are lived in on load, from its own seed, while a v18 save (its flags set) is untouched.
+
+### Tests and tools
+
+- `tests/folk.test.ts` covers:
+  - **Data:** routines tile the day, traits included; census rows, routes and every place query resolve in their areas.
+  - **Making people:** from the seed (deterministic, another seed another town, unique names, trait groups, the rng untouched); the census made once, its flag saved, soft bodies.
+  - **The day:** the plan by the hour and the tavern's room; settling at 02:00 (the town abed and hidden, the night watch out, the camp asleep on its bedrolls); a duty walked to over open ground, then lapsing; a chat (they face each other, pictograms of their topics, they part); talk; making way.
+  - **Saves:** the v17 to v18 path (`deserialize` calling `populateFolk`, unvisited areas, a v18 save untouched); a save and load mid-stride carrying on identically.
+  - **Heads:** every garb, pose and facing painted (a head asked to look behind paints as straight ahead, a quarter turn shows); in play, the golem circling and walking at someone in twelve poses and four facings; two seated people chatting with the golem behind them.
+  - **Places:** the whole town made apprentices for a morning (seventeen people, two anvils) and labourers for an evening (eleven stools). A long run (a whole day in the town, saved and loaded at noon, an evening in the tavern, a day at the camp) checks every tick that no exclusive place is held or stood at by two people, that no head turns round and that every bow is side-on.
+  - Both bug tests fail when run against the code as it was.
+- `node scripts/folkPreview.mjs` renders to `.preview/folk/*.png`: a sprite sheet (every archetype, look, facing and pose), a sheet of heads, the real host in the town, the tavern and the camp at several hours, scan mode, and close-ups (the anvils, a bench, the camp asleep).
+  - Scan mode used to crash it (`ctx.fill is not a function`). The fault was the snapshot canvas (`tests/support/uiSnapshot.ts`), not the game: it had no paths and a `restore()` that did nothing. It now fills rect paths as their union and keeps a state stack. The folk preview's canvas also does the `saturation` blend, so the scan shot is the game's. `view/vision.ts` is unchanged.
+- Tests changed for townsfolk:
+  - `tests/wild.test.ts`: as above.
+  - `tests/entrance.test.ts`: the stair head is the surface's only doorstep; the camp's places are not its business.
+  - `tests/town.test.ts`: no longer "nobody lives here yet". The census's townsfolk are the only people, all of them, none a golem, a shopkeeper or a dialogue NPC.
+  - `tests/rockArt.test.ts` and the comments beside the other `SAVE_VERSION` pins now name v18.
+
+**Left alone on purpose.**
+- `world/world.ts` and `world/save.ts` import `populateFolk` from `sim/folk.ts`, the first `world -> sim` import. Moving person-making into `world/` would restore the boundary.
+- Entering the tavern before the town (only possible with the debug teleport) finds it empty until the town is visited.

@@ -194,8 +194,11 @@ test("the open stair is walked both ways: down from the stair head's south lip i
   pl.x = gate.x - 40; pl.y = gate.y - 20;
   frames(w, 60, { ix: 1, iy: 0, use: false });
   assert.equal(pl.area, "surface"); assert.ok(pl.x < gate.x - 30, "stopped at the kerb");
-  // the standing places laid out for whoever comes looking for the way in
-  assert.deepEqual(buildSurface().spots!.map((s) => s.id), ["stairhead"]);
+  // the standing place laid out for whoever comes looking for the way in: the stair head's south lip, the surface's only
+  // doorstep (the hunters' camp has places of its own, none of them a way in: tests/folk.test.ts)
+  const surf = buildSurface(), headProp = surf.props.find((p) => p.kind === "buriedgate")!;
+  assert.deepEqual(surf.spots!.filter((s) => s.kind === "door").map((s) => [s.id, s.x, s.y, s.facing]), [["stairhead", headProp.x, headProp.y + 7, "up"]]);
+  assert.deepEqual(buildSurface({ camp: false }).spots!.map((s) => s.id), ["stairhead"], "without the camp it is the surface's only place");
   assert.ok(buildDungeon().spots!.some((s) => s.id === "stairfoot"));
 });
 

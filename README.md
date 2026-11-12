@@ -116,7 +116,7 @@ This opts into the chest, inverse recipes and Ruby core recipe fixtures. They ar
 
 The Treasury Guardian remembers "a village west of here". Follow the overgrown track that leaves the surface through the thicket on its west side (a leaning waymark stands at its mouth) and it ends at the east gate of **Westwake**: the same village, a long time later, grown into a provincial market town of the Aligarch Empire. To jump straight there while testing: `Ctrl+0`, TELEPORT, any `WESTWAKE` row.
 
-For now the town is appearance only: there are no townsfolk, shopkeepers or golems, and nothing can be bought, stored or crafted there. A worker golem of your own can be sent there, though: once you have reached the surface its GO TO list has WESTWAKE START (and each shop once someone has walked into the town), and it walks there by the stair or the rune and then the old road. It is laid out for them, though (see `docs/ARCHITECTURE.md`, "The market town").
+The town is lived in (see "Townsfolk" below), but there are still no shopkeepers or labour golems, and nothing can be bought, stored or crafted there. A worker golem of your own can be sent there, though: once you have reached the surface its GO TO list has WESTWAKE START (and each shop once someone has walked into the town), and it walks there by the stair or the rune and then the old road. The shops are laid out for keepers (see `docs/ARCHITECTURE.md`, "The market town").
 
 - **How it reads.** Oldest first: the *old quarter* in the north-west (thatch and daub round the village well, a keep statue set up as a keepsake); the *market square* and the *High Street* (the charter years: the Charter Stone, dressed stone, slate, the Guild's chapter house); *Low Street* and the lanes behind it (where the work is: smithy, tavern, stable, the stone yard). The town wall and gate towers are built from the sunken keep's own stone.
 - **Light is the map.** Steady blue-white *light runes* stand along the paved streets and hang in the shops that can pay for them; everyone else burns fire, or sits in the dark. The line runs along the south side of the square. High-end (rune-lit): the Adventurers' Guild, the Gilded Buckler (armoury), the Bright Facet (jeweller), the Silver Needle (tailor). Ordinary (fire-lit): the Black Anvil (blacksmith) and the Sunken Crown (tavern).
@@ -130,6 +130,17 @@ Developer preview: `node scripts/townPreview.mjs` renders the town at night, eve
 Dungeon preview and audit: `node scripts/dungeonPreview.mjs` renders the whole tutorial dungeon to `.preview/dungeon/*.png` through the real game on a pixel canvas (tiles, decals, every prop, rubble, the cracked wall, pillars, the NPCs, flames, the roof crack's shaft, the real lighting) in three modes: `lit` (what the game shows), `dim` (the same lights over a raised ambient, so dark corners can be read) and `flat` (full-bright, no lighting). It cuts the map into nine regions with tile coordinates along the edges, takes in-game close-ups of the rooms as the golem meets them, and runs the town's layout audit over the dungeon, printing what it finds. `node scripts/dungeonPreview.mjs hall=26,0,22,18,3,dim` renders one region (tiles `x,y,w,h`, scale, mode, hour) and `node scripts/dungeonPreview.mjs crack=@49,10,3,lit` one close-up with the golem standing at a tile. What the audit fixed, and what it leaves alone on purpose, is in `docs/ARCHITECTURE.md` ("The dungeon audit") and kept by `tests/dungeonAudit.test.ts`.
 
 Layout audit: `node scripts/townAudit.mjs` checks the town and its six interiors for the mistakes that are easy to make by hand: a prop whose collision box sits in a wall or off the map, two solid props in each other, something hung on a wall that is not there, a light buried in masonry, a standing place that is blocked or cannot be walked to, ground sealed off from everywhere, something on a doorstep or drawn across a door, a ground decal painted over a roof. It prints what it finds (and exits 1); `node scripts/townAudit.mjs map` prints an ASCII plan of the tiles, and `node scripts/townAudit.mjs shot name=town:x,y,w,h,scale,flat,grid` renders a gridded close-up (tile coordinates) to `.preview/audit/name.png`. The same audit runs in the test suite (`tests/townWall.test.ts`), so the town stays clean.
+
+## Townsfolk
+
+Westwake and the north-west wood are lived in (save v18): seventeen people in the town and three at a hunters' camp, each with a name, an archetype (the watch, labourers, apprentices, adventurers, residents and elders; two hunters and a forager), two traits and a look of their own, all drawn from the world's seed, so every new game has its own town.
+
+- **They keep the hours.** Each lives by a routine on the day clock, shifted by their traits (an early riser is up first, a night owl and anyone fond of ale stay longer at the tavern). The watch stands at the gate, walks its rounds and lights the fire lights one by one at dusk (and douses them at dawn); labourers haul in the stone yard and dig the building site; apprentices work the smithy yard's anvils; residents do their chores and errands; elders sit on the benches; at dusk the town gathers at the tavern door and goes in to drink. At night the houses are shut and only the night watch is out. At the camp (a lit campfire, a lean-to, a pelt rack, in the clearing in the north-west wood) the hunters stalk from blind to blind and draw their bows, the forager stoops and gathers, and at night all three sleep on their bedrolls round the fire.
+- **They live alongside the golem.** They glance at it, wave, step back or come closer to look, and step out of its way: they never block it. `E` on someone: they turn to the golem and answer with a line in a speech bubble (their name and trade show as a note). Among themselves they chat in little pictograms. In vision mode they are violet ("someone"). Whoever is at home indoors is not there to see or talk to.
+- **One at a time, and natural.** A stool, a bench, an anvil, a bedroll or a hunting blind holds one person; with none free, the next one waits. A head turns at most a quarter turn from the body.
+- Arriving at any hour finds people where they would plausibly be: only the area the golem is in is lived step by step, and everyone else is set down where the hour says when the golem comes back.
+
+Developer preview: `node scripts/folkPreview.mjs` renders a sprite sheet of every archetype, look, facing and pose, a sheet of heads, the town, the tavern and the camp at several hours, vision mode, and close-ups (the smithy's anvils, a bench, the camp asleep) to `.preview/folk/*.png`; `node scripts/folkPreview.mjs dir heads,close_smithy` renders only those. The rules are in `docs/ARCHITECTURE.md`, "Townsfolk (v18)"; the tests are `tests/folk.test.ts`.
 
 ## Getting about: runes, the stair and the road
 
@@ -183,7 +194,7 @@ src/
     core/            seeded RNG, hashing (pure)
     content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
                      inventory tiers, gear slots, rune network, harvest yields, tools, dig sites and entrances, build + station recipes,
-                     NPC definitions, dialogue scripts + beats, inner-monologue lines,
+                     NPC definitions, townsfolk (archetypes, traits, routines, census), dialogue scripts + beats, inner-monologue lines,
                      cutscene scripts (data)
     map.ts           tutorial dungeon area builder
     surface.ts       surface area builder (ruins above the buried dungeon; the old road west)
@@ -192,7 +203,7 @@ src/
     world/           Area, World, area registry, save/load (simulated + saved state)
     sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting (bench, smelter, anvil), tools, digging and entrances,
                      runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
-                     stepping, UI commands (incl. storage moves and worker orders), jobs, routes between areas over runes and portals (routes.ts), the order screen's option lists (orders.ts), debug kits (no DOM)
+                     stepping, UI commands (incl. storage moves and worker orders), jobs, routes between areas over runes and portals (routes.ts), the order screen's option lists (orders.ts), townsfolk (folk.ts), debug kits (no DOM)
     view/            area view: baked background + light registry; zoom model; the rune's glow by state (runeFx.ts)
     ui/              screen stack, shared overlay kit + UiHost (frames, text field),
                      text wrapping, dialogue box geometry/layout, monologue log,
@@ -215,6 +226,7 @@ src/
       slots.ts         faint silhouettes for empty gear slots
     golem.ts         golem drawing
     npcArt.ts        NPC drawing (NPC_ART, keyed by NpcDef art id)
+    folkArt.ts       townsfolk drawing (one painter for look, garb and pose; speech bubbles)
     schematic.ts     schematic plan drawing (the overlay is screens/schematic.ts)
     light.ts         lighting and glow
     audio.ts         synthesized sound effects
@@ -226,7 +238,8 @@ src/
                      behind CutsceneHost); title, transit and chapter cards (cards.ts)
 tests/               headless sim tests (tests/support/uiSnapshot.ts renders the build,
                      crafting, storage, worker and dialogue screens to PNG at 320x180 without a browser;
-                     tests/support/golemSnapshot.ts renders the golem's poses to PNG)
+                     tests/support/golemSnapshot.ts renders the golem's poses to PNG;
+                     tests/support/folkSnapshot.ts the townsfolk, for scripts/folkPreview.mjs)
 docs/ARCHITECTURE.md structure, boundaries, deferred work
 ```
 

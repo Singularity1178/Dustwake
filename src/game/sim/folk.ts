@@ -17,8 +17,16 @@
 // Folk are soft: they have no collision box (sim/collision.ts: actorBox), so they can never block the golem or a
 // worker in a street or a doorway. They do the yielding themselves: they steer round the golem, step aside when it
 // walks at them, and never stop in a doorway.
+//
+// Places: a stool, an anvil, a bedroll, a blind holds one person at a time (content/folk.ts: EXCLUSIVE_KINDS). Nobody
+// is sent to one that someone else stands at or is heading for (`Life.spot` is the claim); with none free they wait
+// where they are and look again. Meeting places and the watch's rounds are shared, each person a few px off the spot.
+//
+// Heads (`Life.head`) turn at most a quarter turn from the body, as a neck does: something behind is looked at over a
+// shoulder (`gazeAt`), a seated body keeps its seat and turns its head, and a head left over from before the body
+// turned is taken back (`naturalHead`, every tick, and again by folkArt.ts, which never paints a head the other way).
 import {
-  ARCHETYPES, CENSUS, FOLK_INTERIORS, HABITAT_AREAS, INTERIOR_OF, NAMES, ROUTES, ROUTINES, TRAITS, ACTIVITY_LINES,
+  ARCHETYPES, CENSUS, EXCLUSIVE_IDS, EXCLUSIVE_KINDS, FOLK_INTERIORS, HABITAT_AREAS, INTERIOR_OF, NAMES, ROUTES, ROUTINES, TRAITS, ACTIVITY_LINES,
   type Activity, type ArchetypeDef, type CensusRow, type ChatIcon, type PlaceQuery, type RoutineBlock, type TraitDef,
 } from "../content/folk";
 import { hash01, wrapHour, DAY_SECONDS } from "../content/daycycle";
@@ -55,6 +63,7 @@ export interface Life {
   act: Activity;
   state: "idle" | "walk" | "do" | "indoors" | "chat" | "attend" | "aside" | "busy";
   goal: { x: number; y: number; facing: Facing } | null;
+  /** The place they hold (a spot id, or `lamp:<prop id>` on the lamplighter's round): claimed while they are at it or on the way. */
   spot: string | null;
   path: { x: number; y: number }[];
   /** Seconds left in the current pause / motion. */
@@ -62,7 +71,7 @@ export interface Life {
   /** Counter for choices within a block (next stop, next motion). */
   visit: number;
   pose: FolkPose;
-  /** Where the head turns, if not where the body faces (a glance at the golem, a look about). */
+  /** Where the head turns, if not where the body faces (a glance at the golem, a look about): a quarter turn at most (naturalHead). */
   head: Facing | null;
   glance: number; cool: number; chatCool: number;
   chat: { with: string; t: number; turn: number; speaker: boolean } | null;
@@ -84,6 +93,8 @@ export const FOLK_KIND = "folk";
 export const FOLK_DEF = "townsfolk";
 /** Seconds without being simulated after which a person is set down where the hour says. */
 export const STALE = 20;
+/** `Life.seen` for someone never simulated yet: finite, so a save keeps it (JSON turns -Infinity into null). */
+const NEVER = -1e9;
 const HOUR_S = DAY_SECONDS / 24;
 
 export const isFolk = (a: Actor) => a.kind === FOLK_KIND && !!a.person && !!a.life;
@@ -137,7 +148,7 @@ export function makeFolk(w: World, row: CensusRow, taken?: Set<string>): Actor {
   a.life = {
     plan: "", act: "indoors", state: "idle", goal: null, spot: null, path: [], wait: 0, visit: 0, pose: "stand", head: null,
     glance: 0, cool: H(w, row.id, 7) * 6, chatCool: 4 + H(w, row.id, 8) * 8, chat: null, attend: 0, carry: false, phase: 0,
-    seen: -Infinity, talks: 0, dawdled: false, duty: null,
+    seen: NEVER, talks: 0, dawdled: false, duty: null,
   };
   return a;
 }
@@ -205,6 +216,8 @@ export function desiredArea(w: World, a: Actor, plan = planAt(w, a)): string {
 // ---------------------------------------------------------------- places
 export const spotById = (area: Area, id: string) => area.base.spots?.find((s) => s.id === id);
 const homeSpot = (w: World, a: Actor) => spotById(getArea(w, a.person!.origin), a.person!.home);
+/** Home is a house (asleep indoors, out of sight) unless it is a bedroll under the sky: the camp sleeps where anyone can see it. */
+const indoorsAtHome = (w: World, a: Actor) => homeSpot(w, a)?.kind !== "bed";
 
 function candidates(w: World, a: Actor, area: Area, q: PlaceQuery): Spot[] {
   let list = (area.base.spots ?? []).filter((s) => q.kinds.includes(s.kind) && (!q.prefix || q.prefix.some((p) => s.id.startsWith(p))));
@@ -222,13 +235,22 @@ function claimed(w: World, a: Actor, area: string): Set<string> {
   return out;
 }
 
-/** Choose a place for a query: by hash per person, day and visit, skipping places someone else has. */
+/** A place one person holds at a time: a stool, an anvil, a bedroll, a blind (content/folk.ts: EXCLUSIVE_KINDS, EXCLUSIVE_IDS). */
+export const isExclusive = (s: Spot) => EXCLUSIVE_KINDS.includes(s.kind) || EXCLUSIVE_IDS.some((p) => s.id.startsWith(p));
+
+/**
+ * Choose a place for a query: by hash per person, day and visit, not the one they hold (they move on) and not one
+ * someone else holds (`share` lets a knot form at a meeting place, never on an exclusive one). With nowhere else free
+ * they keep the place they hold, if the query offers it; else nowhere is free (null: they wait and look again). There
+ * is no falling back on a place someone else holds: that sent two apprentices to one anvil, into each other's path.
+ */
 function pick(w: World, a: Actor, area: Area, q: PlaceQuery, salt: number, share = false): Spot | null {
   const list = candidates(w, a, area, q);
   if (!list.length) return null;
-  const busy = share ? new Set<string>() : claimed(w, a, area.id), start = Math.floor(H(w, a.id, salt) * list.length);
-  for (let k = 0; k < list.length; k++) { const s = list[(start + k) % list.length]; if (!busy.has(s.id) && s.id !== a.life!.spot) return s; }
-  return list[start];
+  const held = claimed(w, a, area.id), own = a.life!.spot, start = Math.floor(H(w, a.id, salt) * list.length);
+  const open = (s: Spot) => !held.has(s.id) || (share && !isExclusive(s));
+  for (let k = 0; k < list.length; k++) { const s = list[(start + k) % list.length]; if (s.id !== own && open(s)) return s; }
+  return list.find((s) => s.id === own && open(s)) ?? null;
 }
 
 /** A person's own small offset from a shared place, so a knot of people is a knot and not a stack. */
@@ -281,7 +303,8 @@ function nextGoal(w: World, a: Actor, area: Area, plan: Plan): Goal | null {
     }
     case "lamps": {
       const hour = wrapHour((w.day - Math.floor(w.day)) * 24), round = lampRound(a, area, hour);
-      const next = round.find((l) => l.at > hour - 0.04 && !L.spot?.endsWith(l.id)) ?? null;
+      const held = claimed(w, a, area.id); // two lamplighters never make for the same lamp
+      const next = round.find((l) => l.at > hour - 0.04 && !L.spot?.endsWith(l.id) && !held.has(`lamp:${l.id}`)) ?? null;
       if (!next) return asGoal(pick(w, a, area, { kinds: ["patrol"] }, salt, true));
       return { x: next.x, y: next.y, facing: "up", spot: `lamp:${next.id}` };
     }
@@ -299,6 +322,8 @@ function nextGoal(w: World, a: Actor, area: Area, plan: Plan): Goal | null {
 /** How long the person stays at a stop, and in what pose. */
 function stopFor(w: World, a: Actor, plan: Plan): { pose: FolkPose; wait: number } {
   const L = a.life!, r = roll(w, a), linger = dial(a.person!, "linger");
+  // wanted a place and none was free (every stool taken, both anvils busy): stand a moment, then look again
+  if (plan.at && !L.spot && plan.act !== "sleep" && plan.act !== "indoors") return { pose: "stand", wait: 2.5 + r * 3 };
   switch (plan.act) {
     case "sleep": return { pose: "lie", wait: 9999 };
     case "work": case "chore": {
@@ -347,6 +372,8 @@ export function tickFolk(w: World, dt: number) {
       comeIn(w, a);
     }
   }
+  // a body that turned under a glance held from before takes the glance back: heads never turn round to the back
+  for (const a of w.actors) if (isFolk(a) && a.life!.head) a.life!.head = naturalHead(a.facing, a.life!.head);
 }
 
 /** Someone due in the player's area: if their block has only just begun they come in by the door; else they are already here. */
@@ -358,7 +385,7 @@ function comeIn(w: World, a: Actor) {
     const at = portalArrival(door);
     moveTo(w, a, area.id, at.x, at.y);
     a.facing = at.facing;
-    resetLeg(L); L.state = "idle"; L.seen = w.time;
+    resetLeg(L); L.spot = null; L.state = "idle"; L.seen = w.time;
     return;
   }
   moveTo(w, a, area.id, a.x, a.y);
@@ -391,7 +418,7 @@ export function settle(w: World, a: Actor) {
   const area = getArea(w, a.area);
   const g = nextGoal(w, a, area, plan);
   L.spot = g?.spot ?? null;
-  if (plan.act === "sleep" || plan.act === "indoors") {
+  if ((plan.act === "sleep" || plan.act === "indoors") && indoorsAtHome(w, a)) {
     if (g) { a.x = g.x; a.y = g.y; L.state = "indoors"; L.pose = "stand"; return; }
   }
   if (!g) { L.state = "idle"; return; }
@@ -410,6 +437,7 @@ export function settle(w: World, a: Actor) {
   a.x = g.x; a.y = g.y; a.facing = g.facing; L.goal = g; L.state = "do";
   const s = stopFor(w, a, plan);
   L.pose = s.pose; L.wait = s.wait * (0.3 + H(w, a.id, 13) * 0.7);
+  aimSideOn(w, a);
 }
 
 function speedOf(a: Actor): number {
@@ -444,8 +472,8 @@ function tickPerson(w: World, a: Actor, dt: number) {
   if (L.attend > 0) {
     L.attend -= dt;
     const pl = player(w);
-    a.facing = faceTo(pl.x - a.x, pl.y - a.y); L.head = null;
-    L.pose = L.attend > 0.6 ? "chat" : "stand";
+    faceToward(a, pl.x, pl.y);
+    if (!rooted(L)) L.pose = L.attend > 0.6 ? "chat" : "stand";
     if (L.attend <= 0) L.state = L.goal ? "do" : "idle";
     return;
   }
@@ -461,7 +489,7 @@ function tickPerson(w: World, a: Actor, dt: number) {
     if (r === "arrived" || Math.hypot(a.x - gx, a.y - gy) < 6) {
       const out = getArea(w, door.to.area), op = (out.base.portals ?? []).find((p) => p.id === door.to.portal);
       const at = op ? portalArrival(op) : { x: out.start.x, y: out.start.y, facing: "down" as Facing };
-      moveTo(w, a, out.id, at.x, at.y); a.facing = at.facing; resetLeg(L); L.state = "idle"; L.seen = w.time;
+      moveTo(w, a, out.id, at.x, at.y); a.facing = at.facing; resetLeg(L); L.spot = null; L.state = "idle"; L.seen = w.time;
     }
     return;
   }
@@ -469,7 +497,7 @@ function tickPerson(w: World, a: Actor, dt: number) {
   switch (L.state) {
     case "idle": {
       const g = nextGoal(w, a, area, plan);
-      if (!g) { L.state = "do"; const s = stopFor(w, a, plan); L.pose = s.pose === "lie" ? "stand" : s.pose; L.wait = s.wait; break; }
+      if (!g) { L.state = "do"; const s = stopFor(w, a, plan); L.pose = s.pose === "lie" ? "stand" : s.pose; L.wait = s.wait; aimSideOn(w, a); break; }
       L.goal = g; L.spot = g.spot; L.path = []; L.state = "walk"; L.dawdled = false;
       break;
     }
@@ -488,6 +516,9 @@ function tickPerson(w: World, a: Actor, dt: number) {
       L.wait -= dt;
       fidget(w, a, plan, dt);
       if (L.wait <= 0) {
+        // a pause on the way (a dawdle, a chat, a step aside), not the stop: carry on, so a stool's pose is only ever
+        // taken at the stool (it used to be struck wherever the pause was: sitting on the cobbles)
+        if (L.goal && Math.hypot(L.goal.x - a.x, L.goal.y - a.y) > 3) { L.state = "idle"; break; }
         if (plan.act === "work" && L.spot?.startsWith("work.haul")) {
           // hauling: pick a load up here, carry it to the next pile, set it down there
           L.carry = !L.carry; L.visit++; L.state = "idle";
@@ -496,6 +527,7 @@ function tickPerson(w: World, a: Actor, dt: number) {
           if (lamp && lamp.at > hour + 0.01) { L.wait = 0.4; break; } // early: hold the pole up until it is time
           L.state = "idle"; L.visit++;
         } else if (ROVING[plan.act] || plan.key === "duty") { L.visit++; L.state = "idle"; }
+        else if (plan.at && !L.spot) { L.visit++; L.state = "idle"; } // nowhere was free: look again
         else { const s = stopFor(w, a, plan); L.pose = s.pose; L.wait = s.wait; L.visit++; if (plan.act !== "sleep" && roll(w, a) < 0.25) L.state = "idle"; }
       }
       break;
@@ -509,7 +541,7 @@ function tickPerson(w: World, a: Actor, dt: number) {
 function arrive(w: World, a: Actor, plan: Plan) {
   const L = a.life!, g = L.goal!;
   a.facing = g.facing;
-  if ((plan.act === "sleep" || plan.act === "indoors") && a.area === a.person!.origin) { L.state = "indoors"; L.pose = "stand"; L.carry = false; return; }
+  if ((plan.act === "sleep" || plan.act === "indoors") && a.area === a.person!.origin && indoorsAtHome(w, a)) { L.state = "indoors"; L.pose = "stand"; L.carry = false; return; }
   const s = stopFor(w, a, plan);
   L.state = "do"; L.pose = s.pose; L.wait = s.wait;
   // a hunter faces out into the wood, a lamplighter up at the lamp
@@ -527,6 +559,7 @@ function fidget(w: World, a: Actor, plan: Plan, dt: number) {
   if (Math.floor((w.time - dt + H(w, a.id, 21) * 9) / 3.2) !== tick) {
     const r = H(w, a.id, 4000 + tick);
     L.head = r < 0.3 ? turn(a.facing, 1) : r < 0.6 ? turn(a.facing, -1) : null;
+    if (L.head) L.glance = 0.8 + r * 1.6; // held a moment (until the glance runs out), not for a single frame
     const quirk = traitsOf(a.person!).find((t) => t.quirk)?.quirk;
     if (L.pose === "stand" && quirk === "stretch" && r > 0.92) { L.pose = "stretch"; L.wait = Math.max(L.wait, 1.4); }
     if (plan.act === "gather" && r > 0.55) L.pose = L.pose === "stand" ? "drink" : "stand";
@@ -631,7 +664,7 @@ function makeWay(w: World, a: Actor, area: Area, dt: number) {
         L.path = [{ x: f.x, y: f.y }]; L.state = "aside";
         L.goal = { x: f.x, y: f.y, facing: faceTo(b.x - f.x, b.y - f.y) };
         L.spot = keep ? L.spot : null;
-        L.head = faceTo(-dx, -dy); L.glance = 1.2;
+        L.head = gazeAt(a.facing, -dx, -dy); L.glance = 1.2;
         return;
       }
     }
@@ -642,15 +675,16 @@ function makeWay(w: World, a: Actor, area: Area, dt: number) {
 // ---------------------------------------------------------------- noticing the golem
 function noticeGolem(w: World, a: Actor, area: Area) {
   const L = a.life!, pl = player(w);
-  if (pl.area !== a.area || L.pose === "lie" || L.state === "aside") return;
+  if (pl.area !== a.area || L.pose === "lie") return;
   const n = traitsOf(a.person!).find((t) => t.notice)?.notice ?? { range: 52, react: "glance" as const };
   const range = archetypeOf(a).age === "young" ? Math.max(n.range, 80) : n.range;
   const dx = pl.x - a.x, dy = pl.y - a.y, d = Math.hypot(dx, dy);
   if (d > range) return;
-  if (L.glance > 0) { L.head = faceTo(dx, dy); return; }
-  if (L.cool > 0) return;
+  // a glance follows the golem as far as the neck turns (stepping aside too: the body walks away, the eyes stay on it)
+  if (L.glance > 0) { L.head = gazeAt(a.facing, dx, dy); return; }
+  if (L.cool > 0 || L.state === "aside") return;
   const r = roll(w, a);
-  L.glance = 1.4 + r * 2; L.cool = 7 + r * 10; L.head = faceTo(dx, dy);
+  L.glance = 1.4 + r * 2; L.cool = 7 + r * 10; L.head = gazeAt(a.facing, dx, dy);
   if (L.state !== "do" && L.state !== "idle") return;
   const quirk = traitsOf(a.person!).find((t) => t.quirk)?.quirk;
   // standing about: turn to look properly; the young and the friendly wave
@@ -685,7 +719,7 @@ function seekChat(w: World, a: Actor, plan: Plan) {
       const X = x.life!;
       if (X.state === "walk") { X.state = "do"; X.wait = len + 1; X.visit--; }
       X.chat = { with: y.id, t: len, turn: 0.4 + (sp ? 0 : 1.2), speaker: sp };
-      x.facing = faceTo(y.x - x.x, y.y - x.y); X.head = null;
+      faceToward(x, y.x, y.y);
       if (X.pose === "walk" || X.pose === "browse") X.pose = "stand";
     }
     return;
@@ -696,7 +730,7 @@ function tickChat(w: World, a: Actor, dt: number) {
   const L = a.life!, c = L.chat!, b = actorById(w, c.with);
   if (!b || b.area !== a.area || !b.life?.chat) { endChat(w, a); return; }
   c.t -= dt; c.turn -= dt;
-  a.facing = faceTo(b.x - a.x, b.y - a.y);
+  faceToward(a, b.x, b.y);
   if (c.turn <= 0) {
     c.speaker = !c.speaker; c.turn = 1.3 + roll(w, a) * 1.2;
     if (c.speaker) {
@@ -705,7 +739,7 @@ function tickChat(w: World, a: Actor, dt: number) {
       emit(w, { t: "folkChat", folk: a.id, icon });
     }
   }
-  const sitting = L.pose === "sit";
+  const sitting = rooted(L);
   if (!sitting && L.pose !== "drink") L.pose = c.speaker && c.turn > 0.5 ? "chat" : "stand";
   if (c.t <= 0) endChat(w, a);
 }
@@ -747,4 +781,32 @@ export function faceTo(dx: number, dy: number): Facing {
 }
 const ROT: Facing[] = ["up", "right", "down", "left"];
 const turn = (f: Facing, k: number): Facing => ROT[(ROT.indexOf(f) + k + 4) % 4];
+const STEP: Record<Facing, [number, number]> = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };
+
+// ---------------------------------------------------------------- heads
+// A head turns a quarter turn either way from the body and no further, as a neck does. With four facings a head
+// looks where the body faces (null) or to one side of it, never the other way from it.
+/** The head as it can be on a body facing `facing`: null (straight ahead) for the body's own facing and the one behind it. */
+export function naturalHead(facing: Facing, head: Facing | null | undefined): Facing | null {
+  return !head || head === facing || head === turn(facing, 2) ? null : head;
+}
+/** Where the head turns to look at something (dx, dy) away: at it, within a quarter turn; if it is behind, over the shoulder on its side. */
+export function gazeAt(facing: Facing, dx: number, dy: number): Facing | null {
+  const want = faceTo(dx, dy);
+  if (want !== turn(facing, 2)) return naturalHead(facing, want);
+  const side = turn(facing, 1), [sx, sy] = STEP[side];
+  return dx * sx + dy * sy >= 0 ? side : turn(facing, -1);
+}
+/** Seated, or warming at the fire: the body keeps to its place and only the head turns. */
+const rooted = (L: Life) => L.pose === "sit" || L.pose === "warm" || L.pose === "lie";
+/** Turn to someone: a standing body faces them; a seated one keeps its seat and turns its head as far as it goes. */
+function faceToward(a: Actor, x: number, y: number) {
+  const L = a.life!;
+  if (rooted(L)) L.head = gazeAt(a.facing, x - a.x, y - a.y);
+  else { a.facing = faceTo(x - a.x, y - a.y); L.head = null; }
+}
+/** A drawn bow is held side-on (folkArt.ts draws the aim in profile): a hunter facing the camera, or away, turns to a side. */
+function aimSideOn(w: World, a: Actor) {
+  if (a.life!.pose === "aim" && a.facing !== "left" && a.facing !== "right") a.facing = H(w, a.id, 6000 + a.life!.visit) < 0.5 ? "left" : "right";
+}
 export { TS as FOLK_TS };

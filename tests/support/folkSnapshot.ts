@@ -3,6 +3,10 @@
 // drawn as the browser would) in Westwake, the tavern and the hunters' camp at several hours, plus scan mode.
 //
 //   node scripts/folkPreview.mjs        -> .preview/folk/*.png
+//
+// Also a sheet of heads (every facing with the head straight, turned to each side, and asked to turn round to the
+// back, which must draw exactly as straight ahead: sim/folk.ts naturalHead), and close-ups of the places that must
+// hold one person at a time (the smithy's two anvils, a bench, the camp asleep on its bedrolls).
 import { writeFileSync, mkdirSync } from "node:fs";
 import { RCanvas, png } from "./uiSnapshot";
 import { Game } from "../../src/game/game";
@@ -32,6 +36,7 @@ class DCanvas extends RCanvas {
       };
       const over = ctx.blend.bind(ctx);
       ctx.blend = (i: number, c: number[], a: number) => {
+        if (ctx.globalCompositeOperation === "saturation") return saturate(this.data, i, c, a);
         if (ctx.globalCompositeOperation !== "lighter") return over(i, c, a);
         const d = this.data, k = c[3] * a;
         d[i] = Math.min(255, d[i] + c[0] * k); d[i + 1] = Math.min(255, d[i + 1] + c[1] * k); d[i + 2] = Math.min(255, d[i + 2] + c[2] * k); d[i + 3] = 255;
@@ -39,6 +44,20 @@ class DCanvas extends RCanvas {
     }
     return ctx;
   }
+}
+/** The "saturation" blend (vision mode greys the world with it): the backdrop's hue and luminosity with the source's saturation. */
+function saturate(d: Uint8ClampedArray, i: number, c: number[], a: number) {
+  const lum = (r: number, g: number, b: number) => 0.3 * r + 0.59 * g + 0.11 * b;
+  const b = [d[i], d[i + 1], d[i + 2]], sat = Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]);
+  const order = [0, 1, 2].sort((x, y) => b[x] - b[y]), out = [0, 0, 0], lo = b[order[0]], hi = b[order[2]];
+  if (hi > lo) { out[order[1]] = ((b[order[1]] - lo) * sat) / (hi - lo); out[order[2]] = sat; }
+  const dl = lum(b[0], b[1], b[2]) - lum(out[0], out[1], out[2]);
+  let m = out.map((v) => v + dl);
+  const L = lum(m[0], m[1], m[2]), n = Math.min(...m), x = Math.max(...m);
+  if (n < 0) m = m.map((v) => L + ((v - L) * L) / (L - n));
+  if (x > 255) m = m.map((v) => L + ((v - L) * (255 - L)) / (x - L));
+  const k = (c[3] ?? 1) * a;
+  for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + m[j] * k;
 }
 const canvas = (w: number, h: number) => { const c = new DCanvas(w, h); c.getContext(); return c; };
 function installDom() {
@@ -93,9 +112,12 @@ export function spriteSheet(): RCanvas {
     cells.push({ ...base, look, facing: "down", pose: "stand", frame: 0, head: "left" }, { ...base, look, facing: "down", pose: "stand", frame: 0, head: "right" });
     if (arch.garb === "watch") cells.push({ ...base, look, facing: "down", pose: "walk", frame: 1, lantern: true }, { ...base, look, facing: "left", pose: "raise", frame: 0, pole: true });
     rows.push({ label: arch.title, cells });
-    const poses: Cell[] = [];
-    for (const p of POSES) for (const f of ["down", "left"] as Facing[]) for (const fr of [0, 1]) if (fr === 0 || ["hammer", "chop", "hoe", "dig", "sweep", "wave", "chat", "drink"].includes(p)) poses.push({ ...base, look, facing: f, pose: p, frame: fr });
-    rows.push({ label: "", cells: poses });
+    // every pose in every facing (two rows: down and left, then right and up); a bow is only ever drawn side-on
+    for (const fs of [["down", "left"], ["right", "up"]] as Facing[][]) {
+      const poses: Cell[] = [];
+      for (const p of POSES) for (const f of fs) for (const fr of [0, 1]) if ((fr === 0 || ["hammer", "chop", "hoe", "dig", "sweep", "wave", "chat", "drink"].includes(p)) && (p !== "aim" || f === "left" || f === "right")) poses.push({ ...base, look, facing: f, pose: p, frame: fr });
+      rows.push({ label: "", cells: poses });
+    }
   }
   const cols = Math.max(...rows.map((r) => r.cells.length));
   const out = canvas(cols * cw + 4, rows.length * ch), ctx: any = out.getContext();
@@ -112,12 +134,45 @@ export function spriteSheet(): RCanvas {
   return out;
 }
 
+const ROT: Facing[] = ["up", "right", "down", "left"];
+const turnF = (f: Facing, k: number): Facing => ROT[(ROT.indexOf(f) + k + 4) % 4];
+/**
+ * Heads: per facing, four cells: straight, a quarter turn each way, and asked to turn round to the back (underlined
+ * red), which must look exactly like the straight one. Every archetype standing, then a resident and an apprentice in
+ * the poses a head is easiest to get wrong in: seated, working, chatting, drinking, warming at a fire, lying down.
+ */
+export function headSheet(): RCanvas {
+  const w0 = createWorld(1), cw = 22, ch = 40, lw = 70, top = 12;
+  const look = (id: string) => makePerson(w0, { id: `sheet.${id}.0`, area: "town", archetype: id, home: "door.watch" }).look;
+  const rows: { label: string; arch: string; pose: FolkPose }[] = Object.values(ARCHETYPES).map((a) => ({ label: a.title, arch: a.id, pose: "stand" as FolkPose }));
+  for (const arch of ["resident", "apprentice"]) for (const pose of ["sit", "hammer", "chat", "drink", "warm", "crouch", "lean", "aim", "lie"] as FolkPose[]) rows.push({ label: `${arch === "resident" ? "RES" : "APP"} ${pose.toUpperCase()}`, arch, pose });
+  const facings: Facing[] = ["down", "left", "right", "up"];
+  const out = canvas(lw + 16 * cw, top + rows.length * ch), ctx: any = out.getContext();
+  ctx.fillStyle = "#2a2a30"; ctx.fillRect(0, 0, out.width, out.height);
+  facings.forEach((f, k) => drawTextS(ctx, f.toUpperCase(), lw + k * 4 * cw + 2, 2, "#ffffff", 1, "left", "#000"));
+  rows.forEach((r, j) => {
+    const arch = ARCHETYPES[r.arch], l = look(r.arch), y0 = top + j * ch;
+    ctx.fillStyle = j % 2 ? "#4f6e3c" : "#6a6862"; ctx.fillRect(0, y0, out.width, ch);
+    drawTextS(ctx, r.label, 2, y0 + 2, "#ffffff", 1, "left", "#000");
+    facings.forEach((f, k) => [null, turnF(f, -1), turnF(f, 1), turnF(f, 2)].forEach((head, h) => {
+      if (r.pose === "aim" && (f === "up" || f === "down")) return;
+      const s = folkSprite(arch.garb, arch.age, l, { facing: f, head, pose: r.pose, frame: 0, carry: false, lantern: false, pole: false, blink: false });
+      const x = lw + (k * 4 + h) * cw + 11, y = y0 + ch - 4;
+      ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(x - 5, y - 1, 11, 2);
+      ctx.drawImage(s.a, x - s.ax, y - s.ay);
+      if (h === 3) { ctx.fillStyle = "#c83a2a"; ctx.fillRect(x - 8, y + 2, 17, 1); }
+    }));
+  });
+  return out;
+}
+
 export function run(dir = ".preview/folk", only = "") {
   installDom();
   mkdirSync(dir, { recursive: true });
   const want = (n: string) => !only || only.split(",").includes(n);
   const save = (name: string, c: RCanvas, scale = 1) => { writeFileSync(`${dir}/${name}.png`, png(c, scale)); console.log(`${dir}/${name}.png  ${c.width * scale}x${c.height * scale}`); };
   if (want("sprites")) save("sprites", spriteSheet(), 3);
+  if (want("heads")) save("heads", headSheet(), 2);
   const hours: [number, string][] = [[6.6, "06:35"], [9.5, "09:30"], [13, "13:00"], [17.2, "17:10"], [19.9, "19:55"], [23, "23:00"]];
   const at = (name: string, area: string, tx: number, ty: number) => { if (want(name)) save(name, sheet(2, hours.map(([h, l]) => ({ label: `${name.toUpperCase()} ${l}`, img: shot(scene(area, tx, ty, h).g) })))); };
   at("square", "town", 47, 33);
@@ -131,7 +186,8 @@ export function run(dir = ".preview/folk", only = "") {
     s.g.keyDown("z"); tick(s.g, 2); s.g.keyUp("z"); tick(s.g, 90);
     save("scan", shot(s.g), 2);
   }
-  const close: [string, string, number, number, number][] = [["close_square", "town", 47, 34, 10], ["close_tavern_door", "town", 41, 47, 19.2], ["close_lamps", "town", 46, 18, 19.8], ["close_camp", "surface", 22, 12, 21]];
+  const close: [string, string, number, number, number][] = [["close_square", "town", 47, 34, 10], ["close_tavern_door", "town", 41, 47, 19.2], ["close_lamps", "town", 46, 18, 19.8], ["close_camp", "surface", 22, 12, 21],
+    ["close_smithy", "town", 70, 47, 9], ["close_bench", "town", 25, 17, 10.5], ["close_camp_night", "surface", 22, 13, 2]];
   for (const [n, area, tx, ty, h] of close) if (want(n) || want("close")) save(n, shot(scene(area, tx, ty, h).g), 2);
   console.log(CENSUS.length, "people in the census");
 }

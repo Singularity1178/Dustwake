@@ -49,7 +49,8 @@ test("surface keeps its size, rune, start, ids and closing thicket edge", () => 
 });
 
 test("the dungeon is hidden: no grates, no sinkholes, nothing glows but the rune (the stair's ward glyph is dark until it is dug out)", () => {
-  const s = buildSurface();
+  // the wild as it was: the hunters' camp (new content, with a lit campfire) is left out here and checked below
+  const s = buildSurface({ camp: false });
   assert.ok(!("grate" in PROPS), "grate kind removed");
   assert.ok(!s.props.some((p) => p.kind === "grate"));
   assert.ok(s.grid.every((t) => t === T.FLOOR || t === T.THICKET), "only open ground and thicket (no PIT / wall / rubble tiles)");
@@ -57,6 +58,14 @@ test("the dungeon is hidden: no grates, no sinkholes, nothing glows but the rune
   const ward = s.lights[1], head = s.props.find((p) => p.id === ward.owner)!;
   assert.equal(head.kind, "buriedgate"); assert.equal(propDef("buriedgate").light!.when, "lit"); assert.ok(!head.lit, "the ward's light is the stair head's, and that is not lit");
   assert.ok(!s.props.some((p) => { const L = propDef(p.kind).light; return L && (L.when === "always" || p.lit); }), "no glowing props");
+  // The camp adds one light, the campfire's. Like every prop's light in every builder it names its owner, not an id
+  // (the id-less light the full surface lists is this one), and it burns well away from the rune and the stair head.
+  const real = buildSurface(), fire = real.props.find((p) => p.id === "camp.fire")!;
+  assert.deepEqual(real.lights.filter((l) => l.owner !== fire.id), s.lights, "every other light is as it was");
+  const glow = real.lights.filter((l) => l.owner === fire.id);
+  assert.equal(glow.length, 1); assert.equal(glow[0].id, undefined); assert.equal(fire.kind, "campfire"); assert.ok(fire.lit);
+  assert.deepEqual(real.props.filter((p) => { const L = propDef(p.kind).light; return L && (L.when === "always" || p.lit); }).map((p) => p.id), ["camp.fire"], "the only glowing prop is the campfire");
+  for (const id of ["rune.surface", head.id]) { const o = real.props.find((p) => p.id === id)!; assert.ok(Math.hypot(o.x - glow[0].x, o.y - glow[0].y) > glow[0].rad * 2, `the fire's glow is nowhere near ${id}`); }
 });
 
 test("the wild has variety: several ground styles, overgrowth and a handful of remains", () => {

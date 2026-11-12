@@ -13,7 +13,7 @@ import { powered } from "../sim/actorStats";
 import { runeMarks } from "../sim/gear";
 import type { Actor, World } from "../world/world";
 import { folkSprite, POSE_RATE, type FolkArtPose } from "../folkArt";
-import { archetypeOf, folkPresent } from "../sim/folk";
+import { archetypeOf, folkPresent, naturalHead } from "../sim/folk";
 import { hash01, hourOf } from "../content/daycycle";
 
 /**
@@ -95,7 +95,7 @@ export function folkArtPose(w: World, a: Actor, t: number): FolkArtPose {
   let frame = L.pose === "walk" ? Math.floor(L.phase) % 4 : rate ? Math.floor(t * rate + off) % 2 : 0;
   if (L.pose === "drink") frame = (t + off) % 5 < 1.3 ? 1 : 0;
   return {
-    facing: a.facing, head: L.head && L.head !== a.facing ? L.head : null, pose: L.pose, frame, carry: L.carry,
+    facing: a.facing, head: naturalHead(a.facing, L.head), pose: L.pose, frame, carry: L.carry,
     lantern: folkLantern(w, a), pole: L.act === "lamps", blink: L.pose !== "lie" && (t + off) % 3.9 < 0.13,
   };
 }
