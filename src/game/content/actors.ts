@@ -49,6 +49,12 @@ export const ACTORS: Record<string, ActorDef> = {
     name: "TOWNSFOLK", body: { box: [8, 4], height: 22, reach: 18 }, art: { key: "folk" },
     speed: 18, harvestPower: 0.5, inventory: { slots: 0 }, gearSlots: [], capabilities: ["move", "talk", "travel"],
   },
+  // Shopkeepers (sim/shops.ts): one behind each of Westwake's counters. Soft like townsfolk. A placeholder body: the
+  // art key "keeper" draws a plain black box until each keeper is textured (keeperArt.ts: KEEPER_ART).
+  shopkeeper: {
+    name: "SHOPKEEPER", body: { box: [10, 4], height: 22, reach: 18 }, art: { key: "keeper" },
+    speed: 15, harvestPower: 0.5, inventory: { slots: 0 }, gearSlots: [], capabilities: ["talk"],
+  },
   // Fixture-only (tests): no builder, NPCS row or migration produces one, and its "human" art is a stand-in.
   npc_worker: {
     name: "WORKER", body: { box: [8, 6], height: 22, reach: 18 }, art: { key: "human" },

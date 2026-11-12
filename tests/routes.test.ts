@@ -115,7 +115,7 @@ test("a broken circle below severs the surface rune: it stays lit but carries no
 });
 
 test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, and an order stopped for want of a route keeps its reason", () => {
-  assert.equal(SAVE_VERSION, 18);
+  assert.equal(SAVE_VERSION, 19);
   const { w } = crossed();
   breakCircle(w);
   const wk = withWorker(w);
@@ -127,7 +127,7 @@ test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, a
   // that world as v16 saved it once the bug had bitten: the dark circle's flag set by a trip down, the old reason name
   const v16 = { ...now, version: 16, flags: [...now.flags, "rune.dungeon.active"], actors: now.actors.map((a: { id: string; job: object }) => (a.id === WORKER ? { ...a, job: { ...a.job, reason: "noRuneRoute" } } : a)) };
   const up = migrate(v16) as typeof now;
-  assert.equal(up.version, 18);
+  assert.equal(up.version, 19);
   assert.ok(!up.flags.includes("rune.dungeon.active") && up.flags.includes("rune.surface.active"));
   assert.deepEqual(up, now, "and nothing else moved");
   const w2 = deserialize(v16);

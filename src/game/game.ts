@@ -65,7 +65,9 @@ import type { Target } from "./content/tasks";
 import { isAwake, npcActor } from "./sim/dialogue";
 import { saveToStorage, loadFromStorage } from "./view/persistence";
 import type { Actor } from "./world/world";
-import { archetypeOf, folkLabel, folkPresent } from "./sim/folk";
+import { archetypeOf, folkLabel, folkPresent, sayTime } from "./sim/folk";
+import { keeperLabel, keeperPresent, shopOfArea, shopOpen } from "./sim/shops";
+import { drawClosedSign } from "./keeperArt";
 import { folkLantern } from "./view/actors";
 import { drawChatIcon, drawSpeech } from "./folkArt";
 import type { ChatIcon } from "./content/folk";
@@ -102,6 +104,9 @@ interface GolemLook { eye: number; core: number; dormant: number; sparkT: number
 
 const newSeed = () => (Math.random() * 4294967296) >>> 0;
 
+/** How near the golem must be to read townsfolk's own talk as words (px), and how many such lines show at once besides a talk already going. */
+const FOLK_EARSHOT = 170, FOLK_MAX_LINES = 3;
+
 export class Game {
   /** Base-size (W x H) UI layer: HUD, overlays, title and chapter cards. */
   ctx: CanvasRenderingContext2D;
@@ -119,7 +124,7 @@ export class Game {
   lighting = new Lighting(W, H);
   npcLooks = new Map<string, NpcLook>();
   /** Speech bubbles over townsfolk (presentation only): a line said to the golem, or a pictogram in their own talk. */
-  bubbles = new Map<string, { text?: string; icon?: ChatIcon; t: number; dur: number }>();
+  bubbles = new Map<string, { text?: string; icon?: ChatIcon; t: number; dur: number; /** A line of their own talk (not said to the golem). */ talk?: boolean }>();
   /** The golem's vision mode overlay (presentation of the sim's scan mode). */
   vision = new VisionView();
   private lastAnalyzed = { prop: "", t: -1 };
@@ -615,7 +620,24 @@ export class Game {
       case "message": this.say(e.text); break;
       case "folkSpoke": {
         const a = actorById(this.world, e.folk);
-        if (a?.person) { this.bubbles.set(a.id, { text: e.line, t: 0, dur: 2.4 + e.line.length * 0.055 }); this.say(folkLabel(a)); this.sfx.tone(520, 0.05, "triangle", 0.03); }
+        const label = a?.person ? folkLabel(a) : a?.keeper ? keeperLabel(a) : null;
+        if (a && label) { this.bubbles.set(a.id, { text: e.line, t: 0, dur: 2.4 + e.line.length * 0.055 }); this.say(label); this.sfx.tone(520, 0.05, "triangle", 0.03); }
+        break;
+      }
+      case "folkSay": {
+        // Their own talk (to each other, to a keeper, to themselves): the words in a bubble when it is near and the
+        // street is not already full of words; otherwise the pictogram from `folkChat` stands. Never a dialogue screen.
+        const a = actorById(this.world, e.folk);
+        if (!a || a.area !== this.pl.area) break;
+        const cur = this.bubbles.get(a.id);
+        if (cur?.text && !cur.talk) break; // answering the golem: that line stays
+        const near = Math.hypot(a.x - this.pl.x, a.y - this.pl.y) < FOLK_EARSHOT;
+        const partner = e.to ? this.bubbles.get(e.to) : undefined;
+        let others = 0;
+        for (const [id, b] of this.bubbles) if (b.text && id !== a.id && id !== e.to && b.t < b.dur - 0.3) others++;
+        if (!near || (others >= FOLK_MAX_LINES && !partner?.talk && !cur?.talk)) break;
+        if (partner?.talk && e.to) this.bubbles.delete(e.to); // in turn: one side of a talk at a time
+        this.bubbles.set(a.id, { text: e.line, t: 0, dur: sayTime(e.line), talk: true });
         break;
       }
       case "folkChat": {
@@ -1746,6 +1768,7 @@ export class Game {
     for (const a of this.world.actors) {
       if (a.area !== area.id || a.id === this.world.playerId) continue;
       if (a.kind === "folk") { this.updateFolkLook(a); continue; }
+      if (a.kind === "keeper") continue; // a keeper's look is all in keeperArt.ts
       // Bodies without a dialogue identity (workers): the sequencer decides how they stand, sit and shut down.
       if (!npcDef(a.npc)) { this.updateWorkerLook(a, dt); continue; }
       if (a.kind !== "npc") continue;
@@ -1817,11 +1840,14 @@ export class Game {
   private renderFolkBubbles(dt: number) {
     const ctx = this.wctx, area = this.area, camX = this.cam.x, camY = this.cam.y;
     for (const [id, b] of this.bubbles) { b.t += dt; if (b.t > b.dur) this.bubbles.delete(id); }
+    // a shop out of hours: a card on the counter where the keeper would stand
+    const shop = shopOfArea(area.id), counter = shop && !shopOpen(this.world, shop.id) ? area.base.spots?.find((s) => s.id === "keeper") : undefined;
+    if (counter) drawClosedSign(ctx, Math.round(counter.x - camX), Math.round(counter.y - camY) + 12);
     for (const a of this.world.actors) {
-      if (a.kind !== "folk" || a.area !== area.id || !folkPresent(a) || !a.life) continue;
+      if (a.area !== area.id || !(a.kind === "folk" ? folkPresent(a) && !!a.life : a.kind === "keeper" && keeperPresent(a))) continue;
       const x = Math.round(a.x - camX), y = Math.round(a.y - camY);
       if (x < -60 || y < -60 || x > this.vw + 60 || y > this.vh + 60) continue;
-      if (a.life.pose === "lie") {
+      if (a.life?.pose === "lie") {
         const k = (this.t * 0.5 + hash01(a.id, 4)) % 1;
         ctx.globalAlpha = Math.sin(k * Math.PI) * 0.8;
         drawTextS(ctx, k < 0.5 ? "z" : "Z", x + 4 + k * 6, y - 26 - k * 10, "#d8e0f0", 1, "left", "#1a1418");
@@ -1829,7 +1855,7 @@ export class Game {
       }
       const b = this.bubbles.get(a.id);
       if (!b) continue;
-      const fade = clamp(Math.min(b.t / 0.12, (b.dur - b.t) / 0.25), 0, 1), top = y - (a.life.pose === "sit" ? 27 : 30);
+      const fade = clamp(Math.min(b.t / 0.12, (b.dur - b.t) / 0.25), 0, 1), top = y - (a.life?.pose === "sit" ? 27 : a.kind === "keeper" ? 26 : 30);
       ctx.globalAlpha = fade;
       if (b.text) drawSpeech(ctx, b.text, x, top, this.vw);
       else if (b.icon) drawChatIcon(ctx, b.icon, x + 3, top - Math.round((1 - fade) * 3));

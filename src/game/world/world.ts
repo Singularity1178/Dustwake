@@ -15,6 +15,7 @@ export type { Slot } from "../content/inventory";
 import { START_HOUR, type DayPhase } from "../content/daycycle";
 import type { ChatIcon } from "../content/folk";
 import { populateFolk, type Person, type Life } from "../sim/folk";
+import { populateKeepers, type KeeperState } from "../sim/shops";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -49,6 +50,8 @@ export interface Actor {
   person?: Person;
   /** What a townsperson is doing right now (sim/folk.ts). Saved, so a load resumes mid-stride. */
   life?: Life;
+  /** A shopkeeper's record (sim/shops.ts): which shop, their name, what they are doing. Saved. */
+  keeper?: KeeperState;
 }
 
 /** A delayed effect. `area` is where it was scheduled: it always applies there, even if the actor has travelled. */
@@ -123,7 +126,12 @@ export type SimEvent =
   /** `actor` spoke to townsperson `folk`, who answered `line` (sim/folk.ts: folkTalk). */
   | { t: "folkSpoke"; actor: string; folk: string; line: string }
   /** Townsperson `folk` said something about `icon` to whoever they are talking to (presentation: a speech bubble). */
-  | { t: "folkChat"; folk: string; icon: ChatIcon };
+  | { t: "folkChat"; folk: string; icon: ChatIcon }
+  /**
+   * `folk` (a townsperson or a shopkeeper) said `line` aloud: to `to` in a conversation of their own, or to nobody (a
+   * mutter). Presentation: a speech bubble over the speaker, never a dialogue screen (sim/folk.ts, sim/shops.ts).
+   */
+  | { t: "folkSay"; folk: string; to?: string; line: string };
 
 /**
  * Inner-monologue state (saved, sim/monologue.ts). `said`: one-shot lines already
@@ -194,6 +202,8 @@ export function getArea(w: World, id: string): Area {
     for (const s of a.base.npcs ?? []) if (!actorById(w, s.id)) w.actors.push(makeNpc(s, id));
     // the people who live here (content/folk.ts: CENSUS), made once from the world seed (never from w.rng)
     populateFolk(w, id);
+    // and the keeper of the shop, if this is a shop's room (sim/shops.ts)
+    populateKeepers(w, id);
   }
   return a;
 }

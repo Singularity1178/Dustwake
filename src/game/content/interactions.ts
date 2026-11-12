@@ -80,6 +80,8 @@ export const RULES: Record<string, Rule[]> = {
   npc: [{ task: { kind: "talk", dur: 0.3, effect: { op: "talk" } } }],
   // ---- townsfolk (sim/folk.ts): they stop, turn and answer in a speech bubble; no dialogue screen
   folk: [{ task: { kind: "talk", dur: 0.3, effect: { op: "folkTalk" } } }],
+  // ---- shopkeepers (sim/shops.ts): a placeholder line in a bubble for now. The seam for a shop screen or the guild's contract desk.
+  keeper: [{ task: { kind: "talk", dur: 0.3, effect: { op: "keeperTalk" } } }],
 };
 
 /** Slotting or removing a power core (C, facing a golem body): a short reach into its chest. sim/power.ts adds the effect. */

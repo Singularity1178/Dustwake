@@ -1,6 +1,8 @@
 // Westwake, the market town west of the surface: the road to it, the town, the
 // six rooms behind its shop doors, and the walk-through portals that join them.
 // Headless: builders, sim and the recording fake canvas only.
+import { ESTABLISHMENTS as SHOP_IDS, interiorId as shopRoom, type Establishment as ShopId } from "../src/game/content/town";
+import { isKeeper, keeperId } from "../src/game/sim/shops";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
@@ -218,7 +220,7 @@ test("light is the town's map of itself: runes for the bright side, fire for eve
 });
 
 // ------------------------------------------------------------------ scope
-test("lived in, but no shops yet: the census's townsfolk are the only people, and nothing can be bought, stored, crafted, taken or cut down", () => {
+test("lived in, and every shop kept, but nothing for sale yet: the census's townsfolk and the six shopkeepers are the only people, and nothing can be bought, stored, crafted, taken or cut down", () => {
   for (const id of TOWN_AREAS) {
     const d = AREAS[id]();
     assert.equal((d.npcs ?? []).length, 0, `${id}: the builder places nobody (no shopkeeper, golem or special NPC); townsfolk come from the census`);
@@ -238,9 +240,14 @@ test("lived in, but no shops yet: the census's townsfolk are the only people, an
   const here = w.actors.filter((a) => TOWN_AREAS.includes(a.area));
   const rows = CENSUS.filter((r) => TOWN_AREAS.includes(r.area));
   assert.ok(rows.length >= 10, "people live in Westwake");
-  assert.deepEqual(here.map((a) => a.id).sort(), rows.map((r) => r.id).sort(), "everyone in Westwake is a census row, and every row is there");
+  // (v19) and one keeper behind each of the six counters (sim/shops.ts), each in their own shop's room: placeholders
+  // with a line to say, not yet a shop (no pack, no dialogue script, nothing made)
+  const keepers = SHOP_IDS.map((e) => keeperId(e));
+  assert.deepEqual(here.map((a) => a.id).sort(), [...rows.map((r) => r.id), ...keepers].sort(), "everyone in Westwake is a census row or the keeper of one of its six shops, and all of them are there");
   for (const a of here) {
-    assert.ok(isFolk(a), `${a.id} is a townsperson`); assert.equal(a.npc, undefined, `${a.id}: no dialogue script`);
+    if (isKeeper(a)) assert.equal(a.area, shopRoom(a.keeper!.shop as ShopId), `${a.id} keeps to their own shop`);
+    else assert.ok(isFolk(a), `${a.id} is a townsperson`);
+    assert.equal(a.npc, undefined, `${a.id}: no dialogue script`);
     assert.ok(!capable(a, "worker") && !capable(a, "craft") && !actorDef(a).power, `${a.id}: not a golem, makes nothing`);
     assert.equal(actorDef(a).inventory.slots, 0, `${a.id}: carries nothing to sell or store`);
   }

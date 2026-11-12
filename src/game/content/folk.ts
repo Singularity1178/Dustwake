@@ -39,7 +39,9 @@ export type Activity =
   | "lamps"      // the lamplighter's round: every fire light, in the order it is lit (or doused)
   | "hunt"       // stalk from blind to blind, draw, loose
   | "forage"     // stoop and gather
-  | "camp";      // by the fire
+  | "camp"       // by the fire
+  | "shop"       // a trip to a shop: in by its door, a visit (content/shops.ts: VISITS), out again
+  | "board";     // reading the guild's board (a duty's activity: the seam for contracts)
 
 /** Where a block happens: the first spots matching, chosen per person and per day by hash. */
 export interface PlaceQuery {
@@ -316,13 +318,18 @@ export const ROUTES: Record<string, Record<string, string[]>> = {
 /** Interior areas folk may go into, from the town door spot to the area (the tavern is the only one so far). */
 export const FOLK_INTERIORS: Record<string, { area: string; door: string }> = {
   tavern: { area: "town_tavern", door: "door.tavern" },
+  smithy: { area: "town_smithy", door: "door.smithy" },
+  armory: { area: "town_armory", door: "door.armory" },
+  jeweler: { area: "town_jeweler", door: "door.jeweler" },
+  tailor: { area: "town_tailor", door: "door.tailor" },
+  guild: { area: "town_guild", door: "door.guild" },
 };
 
 /** Activities that take a person into an interior area (keyed into FOLK_INTERIORS). */
 export const INTERIOR_OF: Partial<Record<Activity, string>> = { tavern: "tavern" };
 
 /** Each area's people: the habitat they belong to. */
-export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: ["town", "town_tavern"], forest: ["surface"] };
+export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: ["town", "town_tavern", "town_smithy", "town_armory", "town_jeweler", "town_tailor", "town_guild"], forest: ["surface"] };
 
 /**
  * Places one person holds at a time: a stool or a bench, a work place (an anvil, a haul pile), a chore, a bedroll, a
@@ -331,7 +338,7 @@ export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: ["town", "to
  * to one that someone else stands at or is heading for. Every other kind (the meeting places, a stroll's corners,
  * the watch's rounds, doorsteps) is shared: a knot, each person a few px off the spot, never a stack.
  */
-export const EXCLUSIVE_KINDS: Spot["kind"][] = ["seat", "bench", "work", "chore", "bed", "camp", "hunt", "forage", "stall", "customer", "keeper", "gather"];
+export const EXCLUSIVE_KINDS: Spot["kind"][] = ["seat", "bench", "work", "chore", "bed", "camp", "hunt", "forage", "stall", "customer", "keeper", "gather", "browse", "queue"];
 export const EXCLUSIVE_IDS: string[] = ["watch."];
 
 /** Lines by what they are doing when the golem talks to them (added to the archetype's and the traits'). */
@@ -345,4 +352,6 @@ export const ACTIVITY_LINES: Partial<Record<Activity, string[]>> = {
   sit: ["AH, THE SUN ON THESE OLD BONES."],
   hunt: ["SHH."],
   camp: ["WARM YOURSELF. OR WHATEVER IT IS YOU DO."],
+  shop: ["JUST LOOKING. SAME AS YOU, I'D GUESS.", "MIND THE SHELVES, BIG ONE."],
+  board: ["READING THE BOARD. NOTHING FOR YOUR SORT. YET."],
 };

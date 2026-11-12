@@ -213,12 +213,12 @@ test("monologue state saves and loads: one-shot lines stay said, cooldowns carry
 });
 
 test("v10 -> v11: the migration adds an empty monologue; a migrated save plays on", () => {
-  assert.equal(SAVE_VERSION, 18); // v18: townsfolk (tests/folk.test.ts)
+  assert.equal(SAVE_VERSION, 19); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
   const w = newWorld();
   const s: any = serialize(w);
   s.version = 10; delete s.monologue;
   const m: any = migrate(s);
-  assert.equal(m.version, 18);
+  assert.equal(m.version, 19);
   assert.deepEqual(m.monologue, { said: [], ready: {} });
   const w2 = deserialize(s);
   assert.deepEqual(serialize(w2), serialize(w));

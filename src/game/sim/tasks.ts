@@ -2,6 +2,7 @@
 // task advances; at its fire point its Effect is applied to the world. This is
 // the single path by which interactions change the world, for any actor.
 import { folkTalk } from "./folk";
+import { keeperTalk } from "./shops";
 import { TS, T, TILE_INTERACT } from "../content/tiles";
 import { ITEMS, glyphItem, isDroppable, type ItemId } from "../content/items";
 import { propDef, propReach } from "../content/props";
@@ -345,6 +346,9 @@ export function applyEffect(w: World, a: Actor, e: Effect, target?: Target, area
       return think(w, a, e.line, { target });
     case "folkTalk":
       folkTalk(w, a, target?.actorId);
+      break;
+    case "keeperTalk":
+      keeperTalk(w, a, target?.actorId);
       break;
     case "talk": case "npcAwake": case "repairEye": case "npcGive": case "segmentDone":
       applyDialogueEffect(w, a, e, target);

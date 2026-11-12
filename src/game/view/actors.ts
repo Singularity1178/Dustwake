@@ -15,6 +15,11 @@ import type { Actor, World } from "../world/world";
 import { folkSprite, POSE_RATE, type FolkArtPose } from "../folkArt";
 import { archetypeOf, folkPresent, naturalHead } from "../sim/folk";
 import { hash01, hourOf } from "../content/daycycle";
+import { keeperPainter } from "../keeperArt";
+import { keeperPresent } from "../sim/shops";
+import type { Facing } from "../golem";
+
+const QUARTER: Record<Facing, [Facing, Facing]> = { up: ["left", "right"], down: ["right", "left"], left: ["down", "up"], right: ["up", "down"] };
 
 /**
  * What the host eases per actor (game.ts: NpcLook). `worker` is a worker body's animation sequencer (workerAnim.ts,
@@ -28,6 +33,7 @@ export const actorActive = (a: Actor) => powered(a) && (!!a.task || a.job?.statu
 export function drawActor(sc: CanvasRenderingContext2D, ec: CanvasRenderingContext2D, w: World, a: Actor, camX: number, camY: number, t: number, look: Look) {
   const d = actorDef(a), x = Math.round(a.x - camX), y = Math.round(a.y - camY), hw = Math.round(d.body.box[0] / 2) + 2;
   if (d.art.key === "folk") { drawFolk(sc, ec, w, a, x, y, t); return; }
+  if (d.art.key === "keeper") { drawKeeper(sc, ec, a, x, y, t); return; }
   sc.fillStyle = "rgba(0,0,0,0.45)";
   sc.fillRect(x - hw, y - 1, hw * 2, 2);
   sc.fillRect(x - hw + 3, y - 3, hw * 2 - 6, 4);
@@ -95,9 +101,20 @@ export function folkArtPose(w: World, a: Actor, t: number): FolkArtPose {
   let frame = L.pose === "walk" ? Math.floor(L.phase) % 4 : rate ? Math.floor(t * rate + off) % 2 : 0;
   if (L.pose === "drink") frame = (t + off) % 5 < 1.3 ? 1 : 0;
   return {
-    facing: a.facing, head: naturalHead(a.facing, L.head), pose: L.pose, frame, carry: L.carry,
+    // a shake of the head is the head turning a quarter turn each way in turn
+    facing: a.facing, head: L.pose === "shake" ? QUARTER[a.facing][frame & 1] : naturalHead(a.facing, L.head), pose: L.pose, frame, carry: L.carry,
     lantern: folkLantern(w, a), pole: L.act === "lamps", blink: L.pose !== "lie" && (t + off) % 3.9 < 0.13,
   };
+}
+
+/** A shopkeeper (keeperArt.ts: a placeholder box until textured): a soft shadow, then the shop's painter into both passes. Out of hours, nothing. */
+function drawKeeper(sc: CanvasRenderingContext2D, ec: CanvasRenderingContext2D, a: Actor, x: number, y: number, t: number) {
+  if (!a.keeper || !keeperPresent(a)) return;
+  sc.fillStyle = "rgba(0,0,0,0.32)";
+  sc.fillRect(x - 6, y - 1, 12, 2); sc.fillRect(x - 4, y - 2, 8, 4);
+  const paint = keeperPainter(a.keeper.shop), pose = { facing: a.facing, state: a.keeper.state, moving: a.moving, phase: a.phase, t };
+  paint(new Pen(sc, false), x, y, pose);
+  paint(new Pen(ec, true), x, y, pose);
 }
 
 /** A townsperson (folkArt.ts): a soft shadow, then the cached sprite into both passes. Indoors, nothing. */

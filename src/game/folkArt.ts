@@ -249,6 +249,9 @@ export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | 
       case "warm": off = far(-4, f ? 1 : 2); main = near(-4, f ? 2 : 1); break;
       case "raise": off = far(0, dn); main = near(-1, -6); break;
       case "lean": off = far(-2, 2); main = near(-2, 3); break;
+      case "pay": off = far(0, dn); main = near(f ? -5 : -4, 1); break;
+      case "point": off = far(0, dn); main = near(-4, f ? -3 : -2); break;
+      case "note": off = far(-3, 2); main = near(f ? -2 : -3, 1); break;
       case "crouch": off = far(-3, -shoulderY - 2); main = near(-3 - f, -shoulderY - 2 - f); break;
       default: off = far(sw, dn - (sw ? 1 : 0)); main = near(-sw, dn - (sw ? 1 : 0));
     }
@@ -269,6 +272,9 @@ export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | 
       case "browse": case "warm": off = L_(2, f && pose === "warm" ? 1 : 3); main = R_(-2, f && pose === "warm" ? 2 : 3); break;
       case "raise": off = L_(0, dn); main = R_(1, -6); break;
       case "lean": off = L_(0, dn); main = R_(0, 2); break;
+      case "pay": off = L_(0, dn); main = R_(f ? 3 : 2, 1); break;
+      case "point": off = L_(0, dn); main = R_(f ? 3 : 2, -4); break;
+      case "note": off = L_(2, 2); main = R_(f ? -2 : -1, 2); break;
       case "crouch": off = L_(1, -shoulderY - 2 - f); main = R_(-1, -shoulderY - 2 - (1 - f)); break;
       default: off = L_(0, dn + Math.min(0, lu)); main = R_(0, dn + Math.min(0, -lu));
     }
@@ -320,6 +326,8 @@ export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | 
       case "cloth": gd.rect(Math.min(m.x, o.x), Math.min(m.y, o.y) - 1, Math.abs(m.x - o.x) + 1, 3, "#e8e0d0"); break;
       case "grain": if (f) { gd.px(m.x + (side ? -2 : 2), m.y + 2, "#e0c070", false); gd.px(m.x + (side ? -3 : 3), m.y + 4, "#e0c070", false); } break;
       case "rope": gd.line(m.x, m.y, m.x + (side ? -2 : -1), m.y + 5, "#b09060"); break;
+      case "coin": { const cx = m.x + (side ? -1 : 1); gd.px(cx, m.y, "#e8b830", false); gd.px(cx, m.y - 1, "#fff0a0", false); break; }
+      case "slate": gd.rect(o.x - 1, o.y - 2, 3, 3, "#e8e0c8"); gd.px(o.x, o.y - 1, "#8a8478"); gd.px(m.x, m.y - 1, "#3a3028", false); break;
     }
   };
 
@@ -341,6 +349,8 @@ export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | 
     case "hang": held.push("cloth"); break;
     case "feed": held.push("grain"); break;
     case "draw": held.push("rope"); break;
+    case "pay": held.push("coin"); break;
+    case "note": held.push("slate"); break;
   }
   // the watch's spear rests in the off hand while the main hand works or waves
   if (garb === "watch" && !p.pole && pose !== "lean" && pose !== "stand" && pose !== "walk") { const t = main; main = off; off = t; }
@@ -356,7 +366,8 @@ export function paintFolk(gd: FolkGrid, garb: Garb, l: FolkLook, age: "young" | 
   const hx = -3, hwid = hside ? 6 : 7;
   const HP = (x: number, y: number, c: string) => gd.px(headFlip ? -x - 1 : x, y, c);
   const HR = (x: number, y: number, w: number, h: number, c: string) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) HP(x + i, y + j, c); };
-  const hy = ht + (pose === "browse" || pose === "crouch" ? 1 : 0) + (pose === "drink" && f ? -1 : 0);
+  // (a nod dips the head, taking a note bows it, reading a board lifts it now and then)
+  const hy = ht + (pose === "browse" || pose === "crouch" || pose === "note" ? 1 : 0) + (pose === "drink" && f ? -1 : 0) + (pose === "nod" && f ? 1 : 0) + (pose === "read" && f ? -1 : 0);
   const hatCovers = hatKind(garb, l) !== "none";
   // face / skull
   HR(hx, hy, hwid, 6, skin);
@@ -483,6 +494,7 @@ export function folkSprite(garb: Garb, age: "young" | "adult" | "old", l: FolkLo
 /** Animation rate (frames per second) of each motion; 0: a still pose. */
 export const POSE_RATE: Partial<Record<FolkPose, number>> = {
   hammer: 2.4, chop: 1.6, hoe: 1.3, dig: 1.4, sweep: 2.6, hang: 0.9, feed: 1.6, draw: 1.1, chat: 2.6, wave: 4, crouch: 0.8, warm: 0.6, browse: 0.4,
+  pay: 1.6, point: 0.9, note: 3.2, nod: 2.8, shake: 3.2, read: 0.45,
 };
 
 // ---------------------------------------------------------------- speech bubbles (drawn by the host on the world layer)

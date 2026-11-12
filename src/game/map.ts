@@ -85,7 +85,9 @@ export interface Spot {
   id: string;
   kind: "keeper" | "customer" | "seat" | "stall" | "idle" | "work" | "door"
     // the townsfolk's places (content/folk.ts): where people meet, sit, stroll, do chores, walk their rounds; the forest camp
-    | "gather" | "bench" | "wander" | "chore" | "patrol" | "camp" | "bed" | "hunt" | "forage";
+    | "gather" | "bench" | "wander" | "chore" | "patrol" | "camp" | "bed" | "hunt" | "forage"
+    // inside the shops (content/shops.ts): a place at the shelves, a place in the queue, the keeper's shelves behind the counter
+    | "browse" | "queue" | "tidy";
   x: number; y: number;
   facing: "down" | "up" | "left" | "right";
 }

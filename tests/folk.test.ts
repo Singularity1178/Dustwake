@@ -48,6 +48,7 @@ function run(w: World, seconds: number, each?: (w: World) => void) {
 }
 /** Hold someone at a place in a pose, as at a stop that never ends (a duty keeps the routine off), nothing else on their mind. */
 function pin(w: World, a: Actor, x: number, y: number, facing: Facing, pose: FolkPose) {
+  a.area = player(w).area; // (v19) they may have been inside a shop: the test wants them here, with the golem
   assignDuty(a, { act: "post", area: a.area, x, y, facing, until: w.day + 1 });
   a.x = x; a.y = y; a.facing = facing;
   Object.assign(a.life!, { plan: "duty", act: "post", state: "do", goal: { x, y, facing }, spot: null, path: [], wait: 1e9, pose, head: null, glance: 0, cool: 0, chat: null, attend: 0, chatCool: 1e9, seen: w.time });
@@ -157,8 +158,10 @@ test("the plan is the routine at the person's own hour (traits and a daily jitte
       const mid = day + ((b.from + b.to) / 2 + shift) / 24;
       if (Math.floor(mid) !== day) return; // the shift is the day's the moment falls in: keep clear of midnight
       const p = planAt(w, a, mid);
-      assert.deepEqual([p.key, p.act], [`${day}:${i}`, b.act], a.id);
-      assert.equal(desiredArea(w, a, p), b.act === "tavern" ? "town_tavern" : a.person!.origin, `${a.id} ${b.act}`);
+      // (v19) the block itself, or a shop trip inside it, or the rest of the block after one (tests/shops.test.ts)
+      assert.ok(p.key === `${day}:${i}` || p.key.startsWith(`${day}:${i}:s`) || p.key.startsWith(`${day}:${i}+`), `${a.id}: ${p.key}`);
+      assert.equal(p.act, p.trip ? "shop" : b.act, a.id);
+      assert.equal(desiredArea(w, a, p), p.trip ? FOLK_INTERIORS[p.trip.shop].area : b.act === "tavern" ? "town_tavern" : a.person!.origin, `${a.id} ${b.act}`);
     });
   }
 });
@@ -260,7 +263,7 @@ test("a save from before townsfolk (v17) gets the people of every area it had vi
   const s = serialize(w) as unknown as { version: number; flags: string[]; actors: Actor[] };
   const v17 = { ...s, version: 17, flags: s.flags.filter((f) => !f.startsWith("census.")), actors: s.actors.filter((a) => a.kind !== "folk") };
   assert.deepEqual(MIGRATIONS[17](v17), { ...v17, version: 18 }, "nothing older is rewritten: the people are made on load");
-  assert.equal((migrate(v17) as { version: number }).version, 18);
+  assert.equal((migrate(v17) as { version: number }).version, 19);
   const loaded = deserialize(v17);
   const who = (x: World) => folkOf(x).map((a) => `${a.id} ${JSON.stringify(a.person)}`).sort();
   assert.deepEqual(who(loaded), who(w), "the same people as the world that saved it");

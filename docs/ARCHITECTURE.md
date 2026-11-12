@@ -10,7 +10,8 @@ src/game/
   content/     data: tiles, items, props, glyphs, flags, tasks,       no DOM
                interaction rules, actors, power, jobs, vision, ritual geometry, NPCs, dialogue,
                monologue lines, cutscene scripts, the day/night cycle (daycycle.ts),
-               tools (tools.ts), dig sites (digging.ts), stations (crafting.ts), entrances (geography.ts), townsfolk (folk.ts)
+               tools (tools.ts), dig sites (digging.ts), stations (crafting.ts), entrances (geography.ts), townsfolk (folk.ts),
+               shops, visits and shopping habits (shops.ts), what townsfolk say to each other (talk.ts)
   map.ts       tutorial dungeon builder -> AreaData (deterministic)  no DOM
   world/       runtime state that is simulated and saved              no DOM
     area.ts      Area: one area's mutable state + change notifications
@@ -36,7 +37,9 @@ src/game/
     tools.ts     which tools are working for an actor (heads on arms, hafted tools carried by a wielder)
     digging.ts   the dig stroke, dig sites, opening an entrance
     routes.ts    routes between areas over runes and portals (every first hop of the shortest route)
-    folk.ts      townsfolk: people from the census, plans off the clock, places held one at a time, heads, chat, settling
+    folk.ts      townsfolk: people from the census, plans off the clock, places held one at a time, heads, chat, settling,
+                 shop visits step by step, exchanges said in turn, reading the board
+    shops.ts     shops: opening hours, each person's shop trips off the clock, the keepers behind the counters
     step.ts      stepPlayer / stepWorld, locomotion
   view/        Area presentation, actor drawing, event audience, vision overlay, browser persistence, zoom, the rune's glow by state (runeFx.ts)
   ui/          screen stack, overlay kit + UiHost, text wrap, dialogue layout,
@@ -47,7 +50,7 @@ src/game/
   art/         procedural sprites by family: palette, common (cache), tiles (bake +
                tile sprites), decals, props (+ propsSurface / propsDungeon), items,
                rocks (standing rock), stairs (the one stair's steps)
-  light.ts golem.ts npcArt.ts folkArt.ts workerArt.ts circle.ts schematic.ts font.ts audio.ts   procedural art/audio (light.ts also applies the golem's glow;
+  light.ts golem.ts npcArt.ts folkArt.ts keeperArt.ts workerArt.ts circle.ts schematic.ts font.ts audio.ts   procedural art/audio (light.ts also applies the golem's glow;
                workerArt.ts is BODY_ART: bodies with power and work, the worker golem; workerAnim.ts is its animation sequencer)
 tests/         headless sim tests (npm test)
 ```
@@ -623,3 +626,49 @@ Seen in play: townsfolk looking straight back over their own backs. A glance at 
 **Left alone on purpose.**
 - `world/world.ts` and `world/save.ts` import `populateFolk` from `sim/folk.ts`, the first `world -> sim` import. Moving person-making into `world/` would restore the boundary.
 - Entering the tavern before the town (only possible with the debug teleport) finds it empty until the town is visited.
+
+## Shops in use, shopkeepers, talk and the board (v19)
+
+Westwake's people now go indoors. They walk to a shop's door, go in, browse, queue, deal with the keeper and come out; they talk to each other in words; they read the guild's board. `tests/shops.test.ts` holds all of it, `node scripts/shopPreview.mjs` renders it.
+
+### What was added
+
+- **Data.**
+  - `content/shops.ts`: `SHOPS` (per shop: hours with lunch and closing, the keeper's title and placeholder lines, what is done there by weight, who it draws), `VISITS` (a visit is steps: where to stand by spot id prefix, the poses struck in turn, a mutter, a deal at the counter, where to drift to afterwards), `SHOP_HABITS` (per archetype: in which blocks of the day they shop, how often, where), `TRIP` (timings) and `BOARD` (the board's spots and the gestures of reading it).
+  - `content/talk.ts`: `EXCHANGES` (a few short lines said in turn, by context: meet, pass, watch, well, ale, camp, shop, board, `deal.*`; each side may ask for an archetype or a trait), `PEER_LINES`, `REACTIONS`, `GRIPES`, `NEWS`, `MUTTERS`. People say their **existing** lines to each other too: `peerLines` is the archetype's, traits' and activity's own `lines` that are not addressed to the golem (`fitsPeers`), plus `PEER_LINES`.
+  - A shop behaviour, an exchange, a line, a habit is a row. A new *kind* of step (something other than standing somewhere in a pose, or a deal at the counter) is a case in `sim/folk.ts`.
+- **Shop trips come off the clock, like the routine** (`sim/shops.ts: tripsOf`, read by `planAt`). Inside a block of the routine in which the archetype shops, a hash per person, day and block decides whether there is a trip, when, to which shop (the archetype's weights, times the shop's `wellOff` multiplier for people whose house is lit by light runes, times its trait multipliers) and to do what. A trip is cut to the shop's hours (`openRun`) and dropped if too little is left. `planAt` returns it as a plan of its own (`key` `day:block:sN`, `act: "shop"`, `trip`), and the rest of the block after it as another (`day:block+N`, starting when the trip ends), so the existing "came in by the door if the plan has only just begun" logic brings people out of a shop's door. Nothing about a trip is saved or caught up: arriving at any hour finds the right people inside, mid-visit (`settle`), and none at night.
+- **A visit** (`sim/folk.ts`, "in a shop"). The first stretch of a trip (`TRIP.lead`) is the walk there. Inside, the step is a function of the clock (`shopStepAt`); `shopGoal` gives each step a place (never one somebody holds: `browse` and `queue` joined `EXCLUSIVE_KINDS`), `shopStop` / `shopBeat` strike the step's poses in short beats. At the counter the customer takes the `customer` spot or the first free `queue.N` behind it and moves up as it clears; served, they have a `deal.*` exchange with the keeper (only one there is time left for), then leave the counter to the next. Customers keep to their side of a counter (`roundTheCounter`). From one shop to another the way is through the street (`stepOut`).
+- **Shopkeepers** (`sim/shops.ts`). One Actor of kind `keeper` (definition `shopkeeper`) per shop, with a saved `keeper` record; made with the room (`populateKeepers`, from `getArea`; the actor is the record, there is no flag), named from the seed by hash. Not townsfolk: no routine, no home. Stepped only while the golem is in the room; coming in sets them where the hour says. `away` (out of hours, over lunch) is hidden like a person indoors: not drawn, scanned or talked to, and the golem gets the shop's `closedNote`; the host stands a CLOSED card on the counter. In hours they greet the golem and arriving customers, serve (`keeperServe`), tidy the `tidy` spots behind the counter between customers and come back when someone waits, and say a closing line. E on a keeper is `RULES.keeper` -> `keeperTalk`: a placeholder line per shop in a bubble. Soft, like townsfolk (`actorBox`).
+- **Talk** (`sim/folk.ts`). A chat is now an exchange when one fits (`pickExchange` by `talkContext`, by weight, the talkative leaning to longer ones), said line by line: the lead keeps the place and the clock, each line is a `folkSay` event (speaker, listener, text) and holds the floor for `sayTime(line)`, so bubbles within a talk never overlap. Tokens fill in names, the greeting of the hour, the speaker's own line (`@say`), their way of answering (`@re`), a grumble, gossip. Each side remembers its last exchange (`Life.lastEx`) and last own line (`lastSay`): never the same twice running. With no exchange that fits, the old pictogram chat runs. The pictogram (`folkChat`) is still emitted with every line: the host shows words only within earshot of the golem (`FOLK_EARSHOT`) and for at most `FOLK_MAX_LINES` other speakers at once, and the pictogram otherwise, so a busy square is never a wall of text. Never a dialogue screen.
+- **The board.** A look only. In the guild, the `board`, `desk` and `between` visits stand people at `idle.board.*` reading (`read`, `point`, `note`, `nod` / `shake` by mood) and muttering; two people there talk about a posting (context `board`). Outdoors, anyone who stops at the square's `idle.board` reads the notices. Nothing is posted, taken or assigned.
+- **Presentation.** `folkArt.ts`: six poses (`pay` with a coin, `point`, `read`, `note` with a slate, `nod`, `shake`: `view/actors.ts` turns the head a quarter turn each way). `keeperArt.ts`: the keeper.
+
+### Seams for the next task (contracts, then recruitment)
+
+- **Keeper art: `src/game/keeperArt.ts`.** Every keeper is the placeholder painter (a plain black 10 x 22 box). To texture one, add a painter under the shop's id to `KEEPER_ART` (`smithy`, `armory`, `jeweler`, `tailor`, `tavern`, `guild`); it gets a `Pen`, the feet and a `KeeperPose` (facing, state, moving, clocks). Nothing else changes: `view/actors.ts: drawKeeper` draws every `keeper`-keyed actor through `keeperPainter`, in the scene and in scan mode.
+- **Talking to a keeper:** `RULES.keeper` (`content/interactions.ts`) and `keeperTalk` are where a shop screen or the guild's contract desk opens. **A sale:** `keeperServe` / `KeeperState.with`, and the `deal.*` exchanges.
+- **The board:** `BOARD` (its spots and gestures), and `assignDuty(a, { act: "board", area: "town_guild", x, y, facing: "up", until })` sends anyone to read it (tested). A contract will be a duty; `Activity` has `board` for it.
+
+### Stuck walkers (found while testing)
+
+With many more walks to doors, people were seen treading on the spot against a stall's corner: a string-pulled path, left by a step round someone, could clip an obstacle, and the leg was replanned for ever. `walk` now slides along what is in the way, and gives a leg up as `stuck` after two seconds without progress (`Life.stall`); on the way to a door the walker steps to clear ground and tries again. The long-run test fails if anyone walks without moving for 12 s.
+
+### Saves (v19)
+
+`SAVE_VERSION` is 19. Actors may be keepers (`keeper`), and `life` may carry `step`, `beat`, `dealt`, `lastEx`, `lastSay`, `stall`, and an exchange in `chat` (all optional). `MIGRATIONS[18]` only bumps the version: `deserialize` calls `populateKeepers` for every area the save has, and plans are read off the clock, so a v18 save's shops are kept and used on load. A shop room also brings the town into being (so a debug teleport straight into a shop does not find it empty).
+
+### Performance
+
+Measured by the test (Node, this machine): a tick of the town with the golem in it 0.14 ms, of the guild 0.07 ms, of the evening tavern 0.07 ms, against a 16.7 ms frame. The per-tick cost added is one `planAt` per person (trips are cached per person and day: `tripCache`, derived, not saved) and one keeper. Sprites stay cached by pose.
+
+### Tests and tools
+
+- `tests/shops.test.ts`: the data resolves (every step of every visit has a place in every shop offering it; every deal has an exchange anyone can have); every shop spot is free floor reachable from the door; every line is in the font's glyphs and within a bubble, exchanges alternate sides; hours; trips (pure, inside their blocks, in opening hours, apprentices at the smithy, adventurers at the guild and armoury, residents at the tailor, the well-off at the jeweller); a visit from inside (door, shelves, counter, the deal's lines in turn, coin, out) and from the street (in by the door, out of it later); arriving at any hour; keepers (hours, greeting, tidying, lunch, scan, talk); whole days in every room and the street (nobody stuck, no place held by two, queues, talk in turn and never the same exchange twice running); the board and the duty seam; saves (v18 -> v19, mid-visit round trip, determinism); timing; art.
+- `node scripts/shopPreview.mjs [dir] [names]` -> `.preview/shops/*.png` through the real host: `poses`, `interiors`, `deal` (a deal frame by frame), `board`, `street`, `door`, `closed`, `scan`. It ages speech bubbles every tick, as the browser does (the host ages them while drawing).
+- **Old assumptions changed on purpose:**
+  - `tests/town.test.ts`: the census's townsfolk are no longer the only people. Everyone in Westwake is a census row or one of six keepers, each in their own shop, none with a pack or a dialogue script. The census itself is unchanged (seventeen).
+  - `tests/folk.test.ts`: the plan at a block's midpoint is that block, a shop trip inside it, or the rest of it after one; the `pin` helper brings its person to the golem's area (at 10:00 some are now inside shops); `migrate(v17)` ends at 19.
+  - Every `SAVE_VERSION` pin names 19.
+
+**Left for later:** contracts, posting, accepting and assignment; recruitment; real shop screens, buying and selling, currency; needs and moods; keeper art; weather (people's lines mention rain, nothing falls). The keepers do not walk in from the street at opening time: they are upstairs, and appear at the counter. Text bubbles are budgeted by the host, not by the sim.

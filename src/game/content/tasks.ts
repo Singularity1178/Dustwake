@@ -110,6 +110,7 @@ export type Effect =
   | { op: "talk" }
   /** Talk to a townsperson (sim/folk.ts: folkTalk): the target carries its actor id. */
   | { op: "folkTalk" }
+  | { op: "keeperTalk" }
   /** Set an NPC's reversible awake/dormant state (flag npc.<id>.awake). */
   | { op: "npcAwake"; npc: string; awake: boolean }
   /** Mend the golem's eye (golem.eye). Idempotent. */

@@ -191,3 +191,4 @@ export function run(dir = ".preview/folk", only = "") {
   for (const [n, area, tx, ty, h] of close) if (want(n) || want("close")) save(n, shot(scene(area, tx, ty, h).g), 2);
   console.log(CENSUS.length, "people in the census");
 }
+export { shot, sheet, canvas, tick, installDom, newGame, DCanvas };

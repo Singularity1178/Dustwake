@@ -142,6 +142,16 @@ Westwake and the north-west wood are lived in (save v18): seventeen people in th
 
 Developer preview: `node scripts/folkPreview.mjs` renders a sprite sheet of every archetype, look, facing and pose, a sheet of heads, the town, the tavern and the camp at several hours, vision mode, and close-ups (the smithy's anvils, a bench, the camp asleep) to `.preview/folk/*.png`; `node scripts/folkPreview.mjs dir heads,close_smithy` renders only those. The rules are in `docs/ARCHITECTURE.md`, "Townsfolk (v18)"; the tests are `tests/folk.test.ts`.
 
+## Shops, shopkeepers and talk
+
+Westwake's six shops are in use. Through the day people walk to a shop's door, go in, and come out later: apprentices are in and out of the smithy, adventurers live between the guild's board and the armoury's racks, residents keep the tailor busy, the well-off (the houses lit by light runes) find the jeweller, labourers take a pint at midday. Inside they browse the shelves, point, queue at the counter, haggle and hand coin across, or look, shake their heads and leave. Arrive at any hour and the shop is as the hour says: a few customers at midday, nobody at night.
+
+- **Shopkeepers.** Each shop has a keeper behind its counter: for now a plain black box (a placeholder to be textured: `src/game/keeperArt.ts`). They keep hours (lunch, closing; the tavern runs past midnight), greet whoever comes in, serve the customer in front of them, tidy the shelves between customers, and answer the golem with a line (E). Out of hours the counter is empty, with a CLOSED card on it.
+- **Talk.** Townsfolk talk to each other in words: short exchanges in speech bubbles, said in turn. A greeting in passing, a nod to the watch, gossip at the well, grumbles from the grumpy, haggling over a counter. Who they are and where they are decides what is said; the same exchange is never had twice running. Far from the golem, or when the street is busy, talk shows as pictograms as before.
+- **The guild board.** People read it: stand before it, point, take a note, nod or shake their heads, discuss a posting. So with the notices in the square. It is only a look: no contracts yet.
+
+All of it is data (`src/game/content/shops.ts`, `src/game/content/talk.ts`): a shop behaviour, an exchange or a line is a row. `node scripts/shopPreview.mjs` renders shops with people in them, a deal frame by frame, the board and the street to `.preview/shops/`.
+
 ## Getting about: runes, the stair and the road
 
 There are three kinds of way between places, and a worker golem under orders uses all of them, as you do.
@@ -183,7 +193,7 @@ The build uses [`vite-plugin-singlefile`](https://github.com/richardtallent/vite
 npm test
 ```
 
-Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner.
+Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner. `tests/folk.test.ts` covers the townsfolk, `tests/shops.test.ts` the shops in use (trips, visits, keepers and their hours, talk in turn, the guild board, saves, timing).
 
 ## Project layout
 
@@ -227,6 +237,7 @@ src/
     golem.ts         golem drawing
     npcArt.ts        NPC drawing (NPC_ART, keyed by NpcDef art id)
     folkArt.ts       townsfolk drawing (one painter for look, garb and pose; speech bubbles)
+    keeperArt.ts     shopkeepers: the placeholder black box, and KEEPER_ART where real art goes; the CLOSED card
     schematic.ts     schematic plan drawing (the overlay is screens/schematic.ts)
     light.ts         lighting and glow
     audio.ts         synthesized sound effects

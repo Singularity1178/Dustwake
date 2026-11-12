@@ -9,6 +9,7 @@
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
 import { populateFolk } from "../sim/folk";
+import { populateKeepers } from "../sim/shops";
 import { SeededRng } from "../core/rng";
 import { TS, isSolidT } from "../content/tiles";
 import { propDef } from "../content/props";
@@ -100,7 +101,7 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      from the save's own seed, never its rng), so the town and the camp of a
   *      save from before v18 are lived in on load, and a v18 save is untouched.
   */
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -122,7 +123,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 18;
+  version: 19;
   seed: number;
   rng: number;
   time: number;
@@ -356,6 +357,10 @@ export const MIGRATIONS: Record<number, Migration> = {
   // older needs rewriting: deserialize makes the people of every area the save has already visited (populateFolk,
   // keyed by the census flag, from the save's own seed), so a town visited before v18 is lived in on load.
   17: (s) => ({ ...s, version: 18 }),
+  // v19: shops in use. Actors of kind "keeper" carry `keeper` (sim/shops.ts); a townsperson's `life` may carry the
+  // step of a shop visit and their last exchange (all optional). Nothing older needs rewriting: deserialize makes the
+  // keeper of every shop room the save has already visited (populateKeepers), and a plan is read off the clock.
+  18: (s) => ({ ...s, version: 19 }),
 };
 
 type Rect = [number, number, number, number];
@@ -453,6 +458,8 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
   for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d));
   // townsfolk for areas visited before there were any (a no-op for a save that has them: the census flag is set)
   for (const id of w.areas.keys()) populateFolk(w, id);
+  // shopkeepers for shop rooms visited before there were any (a no-op when the keeper is already among the actors)
+  for (const id of w.areas.keys()) populateKeepers(w, id);
   return w;
 }
 

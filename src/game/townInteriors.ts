@@ -99,6 +99,10 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       for (let i = 0; i < 5; i++) D("debris", 1 + i * 0.9, 4.2 + (i % 2) * 0.5, i % 4);
       Q("candlestand", 8.6, 7.8); Q("candlestand", 14.1, 4.4); Q("lantern", 10.6, -1);
       spot("work.anvil", "work", 3, 4, "up"); spot("work.bellows", "work", 6.3, 2.2, "left"); spot("idle.browse", "idle", 10, 6.6, "right");
+      // customers: the tool rack by the torch, the stand by the door, the crates; the queue; the smith's shelves behind the counter
+      spot("browse.tools", "browse", 9.2, 0.5, "up"); spot("browse.stand", "browse", 8.9, 6.9, "down"); spot("browse.crates", "browse", 12.7, 6.7, "right");
+      spot("queue.1", "queue", 11.6, 6, "up"); spot("queue.2", "queue", 11.4, 7, "up");
+      spot("tidy.1", "tidy", 12.9, 3.25, "up"); spot("tidy.2", "tidy", 11.8, 1.7, "up");
     },
   },
   // The Gilded Buckler. Finished arms for people with coin: dressed stone, a runner to the counter,
@@ -114,6 +118,11 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("runestand", 3.4, 4.6); Q("runestand", 10.6, 4.6); Q("dummy", 2.6, 7.6); Q("chest", 11.6, 7.8, { v: 2 }); Q("crate", 12.7, 7.9, { v: 1 });
       D("rug", 6.5, 3.6, 0, 32, 84);
       spot("idle.stands.w", "idle", 1.6, 5.6, "left"); spot("idle.stands.e", "idle", 12.4, 5.6, "right");
+      // customers: the racks in the north corners, the harness by the door, the rune stand; the queue down the runner
+      spot("browse.rack.w", "browse", 1.2, 1.5, "up"); spot("browse.rack.e", "browse", 13, 1.5, "up");
+      spot("browse.harness.w", "browse", 4.6, 6.8, "down"); spot("browse.harness.e", "browse", 9.4, 6.8, "down"); spot("browse.runes", "browse", 4.5, 4.7, "left");
+      spot("queue.1", "queue", 7, 4.5, "up"); spot("queue.2", "queue", 7, 5.6, "up");
+      spot("tidy.1", "tidy", 5.4, 1.6, "up"); spot("tidy.2", "tidy", 8.6, 1.6, "up");
     },
   },
   // The Bright Facet. The smallest room in town and the most expensive: oak panelling, glazed tile,
@@ -128,6 +137,10 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("displaycase", 2.8, 6.8, { v: 2 }); Q("displaycase", 8.2, 6.8, { v: 1 }); Q("runestand", 2.2, 3.6); Q("runestand", 8.8, 3.6); Q("pot", 10.8, 2.4, { v: 1 });
       D("rug", 3.5, 3.7, 1, 80, 40);
       spot("work.bench", "work", 1.6, 1.3, "up"); spot("idle.cases.w", "idle", 1.6, 5.4, "left"); spot("idle.cases.e", "idle", 9.4, 5.4, "right");
+      // customers: the cases by the door; the queue on the rug
+      spot("browse.case.sw", "browse", 2.8, 5.9, "down"); spot("browse.case.se", "browse", 8.2, 5.9, "down"); spot("browse.runes", "browse", 3.4, 3.7, "left");
+      spot("queue.1", "queue", 5.5, 4.5, "up"); spot("queue.2", "queue", 5.5, 5.6, "up");
+      spot("tidy.1", "tidy", 4, 1.6, "up"); spot("tidy.2", "tidy", 7.4, 1.6, "up");
     },
   },
   // The Silver Needle. Clothiers: waxed boards, limewash, bolts of cloth to the ceiling, forms
@@ -142,6 +155,10 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("table", 3, 5.6, { v: 1 }); Q("loom", 11.2, 5.4); Q("clothrack", 0.9, 6.9); Q("clothrack", 11.1, 6.9); Q("runestand", 4.6, 6.9);
       D("rug", 5.1, 3.4, 3, 64, 44); D("paper", 2.6, 4.9, 1); D("paper", 3.5, 5, 0);
       spot("work.loom", "work", 9.4, 5.6, "right"); spot("work.fitting", "work", 9.9, 2.6, "up"); spot("idle.forms", "idle", 7, 6.2, "up");
+      // customers: the racks either side of the door, the form by the west wall, the cutting table; the queue
+      spot("browse.rack.w", "browse", 1, 5.9, "down"); spot("browse.rack.e", "browse", 11, 6.05, "down"); spot("browse.form", "browse", 1.6, 4.4, "left"); spot("browse.table", "browse", 5.1, 5.7, "left");
+      spot("queue.1", "queue", 3.4, 4.4, "up"); spot("queue.2", "queue", 4.8, 4.5, "left");
+      spot("tidy.1", "tidy", 2.3, 1.2, "up"); spot("tidy.2", "tidy", 4.8, 1.2, "up");
     },
   },
   // The Sunken Crown. The town's front room: a long bar, a big fire, a tin crown on the wall, too many
@@ -169,6 +186,9 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       D("straw", 6, 7.6, 0, 70); D("straw", 14, 8, 0, 60); D("stain", 8.6, 6.6, 1, 14, 8); D("stain", 4.6, 4.3, 1, 12, 6);
       Q("lantern", 0.5, -1); Q("candlestand", 0.3, 4.8); Q("candlestand", 0.3, 9.9); Q("candlestand", 19.2, 7); Q("candlestand", 10.2, 4.2); Q("candlestand", 12.6, 9.8);
       spot("idle.stairs", "idle", 18.6, 2.4, "up");
+      // the queue at the bar's end; the innkeeper's kegs and shelves
+      spot("queue.1", "queue", 7.9, 3.6, "left"); spot("queue.2", "queue", 8.8, 4.2, "left");
+      spot("tidy.1", "tidy", 2, 1.7, "up"); spot("tidy.2", "tidy", 5.4, 1.7, "up");
     },
   },
   // The Adventurers' Guild, Westwake chapter. The Throne's charter made it the grandest room in town:
@@ -193,6 +213,11 @@ const ROOMS: Record<Establishment, RoomSpec> = {
       Q("roundtable_lit", 17.8, 7.4, { v: 1 }); seat("t2.w", 16.5, 7.2); seat("t2.e", 19.1, 7.2);
       Q("dummy", 18.6, 10.6); Q("dummy", 16.4, 10.8); Q("barrel", 19.1, 9); D("straw", 17.5, 10.4, 0, 50);
       spot("idle.fire", "idle", 15.7, 4.2, "up"); spot("idle.stairs", "idle", 18.7, 2.4, "up");
+      // a third place at the board; the trophy, the map table, the rack by the door; the queue down the runner; the clerk's records
+      spot("idle.board.3", "idle", 3, 2.3, "up");
+      spot("browse.trophy", "browse", 17.5, 0.7, "up"); spot("browse.maps", "browse", 5.7, 5.6, "left"); spot("browse.rack", "browse", 3.4, 9.8, "down");
+      spot("queue.1", "queue", 9.5, 4.8, "up"); spot("queue.2", "queue", 9.5, 5.9, "up");
+      spot("tidy.1", "tidy", 8.3, 1.4, "up"); spot("tidy.2", "tidy", 10.7, 1.4, "up");
     },
   },
 };
