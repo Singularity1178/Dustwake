@@ -21,6 +21,8 @@ import { Area, type RitualState } from "./area";
 import { AREAS } from "./areas";
 import { makeNpc, type Actor, type MonologueState, type Scheduled, type Slot, type World } from "./world";
 import { GUARDIAN_FLAGS } from "../content/dialogue";
+import { buildFromSpec, attachLinks, type AreaSpec } from "./areaSpec";
+import { rleEncode, rleDecode } from "./rle";
 
 /**
  * v1: inventory was ItemId[] on the actor; scheduled effects had no area.
@@ -100,8 +102,14 @@ import { GUARDIAN_FLAGS } from "../content/dialogue";
   *      every area a save has visited and has no census flag for (populateFolk:
   *      from the save's own seed, never its rng), so the town and the camp of a
   *      save from before v18 are lived in on load, and a v18 save is untouched.
+  * v19: shops in use (keepers, visits); nothing older rewritten.
+  * v20: dynamic areas and save system v2. `specs`: the areas made at runtime (world/areaSpec.ts), each rebuilt
+  *      from its spec and then diffed like an authored area. An area with more than RLE_MIN_TILES changed tiles,
+  *      or one whose spec keeps its grid (player-built), saves `gridRle` (the whole grid, run-length coded:
+  *      world/rle.ts) instead of `tiles`. An area that went unticked under LOD records `lastTicked`. Older saves
+  *      gain `specs: []`; nothing else changes, so a v19 save loads as it was.
   */
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -120,10 +128,14 @@ export interface AreaSave {
   propsRemoved: string[];
   decalsAdded: DecalDef[];
   ritual: RitualState | null;
+  /** v20: the whole grid, run-length coded (large edits, player-built areas); `tiles` is then empty. */
+  gridRle?: string;
+  /** v20: world time the area's own features were last ticked, when that is not the save's own time (LOD). */
+  lastTicked?: number;
 }
 
 export interface SaveData {
-  version: 19;
+  version: 20;
   seed: number;
   rng: number;
   time: number;
@@ -136,6 +148,8 @@ export interface SaveData {
   scheduled: Scheduled[];
   monologue: MonologueState;
   areas: Record<string, AreaSave>;
+  /** v20: areas made at runtime (world/areaSpec.ts). */
+  specs: AreaSpec[];
 }
 
 type Migration = (s: any) => any;
@@ -361,6 +375,8 @@ export const MIGRATIONS: Record<number, Migration> = {
   // step of a shop visit and their last exchange (all optional). Nothing older needs rewriting: deserialize makes the
   // keeper of every shop room the save has already visited (populateKeepers), and a plan is read off the clock.
   18: (s) => ({ ...s, version: 19 }),
+  // v20: dynamic areas (world/areaSpec.ts) and compressed grids. A v19 world made nothing at runtime.
+  19: (s) => ({ ...s, version: 20, specs: Array.isArray(s.specs) ? s.specs : [] }),
 };
 
 type Rect = [number, number, number, number];
@@ -439,10 +455,11 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export function serialize(w: World): SaveData {
   const areas: Record<string, AreaSave> = {};
-  for (const [id, a] of w.areas) areas[id] = diffArea(a);
+  for (const [id, a] of w.areas) areas[id] = diffArea(a, w.time, w.specs?.get(id));
   return clone({
     version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime, day: w.day,
     flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, monologue: w.monologue, areas,
+    specs: [...(w.specs?.values() ?? [])],
   } as SaveData);
 }
 
@@ -454,8 +471,11 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
     seed: s.seed, rng, time: s.time, playTime: s.playTime, day: s.day, flags: new Set(s.flags),
     areas: new Map(), actors: clone(s.actors), playerId: s.playerId, scheduled: clone(s.scheduled),
     monologue: { said: [...(s.monologue?.said ?? [])], ready: { ...(s.monologue?.ready ?? {}) } }, events: [],
+    specs: new Map((s.specs ?? []).map((sp) => [sp.id, clone(sp)])), lod: null,
   };
-  for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d));
+  for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d, w.specs.get(id), s.time));
+  // the ways down to runtime areas, in every parent that is loaded (world/areaSpec.ts)
+  if (w.specs.size) for (const a of w.areas.values()) attachLinks(w.specs.values(), a);
   // townsfolk for areas visited before there were any (a no-op for a save that has them: the census flag is set)
   for (const id of w.areas.keys()) populateFolk(w, id);
   // shopkeepers for shop rooms visited before there were any (a no-op when the keeper is already among the actors)
@@ -490,10 +510,15 @@ const propState = (p: { open: boolean; taken: boolean; lit?: boolean; item?: Ite
   return d;
 };
 
-function diffArea(a: Area): AreaSave {
+/** Past this many changed tiles an area saves its whole grid, run-length coded (world/rle.ts), instead of the list. */
+export const RLE_MIN_TILES = 384;
+
+function diffArea(a: Area, time = a.lastTicked, spec?: AreaSpec): AreaSave {
   const base = a.base;
-  const tiles: [number, number][] = [];
+  let tiles: [number, number][] = [];
   for (let i = 0; i < a.grid.length; i++) if (a.grid[i] !== base.grid[i]) tiles.push([i, a.grid[i]]);
+  const gridRle = spec?.store === "grid" || tiles.length > RLE_MIN_TILES ? rleEncode(a.grid) : undefined;
+  if (gridRle) tiles = [];
   const props: AreaSave["props"] = {};
   const propsAdded: AreaSave["propsAdded"] = [];
   const baseProps = new Map(base.props.map((p) => [p.id, p]));
@@ -515,14 +540,21 @@ function diffArea(a: Area): AreaSave {
     propsRemoved: base.props.filter((p) => !a.prop(p.id)).map((p) => p.id),
     decalsAdded: a.decals.slice(base.decals.length),
     ritual: a.ritual,
+    ...(gridRle ? { gridRle } : {}),
+    ...(a.lastTicked !== time ? { lastTicked: a.lastTicked } : {}),
   };
 }
 
-function restoreArea(id: string, d: AreaSave): Area {
-  const build = AREAS[id];
+function restoreArea(id: string, d: AreaSave, spec?: AreaSpec, time = 0): Area {
+  const build = spec ? () => buildFromSpec(spec) : AREAS[id];
   if (!build) throw new Error(`save references unknown area "${id}"`);
   const a = new Area(build());
-  for (const [i, t] of d.tiles) a.setTile(i % a.w, Math.floor(i / a.w), t);
+  if (d.gridRle) {
+    const g = rleDecode(d.gridRle, a.w * a.h);
+    for (let i = 0; i < g.length; i++) if (g[i] !== a.grid[i]) a.setTile(i % a.w, Math.floor(i / a.w), g[i]);
+  }
+  for (const [i, t] of d.tiles ?? []) a.setTile(i % a.w, Math.floor(i / a.w), t);
+  a.lastTicked = typeof d.lastTicked === "number" ? d.lastTicked : time;
   for (const [pid, st] of Object.entries(d.props)) {
     a.setPropState(pid, st);
     if (st.inventory) a.setInventory(pid, st.inventory);

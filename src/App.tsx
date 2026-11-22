@@ -1,25 +1,36 @@
 import { useEffect, useRef } from "react";
 import { Game, W, H } from "./game/game";
 import { serialize } from "./game/world/save";
-import { saveToStorage, loadFromStorage } from "./game/view/persistence";
+import { saveToStorage, loadFromStorage, openBrowserStore } from "./game/view/persistence";
 import { foundationDemo, registerFoundations } from "./game/sim/debugFoundations";
 import { setWorkerOrder } from "./game/sim/jobs";
 import type { JobOrder } from "./game/world/jobs";
 import { player } from "./game/world/world";
+import { GamepadInput } from "./game/view/gamepad";
+import { runSoak, type SoakOptions } from "./game/sim/soak";
 
 export default function App() {
   const ref = useRef<HTMLCanvasElement>(null);
   const uiRef = useRef<HTMLCanvasElement>(null);
-  const wrap = useRef<HTMLDivElement>(null);
+  const hiRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    // Two stacked layers with the same display rect: the world canvas is sized
-    // to the current view (W x H times the zoom level, 1 world px = 1 canvas
-    // px), the UI canvas stays at the base W x H so the HUD and overlays keep
-    // their look at every zoom. Both scale with nearest-neighbour (pixelated).
-    const canvas = ref.current!;
-    const ui = uiRef.current!;
-    const game = new Game(canvas, ui);
+    // Three stacked layers with the same display rect. The world canvas is sized to the current view (W x H times
+    // the zoom level, 1 world px = 1 canvas px) and stays pixel-perfect; the base UI canvas stays at W x H for the
+    // HUD and the original overlays; the high-resolution UI canvas (2x the base, or 3x for the compact UI scale)
+    // carries the v2 interface: the speed bar, the notification feed, tooltips, the system menu. It is on top, so it
+    // takes the mouse. All three scale with nearest-neighbour (pixelated).
+    const canvas = ref.current!, ui = uiRef.current!, hi = hiRef.current!;
+    const game = new Game(canvas, ui, hi);
+    let alive = true;
+    // Saves live in IndexedDB (world/saveStore.ts over view/persistence.ts); until it opens, a memory store stands in.
+    openBrowserStore()
+      .then(({ store, kind }) => {
+        if (!alive) return;
+        game.useStore(store);
+        if (kind !== "IndexedDB") game.notes.push(`Saves are kept in ${kind}`, "warn", "store");
+      })
+      .catch(() => game.notes.push("Saves could not be opened; they will not outlive this tab", "warn", "store"));
     // Developer hook (not player-facing): open with ?debug to get window.dustwake.
     if (new URLSearchParams(window.location.search).has("debug")) {
       registerFoundations();
@@ -30,23 +41,26 @@ export default function App() {
         load: () => { const w = loadFromStorage(); if (w) game.resume(w); return !!w; },
         foundations: () => { game.resume(foundationDemo()); game.say("FOUNDATION FIXTURE: A WORKER GATHERS THROUGH THE RUNES."); },
         order: (id: string, order: JobOrder | null) => setWorkerOrder(game.world, player(game.world), id, order),
+        createFloor: (kind: "floor" | "cave" = "floor") => game.devCreateFloor(kind).id,
+        speed: (s: number) => game.setSpeed(s),
+        soak: (o: SoakOptions = {}) => runSoak({ residents: 300, seconds: 120, ...o }),
+        store: () => game.store.list(),
       };
     }
+    const pad = new GamepadInput();
     let raf = 0;
     let last = performance.now();
     let running = true;
 
-    // The display rect is fitted for the base size (integer steps from 2x up,
-    // as before), so the HUD never jumps when zooming. The world canvas's
-    // scale is derived from the current view size: display / view (an integer
-    // on common screens: at 1920 px wide it is 6, 4 and 3 for 1x/1.5x/2x).
+    // The display rect is fitted for the base size (integer steps from 2x up, as before), so the HUD never jumps when
+    // zooming. The world canvas's scale is derived from the current view size.
     const fit = () => {
       const vw = window.innerWidth, vh = window.innerHeight;
       let s = Math.min(vw / W, vh / H);
       if (s >= 2) s = Math.floor(s);
       const dw = Math.round(W * s), dh = Math.round(H * s);
       const ws = dw / game.vw;
-      for (const c of [canvas, ui]) {
+      for (const c of [canvas, ui, hi]) {
         c.style.width = `${dw}px`;
         c.style.height = `${dh}px`;
       }
@@ -73,20 +87,36 @@ export default function App() {
       game.keyDown(e.key);
     };
     const ku = (e: KeyboardEvent) => game.keyUp(e.key);
-    const pd = () => game.pointer();
-    // Non-passive so the page never scrolls; the game decides whether the wheel zooms.
+    // The mouse, in base-layer px (320 x 180) whatever the display size.
+    const toBase = (e: PointerEvent) => {
+      const r = hi.getBoundingClientRect();
+      return { x: ((e.clientX - r.left) / Math.max(1, r.width)) * W, y: ((e.clientY - r.top) / Math.max(1, r.height)) * H };
+    };
+    const pm = (e: PointerEvent) => { const p = toBase(e); game.pointerMove(p.x, p.y); };
+    const pd = (e: PointerEvent) => { const p = toBase(e); hi.focus(); game.sfx.init(); game.pointerDown(e.button, p.x, p.y); };
+    const pu = (e: PointerEvent) => { const p = toBase(e); game.pointerUp(e.button, p.x, p.y); };
+    const pl = () => game.pointerLeave();
+    const cm = (e: Event) => e.preventDefault();
+    // Non-passive so the page never scrolls; the game decides whether the wheel zooms or scrolls a list.
     const wh = (e: WheelEvent) => { e.preventDefault(); game.wheel(e.deltaY); };
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
-    ui.addEventListener("pointerdown", pd);
+    hi.addEventListener("pointermove", pm);
+    hi.addEventListener("pointerdown", pd);
+    window.addEventListener("pointerup", pu);
+    hi.addEventListener("pointerleave", pl);
+    hi.addEventListener("contextmenu", cm);
     window.addEventListener("wheel", wh, { passive: false });
     const blur = () => game.keys.clear();
     window.addEventListener("blur", blur);
 
+    // Real frame time goes in; the game turns it into whole fixed simulation ticks at the chosen speed (core/clock.ts)
+    // and draws between the last two (view/interp.ts). A long hitch is clamped so a cutscene never leaps.
     const loop = (now: number) => {
       if (!running) return;
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
+      pad.poll(game);
       game.update(dt);
       game.render();
       raf = requestAnimationFrame(loop);
@@ -95,6 +125,7 @@ export default function App() {
 
     return () => {
       running = false;
+      alive = false;
       cancelAnimationFrame(raf);
       game.onView = null;
       window.removeEventListener("resize", fit);
@@ -102,7 +133,11 @@ export default function App() {
       window.removeEventListener("keyup", ku);
       window.removeEventListener("blur", blur);
       window.removeEventListener("wheel", wh);
-      ui.removeEventListener("pointerdown", pd);
+      window.removeEventListener("pointerup", pu);
+      hi.removeEventListener("pointermove", pm);
+      hi.removeEventListener("pointerdown", pd);
+      hi.removeEventListener("pointerleave", pl);
+      hi.removeEventListener("contextmenu", cm);
       game.sfx.ctx?.close();
       game.view.dispose();
       delete (window as unknown as Record<string, unknown>).dustwake;
@@ -110,23 +145,11 @@ export default function App() {
   }, []);
 
   return (
-    <div ref={wrap} className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden select-none">
+    <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden select-none">
       <div className="relative">
-        <canvas
-          ref={ref}
-          width={W}
-          height={H}
-          className="block outline-none"
-          style={{ imageRendering: "pixelated" }}
-        />
-        <canvas
-          ref={uiRef}
-          width={W}
-          height={H}
-          tabIndex={0}
-          className="absolute inset-0 block outline-none"
-          style={{ imageRendering: "pixelated" }}
-        />
+        <canvas ref={ref} width={W} height={H} className="block outline-none" style={{ imageRendering: "pixelated" }} />
+        <canvas ref={uiRef} width={W} height={H} className="absolute inset-0 block outline-none pointer-events-none" style={{ imageRendering: "pixelated" }} />
+        <canvas ref={hiRef} width={W * 2} height={H * 2} tabIndex={0} className="absolute inset-0 block outline-none" style={{ imageRendering: "pixelated", touchAction: "none", cursor: "default" }} />
       </div>
     </div>
   );

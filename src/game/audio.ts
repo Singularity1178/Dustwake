@@ -1,6 +1,10 @@
 export class Sfx {
   ctx: AudioContext | null = null;
   master: GainNode | null = null;
+  /** Effects and ambience mix into the master through their own buses (settings: volume sliders). */
+  sfxBus: GainNode | null = null;
+  ambBus: GainNode | null = null;
+  volumes = { master: 1, sfx: 1, ambient: 1 };
   noiseBuf: AudioBuffer | null = null;
   hum: { g: GainNode; o: OscillatorNode[] } | null = null;
 
@@ -12,8 +16,10 @@ export class Sfx {
     } catch { return; }
     const c = this.ctx;
     this.master = c.createGain();
-    this.master.gain.value = 0.55;
+    this.master.gain.value = 0.55 * this.volumes.master;
     this.master.connect(c.destination);
+    this.sfxBus = c.createGain(); this.sfxBus.gain.value = this.volumes.sfx; this.sfxBus.connect(this.sfxBus ?? this.master);
+    this.ambBus = c.createGain(); this.ambBus.gain.value = this.volumes.ambient; this.ambBus.connect(this.sfxBus ?? this.master);
     const len = c.sampleRate * 2;
     this.noiseBuf = c.createBuffer(1, len, c.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
@@ -34,7 +40,7 @@ export class Sfx {
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
     this.env(g, t, 0.01, vol, dur);
-    o.connect(g); g.connect(this.master);
+    o.connect(g); g.connect(this.sfxBus ?? this.master);
     o.start(t); o.stop(t + dur + 0.05);
   }
 
@@ -47,7 +53,7 @@ export class Sfx {
     if (freqTo) f.frequency.exponentialRampToValueAtTime(freqTo, t + dur);
     const g = c.createGain();
     this.env(g, t, 0.005, vol, dur);
-    s.connect(f); f.connect(g); g.connect(this.master);
+    s.connect(f); f.connect(g); g.connect(this.sfxBus ?? this.master);
     s.start(t, Math.random()); s.stop(t + dur + 0.05);
   }
 
@@ -206,10 +212,20 @@ export class Sfx {
   /** The crossing stalls: the far anchor does not answer. */
   stall() { this.tone(220, 0.5, "sawtooth", 0.04, 70); this.noise(0.4, 0.12, "bandpass", 500, 2, 0, 160); this.tone(55, 0.8, "sine", 0.2, 40, 0.05); }
 
+  /** Settings: master, effects and ambience volume (0..1 each). Applied at once if sound is running. */
+  setVolumes(v: { master?: number; sfx?: number; ambient?: number }) {
+    Object.assign(this.volumes, v);
+    const c = this.ctx;
+    if (!c || !this.master) return;
+    this.master.gain.setTargetAtTime(0.55 * this.volumes.master, c.currentTime, 0.05);
+    this.sfxBus?.gain.setTargetAtTime(this.volumes.sfx, c.currentTime, 0.05);
+    this.ambBus?.gain.setTargetAtTime(this.volumes.ambient, c.currentTime, 0.05);
+  }
+
   setHum(level: number) {
     const c = this.ctx; if (!c || !this.master) return;
     if (!this.hum) {
-      const g = c.createGain(); g.gain.value = 0; g.connect(this.master);
+      const g = c.createGain(); g.gain.value = 0; g.connect(this.sfxBus ?? this.master);
       const o = [98, 98.6, 147].map((f) => {
         const os = c.createOscillator(); os.type = "sine"; os.frequency.value = f; os.connect(g); os.start(); return os;
       });
@@ -220,7 +236,7 @@ export class Sfx {
 
   private ambient() {
     const c = this.ctx!;
-    const g = c.createGain(); g.gain.value = 0.05; g.connect(this.master!);
+    const g = c.createGain(); g.gain.value = 0.05; g.connect(this.ambBus ?? this.master!);
     const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 180; f.connect(g);
     for (const fr of [41, 41.4, 61.5]) {
       const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = fr; o.connect(f); o.start();
@@ -233,6 +249,6 @@ export class Sfx {
     const wg = c.createGain(); wg.gain.value = 0.018;
     const wl = c.createOscillator(); wl.frequency.value = 0.08; const wlg = c.createGain(); wlg.gain.value = 0.014;
     wl.connect(wlg); wlg.connect(wg.gain); wl.start();
-    s.connect(wf); wf.connect(wg); wg.connect(this.master!); s.start();
+    s.connect(wf); wf.connect(wg); wg.connect(this.ambBus ?? this.master!); s.start();
   }
 }

@@ -212,7 +212,7 @@ export function debugPlaces(w: World): DebugPlace[] {
  * through enterArea. False (and nothing moves) if no free spot is near.
  */
 export function teleportTo(w: World, a: Actor, areaId: string, x: number, y: number): boolean {
-  if (!AREAS[areaId]) return false;
+  if (!AREAS[areaId] && !w.specs?.has(areaId)) return false;
   const area = getArea(w, areaId);
   const bodies = actorBoxes(w, areaId, a.id), size = actorDef(a).body.box;
   let spot: { x: number; y: number } | null = null;

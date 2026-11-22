@@ -20,7 +20,8 @@ import { reactToEvents } from "./monologue";
 import { coreKey } from "./commands";
 import { portalAt, portalOpen, walkThrough } from "./portals";
 import { stepDay } from "./daytime";
-import { tickFolk } from "./folk";
+import { tickFolk, folkCatchUp } from "./folk";
+import { focusTick, lodDue, lodTier, stepIn, type CatchUp } from "./lod";
 import { tickKeepers } from "./shops";
 
 export interface PlayerInput {
@@ -86,22 +87,38 @@ export function addPlayTime(w: World, dt: number) { w.playTime += dt; }
 
 /** Advance everything that runs on world time: clock, scheduled effects, non-player actors, area features. */
 //
-// Off-screen policy: every loaded area is simulated every step (see
-// ARCHITECTURE.md). Non-player actors tick wherever they are; scheduled effects
-// carry the area they were scheduled in.
+// Off-screen policy (sim/lod.ts, docs/sim/lod.md). With `w.lod` null every loaded area is simulated every step, as it
+// always was. With LOD on, actors are stepped by tier (active / near / far), areas other than the player's do not tick
+// their own features, and coming back into one runs CATCH_UP for the time it went unticked. Non-player actors tick
+// wherever they are; scheduled effects carry the area they were scheduled in.
+/** What an area catches up on when the player comes back into it under LOD: its ritual's charge, its people's hour. */
+export const CATCH_UP: CatchUp[] = [
+  (_w, area, elapsed) => area.advanceRitual(elapsed),
+  (w, area) => folkCatchUp(w, area),
+];
+
 export function stepWorld(w: World, dt: number) {
   w.time += dt;
   stepDay(w, dt);
   runScheduled(w);
+  const lod = w.lod, pl = w.actors.find((a) => a.id === w.playerId);
+  if (lod) focusTick(w, dt, pl && w.areas.get(pl.area), CATCH_UP);
   for (const a of [...w.actors].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     reconcileGear(w, a);
     reconcileCapacity(w, a);
-    if (a.id !== w.playerId) { tickTask(w, a, dt); tickJob(w, a, dt); }
+    if (a.id === w.playerId) continue;
+    if (!lod) { tickTask(w, a, dt); tickJob(w, a, dt); continue; }
+    // work to do: a task under way, one queued, or an order not finished (an idle body has nothing to step)
+    if (!a.task && !a.queue.length && !(a.job && a.job.status !== "done")) continue;
+    const due = lodDue(w, a, lodTier(w, a, pl), dt, true);
+    if (due > 0) stepIn(w, due, (s) => { tickTask(w, a, s); tickJob(w, a, s); });
   }
   for (const area of w.areas.values()) {
+    if (lod && pl && area.id !== pl.area) continue; // far areas wait; coming back catches them up (CATCH_UP)
     area.advanceRitual(dt);
+    area.lastTicked = w.time;
   }
-  // townsfolk live by their routines (sim/folk.ts): stepped in the player's area, set down by the hour elsewhere
+  // townsfolk live by their routines (sim/folk.ts): stepped in the player's area (by LOD tier), set down by the hour elsewhere
   tickFolk(w, dt);
   // shopkeepers keep their counters and their hours (sim/shops.ts): stepped in the room the golem is in
   tickKeepers(w, dt);

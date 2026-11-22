@@ -16,6 +16,8 @@ import { START_HOUR, type DayPhase } from "../content/daycycle";
 import type { ChatIcon } from "../content/folk";
 import { populateFolk, type Person, type Life } from "../sim/folk";
 import { populateKeepers, type KeeperState } from "../sim/shops";
+import { buildFromSpec, attachLinks, nextSpecId, type AreaSpec } from "./areaSpec";
+import type { LodState } from "../sim/lod";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -160,12 +162,17 @@ export interface World {
   /** The player golem's inner monologue (saved). */
   monologue: MonologueState;
   events: SimEvent[];
+  /** Areas made at runtime (world/areaSpec.ts: floors, caves, outposts), by id. Saved (v20). */
+  specs: Map<string, AreaSpec>;
+  /** Simulation level of detail (sim/lod.ts). Null: everything is stepped every tick. A host policy, never saved. */
+  lod: LodState | null;
 }
 
 export function createWorld(seed: number): World {
   const w: World = {
     seed, rng: new SeededRng(seed), time: 0, playTime: 0, day: START_HOUR / 24, flags: new Set(),
     areas: new Map(), actors: [], playerId: "golem", scheduled: [], monologue: { said: [], ready: {} }, events: [],
+    specs: new Map(), lod: null,
   };
   const dungeon = getArea(w, "dungeon");
   // The player first; the dungeon's NPCs were spawned by getArea.
@@ -194,9 +201,13 @@ export function makeNpc(s: NpcSpawn, area: string): Actor {
 export function getArea(w: World, id: string): Area {
   let a = w.areas.get(id);
   if (!a) {
-    const build = AREAS[id];
+    const spec = w.specs?.get(id);
+    const build = spec ? () => buildFromSpec(spec) : AREAS[id];
     if (!build) throw new Error(`unknown area "${id}"`);
     a = new Area(build());
+    a.lastTicked = w.time;
+    // the ways down to runtime areas linked under this one (world/areaSpec.ts)
+    if (w.specs?.size) attachLinks(w.specs.values(), a);
     if (a.base.ritual) a.initRitual(shuffle(w.rng, [0, 1, 2, 3]));
     w.areas.set(id, a);
     for (const s of a.base.npcs ?? []) if (!actorById(w, s.id)) w.actors.push(makeNpc(s, id));
@@ -206,6 +217,24 @@ export function getArea(w: World, id: string): Area {
     populateKeepers(w, id);
   }
   return a;
+}
+
+/** Is there an area called `id`: authored (world/areas.ts) or made at runtime (a spec)? */
+export const hasArea = (w: World, id: string) => !!AREAS[id] || !!w.specs?.has(id);
+
+/**
+ * Make an area at runtime from a spec (world/areaSpec.ts) and instantiate it. With a `link`, the parent gains its
+ * way down at the link point (and keeps it across saves: the spec is saved, the link re-attached on load).
+ */
+export function createArea(w: World, spec: Omit<AreaSpec, "id"> & { id?: string }): Area {
+  const id = spec.id ?? nextSpecId(w.specs, spec.kind, (x) => !!AREAS[x] || w.areas.has(x));
+  if (hasArea(w, id)) throw new Error(`area "${id}" already exists`);
+  const full: AreaSpec = { ...spec, id };
+  w.specs.set(id, full);
+  const area = getArea(w, id);
+  const parent = full.link && w.areas.get(full.link.area);
+  if (parent) attachLinks([full], parent);
+  return area;
 }
 
 export const player = (w: World) => w.actors.find((a) => a.id === w.playerId)!;

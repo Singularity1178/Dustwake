@@ -1,0 +1,12 @@
+# Storage and shared crafting
+
+> Split out of the old single `ARCHITECTURE.md` (Phase 0.9). Index: [docs/index.md](../index.md).
+
+## Storage and shared crafting
+`PropKindDef.storage` declares capacity; `PropInst.inventory` holds slots. Builders may declare initial contents in `PropDef.inventory`; runtime copies them, and an emptied authored chest saves an explicit empty diff so its contents cannot respawn. `sim/inventoryOps.ts` contains owner-independent counting, insertion and removal; `repackInto` also accepts any inventory owner. `sim/storage.ts` resolves actor/prop references to short-lived snapshots and commits a transaction only after validating it. Prop commits always call `Area.setInventory`; no caller mutates a live prop's slot array. Transfers stop at capacity and leave the remainder at the source. Deconstruction checks every stored critical item and spills other contents before refunding the prop.
+
+Craft sources are the actor's pack, then storage within two tiles (Chebyshev, measured from the station anchor), ordered by stable prop id. Ingredient rows are aggregated before checking; consumption revalidates and commits atomically at the effect's fire point. Two crafters competing for one chest cannot partly consume a recipe. Tools must be in the actor's own pack and are never consumed. New UI/orders always bind the station and recheck its kind, area and reach; the stationless path remains for legacy queued craft tasks. Jobs wait if the output will not fit; the player's existing overflow-to-ground behaviour is unchanged.
+
+Inverse recipes are ordinary `CraftRecipe` rows with `mode: "deconstruct"`, production rows since v12: UNMAKE BROKEN CROWN (the crown into the High-Grade Ruby) and UNMAKE RUNE OF SWIFT / UNMAKE RUNE OF GLOW (each into one stone). Their names stay distinct and within the crafting list's 20 characters. They never participate in `rawValue`, nor in what counts as a crafted material. Alternative forward rows have deterministic id ordering and may explicitly opt into/out of valuation; recursion has a cycle guard. Relic credit is now discovery (`relic.found.*`), not possession, so dismantling or dropping the crown cannot reduce the relics display.
+
+E on a storage prop emits `openStorage`; the host opens the storage screen (see "Worker management and storage screens"). Its moves are `sim/commands.ts: moveStorageSlot`, on `sim/storage.ts: transferSlot`.

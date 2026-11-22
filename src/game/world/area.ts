@@ -65,6 +65,8 @@ export class Area {
   /** Id counters for things created during play (saved, so ids are never reused). */
   looseSeq = 0;
   propSeq = 0;
+  /** World time this area's own features (the ritual's charge) were last ticked: LOD catches it up from here (sim/lod.ts). */
+  lastTicked = 0;
   private listeners: Listener[] = [];
   private propIndex = new Map<string, PropInst>();
 

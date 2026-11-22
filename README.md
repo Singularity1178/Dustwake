@@ -39,10 +39,14 @@
 | `Z` | Toggle vision (scan) mode: a scanner sweep from the golem's eye highlights what it can see within its light's radius, each category with its own hologram (gold: important, cyan: interactable, violet: someone, green: buildable). A pulsing diamond marks something still to analyze; a dim, still outline with a check mark means it's already analyzed. `E` on a buildable analyzes its pattern. The top-right readout counts both within sight |
 | `Space` facing a cracked wall | Slam it down once the iron arm is attached. Without the arm it takes the hit and holds. `E` only pushes it (with a hint) |
 | `E` on someone | Talk (dialogue: `E` / `Space` / `Enter` finish the line, then next; `Esc` leave) |
-| Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended) |
+| Mouse wheel | Zoom 1x / 1.5x / 2x (once your eye has been mended), unless a list or slider under the pointer takes it |
 | `Esc` / `I` / `Tab` | Close menu |
-| `K` | Save the game (one slot, kept in the browser's localStorage) |
-| `L` | Load the saved game (also on the title screen, to continue) |
+| `K` | Quick save (the quick slot of the save store: IndexedDB in the browser) |
+| `L` | Continue: load the newest save of any slot (also on the title screen) |
+| `Esc` (play screen) | System menu: GAME (resume, quick save, continue, dev tools for generated floors and caves, timing graphs), SAVES (every slot: save, load, export to a file, import, delete), SETTINGS, CONTROLS (remap keys), LOG (notification history). Closes a context menu, the inspector or the selection first |
+| `P` / `-` `[` / `=` `]` | Pause and resume / slower / faster: game speeds pause, 1x, 2x, 4x, 8x (also the speed bar at the top left) |
+| Mouse | Hover anything for a tooltip; click what `E` would use to use it; click an actor to select it, drag a box to select several; right-click for a context menu (inspect, use, select, pause, menu); the wheel zooms, or scrolls the list under the pointer. Every menu of the v2 interface is mouse-driven, with keyboard and gamepad parity |
+| Gamepad | Stick / D-pad move (and move the menu focus), A use, B back, X slam, Y pack, LB / RB tabs, LT / RT speed, Start menu |
 | `Esc` (during a cutscene) | Skip it: the opening, and the first jump through the translocation rune (any time from lift-off to the chapter card). The hint sits in the lower black bar. The world ends up the same as if you had watched: the same hour, the same thoughts on record |
 | `R` | Wake again (restart): at the chapter card that closes the first crossing to the surface |
 
@@ -193,7 +197,12 @@ The build uses [`vite-plugin-singlefile`](https://github.com/richardtallent/vite
 npm test
 ```
 
-Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner. `tests/folk.test.ts` covers the townsfolk, `tests/shops.test.ts` the shops in use (trips, visits, keepers and their hours, talk in turn, the guild board, saves, timing).
+Headless simulation tests (no browser): compiled with the project's TypeScript and run with Node's built-in test runner. Phase 0 added `tests/timestep.test.ts` (fixed tick; the same save and input stream give identical worlds at 1x, 2x and 8x; LOD tiers, beats, catch-up), `tests/areaSpec.test.ts` (generated floors created, saved, loaded and left; v20 saves; run-length grids), `tests/saveStore.test.ts` (slots, autosave backups, recovery, export / import, size and load-time budgets), `tests/uiFramework.test.ts` (the v2 font, widgets with mouse and keyboard, settings, notifications), `tests/hostPhase0.test.ts` (speeds, the system menu, saves, the mouse and floors through the host) and `tests/soak.test.ts` (a 300-actor soak that must hold the frame budget and every invariant, and the content linter).
+
+```bash
+node scripts/soak.mjs --residents 300 --days 1 --walk   # a long soak: budget, stuck walkers, items, places, save round trip
+node scripts/lint-content.mjs                          # every content row against every lint rule
+``` `tests/folk.test.ts` covers the townsfolk, `tests/shops.test.ts` the shops in use (trips, visits, keepers and their hours, talk in turn, the guild board, saves, timing).
 
 ## Project layout
 
@@ -201,7 +210,7 @@ Headless simulation tests (no browser): compiled with the project's TypeScript a
 src/
   App.tsx            canvas mount, game loop, input wiring
   game/
-    core/            seeded RNG, hashing (pure)
+    core/            seeded RNG, hashing, the fixed-timestep clock and game speeds (clock.ts) (pure)
     content/         items, props, tiles, glyphs, flags, tasks, interaction rules,
                      inventory tiers, gear slots, rune network, harvest yields, tools, dig sites and entrances, build + station recipes,
                      NPC definitions, townsfolk (archetypes, traits, routines, census), dialogue scripts + beats, inner-monologue lines,
@@ -210,17 +219,21 @@ src/
     surface.ts       surface area builder (ruins above the buried dungeon; the old road west)
     town.ts          Westwake area builder (streets, buildings, street light, yards, standing places)
     townInteriors.ts the six shop interiors (one small area each)
-    world/           Area, World, area registry, save/load (simulated + saved state)
+    world/           Area, World, area registry, save/load (simulated + saved state); runtime areas from specs (areaSpec.ts),
+                     the save store: slots, autosave backups, recovery, export / import (saveStore.ts), run-length grids (rle.ts)
     sim/             tasks/effects, interactions, inventory, gear (slots, locks, rune effects), crafting (bench, smelter, anvil), tools, digging and entrances,
                      runes, building, collision, ritual puzzle, dialogue engine, inner monologue,
-                     stepping, UI commands (incl. storage moves and worker orders), jobs, routes between areas over runes and portals (routes.ts), the order screen's option lists (orders.ts), townsfolk (folk.ts), debug kits (no DOM)
-    view/            area view: baked background + light registry; zoom model; the rune's glow by state (runeFx.ts)
-    ui/              screen stack, shared overlay kit + UiHost (frames, text field),
+                     stepping, UI commands (incl. storage moves and worker orders), jobs, routes between areas over runes and portals (routes.ts), the order screen's option lists (orders.ts), townsfolk (folk.ts), debug kits,
+                     simulation LOD (lod.ts), deterministic replay (replay.ts), the soak harness (soak.ts), the content linter (contentLint.ts) (no DOM)
+    view/            area view: baked background + light registry; zoom model; the rune's glow by state (runeFx.ts); the world renderer
+                     (worldRenderer.ts), event reactions (reactions.ts), camera, particles, render interpolation (interp.ts), the hi-res HUD
+                     (hudHi.ts), browser saves (persistence.ts: IndexedDB), files, gamepad
+    ui/              screen stack, shared overlay kit + UiHost (frames, text field), the v2 widget kit (gui.ts), the v2 font (font2.ts),
+                     settings and accessibility (settings.ts), the notification feed (notify.ts),
                      text wrapping, dialogue box geometry/layout, monologue log,
                      cutscene timeline (no DOM)
-    game.ts          host: input, screen stack, camera, particles, audio, event reactions,
-                     monologue log + cutscene letterbox,
-                     world rendering, render loop
+    game.ts          host: input (keys, mouse, remapping), screen stack, the fixed timestep and game speeds, settings, saves,
+                     the hi-res UI layer, monologue log + cutscene letterbox, render loop
     art/             procedural pixel art, by what it draws:
       palette.ts       shared colour ramps
       common.ts        sprite cache, registry types, shared stone blob
@@ -251,10 +264,21 @@ tests/               headless sim tests (tests/support/uiSnapshot.ts renders the
                      crafting, storage, worker and dialogue screens to PNG at 320x180 without a browser;
                      tests/support/golemSnapshot.ts renders the golem's poses to PNG;
                      tests/support/folkSnapshot.ts the townsfolk, for scripts/folkPreview.mjs)
-docs/ARCHITECTURE.md structure, boundaries, deferred work
+docs/index.md        one page per system (engine, world, sim, presentation, content, testing), how-to pages, history
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
+See [docs/index.md](docs/index.md) for how the pieces fit together (the old single ARCHITECTURE.md is now an index of per-system pages).
+
+## Phase 0: groundwork for a management sim
+
+- **Fixed timestep and game speeds** (`core/clock.ts`): the sim steps at 1/60 s whatever the frame rate; pause / 1x / 2x / 4x / 8x; the picture is interpolated between ticks; the same save and input stream give an identical world at 1x and 8x (`sim/replay.ts`).
+- **Simulation LOD** (`sim/lod.ts`): active / near / far tiers, far areas caught up on entry from `area.lastTicked`; a 300-actor soak must hold the frame budget in `npm test`.
+- **Dynamic areas** (`world/areaSpec.ts`): areas made at runtime from saved specs (test floors, caves), linked under a parent; save v20.
+- **Save system v2** (`world/saveStore.ts`): IndexedDB, several slots, autosave with rolling backups, export / import, checksums and recovery, compressed grids, size and load-time budgets; v19 saves still load.
+- **UI framework v2**: mouse (hover, click, drag-select, wheel, right-click), tooltips, a 2x UI layer, a mixed-case proportional font, widgets (lists, tables, tabs, sliders, toggles, graphs, modals) with keyboard and gamepad parity, a notification feed with pause-on-alert.
+- **Host split**: the world renderer, event reactions, camera and particles moved out of `game.ts` into `view/`.
+- **Settings and accessibility**: volumes, shake, flashes, UI scale, key remapping, colour-blind-safe palettes, one registry.
+- **Soak and content-lint harness** (`sim/soak.ts`, `sim/contentLint.ts`) and **split docs** (`docs/index.md`).
 
 ## Status
 

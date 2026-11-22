@@ -42,6 +42,7 @@ import { portalArrival } from "./portals";
 import { BOARD, TRIP } from "../content/shops";
 import { EXCHANGES, EXCHANGE_BY_ID, GRIPES, MUTTERS, NEWS, REACTIONS, hail, peerLines, type ExchangeDef, type TalkContext, type Who } from "../content/talk";
 import { keeperOf, keeperReady, keeperServe, shopStepAt, tripsOf, type Trip } from "./shops";
+import { lodDue, lodTier, stepIn } from "./lod";
 
 // ---------------------------------------------------------------- types (saved on the actor)
 export interface FolkLook { skin: number; hair: number; style: number; beard: number; build: number; tall: number; cloth: number; trim: number; hat: number; acc: number; fem: number }
@@ -400,7 +401,14 @@ export function tickFolk(w: World, dt: number) {
     if (a.area === here) {
       if (w.time - L.seen > STALE) settle(w, a);
       L.seen = w.time;
-      if (a.area === here) tickPerson(w, a, dt);
+      if (a.area === here) {
+        if (!w.lod) tickPerson(w, a, dt);
+        else {
+          // LOD (sim/lod.ts): in view every tick; off camera on the near beat, in pieces no coarser than maxStep
+          const due = lodDue(w, a, lodTier(w, a, pl), dt, true);
+          if (due > 0) stepIn(w, due, (s) => { if (a.area === here) tickPerson(w, a, s); });
+        }
+      }
     } else if (habitatAreas(a).includes(here)) {
       const want = desiredArea(w, a);
       if (want === here) comeIn(w, a);
@@ -409,6 +417,17 @@ export function tickFolk(w: World, dt: number) {
   }
   // a body that turned under a glance held from before takes the glance back: heads never turn round to the back
   for (const a of w.actors) if (isFolk(a) && a.life!.head) a.life!.head = naturalHead(a.facing, a.life!.head);
+}
+
+/**
+ * LOD catch-up (sim/step.ts: CATCH_UP): the people of an area the player has just come back into are set down where
+ * the hour says, as the first tick there would (the same STALE rule), before anything is drawn.
+ */
+export function folkCatchUp(w: World, area: { id: string }) {
+  for (const a of w.actors) {
+    if (!isFolk(a) || a.area !== area.id || a.task || (a.job && a.job.status !== "done")) continue;
+    if (w.time - a.life!.seen > STALE) { settle(w, a); a.life!.seen = w.time; }
+  }
 }
 
 /** Someone due in the player's area: if their block has only just begun they come in by the door; else they are already here. */

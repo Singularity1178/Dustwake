@@ -1,0 +1,47 @@
+# Rocks and the stair, redrawn
+
+> Split out of the old single `ARCHITECTURE.md` (Phase 0.9). Index: [docs/index.md](../index.md).
+
+## Rocks and the stair, redrawn
+Art only. Nothing here is simulated or saved: no prop moved or changed size, footprint, variant or id, no tile or style changed, both builders give what they gave. So **there is no schema change and no migration** (`SAVE_VERSION` stays 14; `tests/rockArt.test.ts` pins the sizes, boxes and placements that claim rests on). It was done the way the dungeon audit was: render it, look, fix, render again (`scripts/rockPreview.mjs`).
+
+What was wrong:
+
+- **Every rock was the same two ellipses.** `rock`, `ironore`, `boulder` and `outcrop` were each `stoneBlob` twice (three times for the outcrop): one oval with a smaller oval on its shoulder, ringed in outline. A round stone is right for a heap of them; for a single standing rock that is to be read as a thing to break, it is not a rock. The vein was that same shape with a dozen orange pixels on it.
+- **The stair was three different stairs, and none looked like one.** The head on the surface was thin grey slats parted by black lines; the flight in the halls was flat eight-pixel bands ruled off by a hairline (boards, under a warm light), with a pale stripe down every tile instead of down the flight; the foot was three lighter slabs of its own. Three pitches, three palettes.
+- **The fall was a wall.** Dug down to stone, the stair head showed coursed, mortared blocks, and broken through, the same courses with some missing. From below the same fall is a heap of boulders.
+
+### Standing rock (`art/rocks.ts`)
+
+A rock is a few convex **chunks**. A chunk is what is left of a block when planes are cut off it: steep faces round an elliptical footprint, gentler ones across the shoulders, a tilted top (`chunk(rng, cx, cy, rx, ry, h, opt)`; the solid is where `n . P <= d` for every plane, above the ground). `paintRock` draws chunks as the rest of the game is drawn, from the south and above with a unit of height a pixel up the screen: each pixel is a ray `P(t) = (x, y + t, t)`, the last point of it inside a chunk is what shows (for a convex solid that is one min and one max over the planes), and the plane it lands on is the facet. The facet's angle to one light (upper left, a little toward the viewer, as every sprite is lit) picks one of four tones of the existing stone ramp. Then: an outline round the silhouette, a dark seam where one chunk stands in front of another, a brighter row where a face ends above a darker one (the ridge), the foot a tone down, a few pits. No new palette for plain rock: it is the halls' `S` ramp plus one ridge glint.
+
+What is cut into the stone is placed on the solid, not on the sprite, because each pixel knows its 3D point: a **crack** runs down a lit face; **moss** lies in cushions on what faces the sky and leaves steep faces bare; an **ore seam** is a slightly warped sheet through the rock, so it crosses a face, turns at the ridge and comes out the other side, shaded with the face it crosses, with rust washed down the stone beneath it. Ore is the iron ore icon's colours; its host is `IRONSTONE`, the same ramp darker and warmer, so a vein reads as one at a glance and the ore shows against it.
+
+**Shapes are data.** `rockForm(kind, seed)` builds the chunks from a seed and nothing else (not the sprite's rng), and `ROCK_SEEDS` is the table of seeds per kind and variant. They were picked by eye: `node scripts/rockPreview.mjs pick` renders sixty candidates a kind with their seed numbers; reshaping a variant is changing one number. Kinds differ in build, not only size: a `rock` is one block with clean faces and usually a piece split from it; an `ironore` vein is a tall broken tooth, a shelf against it and a fallen piece; a `boulder` is broad and many-faced with its shoulders worn off, under moss; an `outcrop` is one tilted mass with ledges either side. So the harvestable (bare, sharp, cracked) tells from the scenery (worn, mossed) without a marker. The broken state (`taken`) is a scatter of angular chips, flecked with ore for a vein.
+
+**Loose stone stays round.** `stoneBlob` is untouched and is still what rubble, the dungeon's `rockpile`, `stairfall` and the `cairn` are made of. That is the line: stone that stands is cut, stone that fell or was stacked is rounded.
+
+### One stair (`art/stairs.ts`)
+
+The flight climbs south and is seen from the south and above, so no riser can show (drawing risers would make it a stair going down to the south, away from the surface it leads to). What makes treads alone read as a stair is in one place, and all three drawings take it from there:
+
+- `stepShade(row, pitch)`: a step is shaded as a solid, not ruled off: a lit lip at its north edge, then the tread falling steadily into the shadow of the step above. The same ramp serves any pitch.
+- `cornerShade`: where a step meets the kerb (or the well's wall) there is a wedge of shadow widening toward the next step, so both edges of the flight are toothed. The test suite caught the first version of this putting shadow on the lip of the head's shallowest steps.
+- `treadTone(level)`: every step is a shade lighter than the one below, counted from the Vestibule's floor, so the foot, the flight and the head are one ramp.
+- `flightPix(fx, fy, W, first)`: one pixel of a flight `W` wide: kerbs along both sides that do not step, the wear pale and round-lipped down the middle of the *flight*, a chipped lip, pits, and one stone to a step, a few of them cracked through. (The first attempt jointed the treads into slabs; a course of short stones is a wall, and it read as brick. Joints went.)
+
+*(v15: `flightPix` now draws the flight with depth, `FOOT_STEPS` and the foot are gone, and there are two users, not three: see "The stair below, with depth (v15)".)* The three users: **the flight** is the `FS.STAIR` tile. `tiles.ts: stairPix` finds the run of stair tiles the tile stands in (west, east and north until wall; memoised per tile like the rampart) and asks `flightPix` with the run's width and the step number, starting at `FOOT_STEPS`. A fall of rubble on a step does not end the run; nothing it reads changes when the stair is opened, so re-bakes stay local as before. **The foot** (`stairfoot`) is `flightPix` for a 36 px flight from level 0. **The head** (the open `buriedgate`) is the same step with a receding pitch (8, 7, 6, 5, 5, 4, 3, 3 rows), each step narrower and darker than the one above it, between the well's two walls (the east one lit, the west one shaded and shading the tread ends), down into the dark under the lintel.
+
+### The fall, from above
+
+Dig stage 3 is the heap that is met from below: `stoneBlob` boulders packed to the kerb over earth, a block or two of the vault's dressed stone and roots among them, exactly the makings of `rockpile`. Its layout comes from a fixed seed of its own, not the sprite's (which differs per stage), so stage 4 is the same heap with a breach in it rather than a different heap: the stones within the breach are left out and the open well, dimmed, shows through with split stone lying on its steps. Stages 0 to 2 are as they were.
+
+### Goldens and tests
+
+Two hashes moved, each checked against the tree as it was. Sprite by sprite (trace hash per kind, six variants, both states): of 141 kinds exactly six differ, `rock`, `ironore`, `boulder`, `outcrop`, `stairfoot` and `buriedgate`; none was added or removed. Pixel by pixel (both bakes on the pixel canvas, per tile): in the dungeon 24 tiles differ, the stair's own (34-37,50-55); on the surface none (of 6912), so its golden did not move. The legacy prop golden did not move either.
+
+`tests/rockArt.test.ts` holds the rest: the new sprites' own goldens (the stair head's stages 4 and 5 included, which the registry golden does not reach); that it is art only (sizes, anchors, boxes, what is harvestable, every placed variant has a shape, twelve veins, `SAVE_VERSION`); on rasterised sprites, that a rock uses every tone, is lighter above than below, stands inside its sprite within a closed outline and emits nothing; that no two variants of a kind share a silhouette and a form is a function of its seed; that a vein's ore is a tenth to a quarter of it, shaded with the faces it crosses, its rust only ever below ore, and that no other rock has any; the step's ramp at every pitch; the flight's kerbs, toothed corners, wear, lightening and at most one crack a tread, never over the one below; that the foot's pixels and a baked run's pixels *are* `flightPix` (a fixture run in a wall, with rubble on one row), which is what "consistent" means here; and that the head darkens and narrows as it goes down, the glyph wakes only when open, and the fall is heaped, not coursed (no row of it is mostly joint; every seventh row of the old one was all joint).
+
+`node scripts/rockPreview.mjs` (`tests/support/rockSnapshot.ts`) renders it all through the real art and the real host: a labelled sheet of every rock sprite and dig stage, the surface at noon where veins stand among rocks, the stair head by stage, and the flight below choked and open, as lit in play and full-bright.
+
+**Left alone on purpose.** `rockpile`, `stairfall`, the rubble tile sprites and the `cairn` (round stone, above). The three stones showing in the earth at dig stage 2. The iron ore item icon. A fitted tool head still does not show on the golem.
