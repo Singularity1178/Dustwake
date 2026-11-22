@@ -53,11 +53,13 @@ export class HiHud {
 
   // ------------------------------------------------------------ speed and feed
   private speedBar() {
-    const g = this.g, gui = g.gui, keys = (a: "pause" | "faster" | "slower") => g.keysFor(a).map(keyLabel).join("/");
-    gui.panel({ x: 3, y: 3, w: 5 * 21 + 5, h: 18 });
+    const g = this.g, gui = g.gui, L = g.hiLayout(), pauseKeys = g.keysFor("pause").map(keyLabel).join("/");
+    // Bottom left corner. Mouse only: W / S / E / Enter / Space never move onto or press these (they are the walk, pick up and slam keys).
+    const y0 = L.lh - 21;
+    gui.panel({ x: 3, y: y0, w: 5 * 21 + 5, h: 18 });
     GAME_SPEEDS.forEach((s, i) => {
-      const tip = s === 0 ? `Pause (${keys("pause")})` : `${speedLabel(s)} speed (${keys("slower")} slower, ${keys("faster")} faster)`;
-      if (gui.button(`speed.${s}`, { x: 6 + i * 21, y: 6, w: 19, h: 12 }, s === 0 ? "||" : `${s}x`, { selected: g.speed === s, tip })) g.setSpeed(s);
+      const hot = i + 1, tip = s === 0 ? `Pause (${hot} or ${pauseKeys})` : `${speedLabel(s)} speed (${hot})`;
+      if (gui.button(`speed.${s}`, { x: 6 + i * 21, y: y0 + 3, w: 19, h: 12 }, s === 0 ? "||" : `${s}x`, { selected: g.speed === s, tip, noFocus: true })) g.setSpeed(s);
     });
   }
 
@@ -216,7 +218,7 @@ export class HiHud {
     if (sel.length !== this.selection.length) this.selection = sel.map((a) => a.id);
     if (!sel.length) return;
     const rows = Math.min(6, sel.length), w = Math.min(200, L.lw * 0.4), h = 22 + rows * 12 + 4;
-    const r = { x: 4, y: L.lh - h - 22, w, h };
+    const r = { x: 4, y: L.lh - h - 26, w, h };
     gui.panel(r, `Selected (${sel.length})`);
     const res = gui.list("hud.sel", { x: r.x + 3, y: r.y + 18, w: r.w - 6, h: rows * 12 + 2 }, sel.length, 12, this.selRow, (i, row) => {
       const p: Pick = { kind: "actor", a: sel[i] };

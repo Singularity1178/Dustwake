@@ -19,24 +19,41 @@ function host(seed = 61) {
 const press = (g: Game, k: string) => { g.keyDown(k); g.update(1 / 60); g.render(); g.keyUp(k); };
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
-test("game speed: P pauses, = and - step the ladder; at 8x one frame runs eight ticks; paused runs none", () => {
+test("game speed: 1-5 pick pause / 1x / 2x / 4x / 8x, P pauses and resumes; at 8x one frame runs eight ticks; paused runs none", () => {
   const g = host(), w = g.world;
   let t = w.time;
   g.update(1 / 60);
   assert.ok(near(w.time, t + TICK), "1x: one tick per 1/60 frame");
-  press(g, "=");
+  press(g, "3");
   assert.equal(g.speed, 2);
-  press(g, "-"); press(g, "-");
+  press(g, "1");
   assert.equal(g.speed, 0);
   t = w.time;
   for (let i = 0; i < 10; i++) g.update(1 / 60);
   assert.equal(w.time, t, "paused: the world does not move");
   press(g, "p");
-  assert.equal(g.speed, 1, "P resumes at the last speed");
-  g.setSpeed(8);
+  assert.equal(g.speed, 2, "P resumes at the last speed");
+  press(g, "2"); assert.equal(g.speed, 1);
+  press(g, "4"); assert.equal(g.speed, 4);
+  press(g, "5");
+  assert.equal(g.speed, 8);
   t = w.time;
   g.update(1 / 60);
   assert.ok(near(w.time, t + 8 * TICK), "8x: eight ticks per frame");
+});
+
+test("the old step keys (- = [ ] +) no longer change the speed; the gamepad triggers still step it", () => {
+  const g = host();
+  for (const k of ["-", "=", "+", "[", "]"]) { press(g, k); assert.equal(g.speed, 1, `${k} does nothing`); }
+  press(g, "padfaster"); assert.equal(g.speed, 2);
+  press(g, "padslower"); press(g, "padslower"); assert.equal(g.speed, 0);
+});
+
+test("W / S / E / Enter / Space never move onto or press the speed bar", () => {
+  const g = host();
+  for (const k of ["w", "s", "s", "e", "e", "enter", " ", "arrowup", "arrowdown"]) { press(g, k); g.update(1 / 60); g.render(); }
+  assert.equal(g.speed, 1, "speed untouched");
+  assert.ok(!(g.gui.focus ?? "").startsWith("speed."), "the speed bar never takes the keyboard focus");
 });
 
 test("Esc opens the system menu over play (the world waits behind it); Esc closes it", () => {
@@ -69,9 +86,9 @@ test("saves through the host: K to the quick slot, L loads the latest, and an ar
 test("the mouse: clicking the speed bar on the hi-res layer sets the speed", () => {
   const g = host();
   g.render();
-  // the 8x button: logical (90..109, 6..18) on the 640x360 layer = base px (45..54, 3..9)
-  g.pointerMove(49.5, 6); g.pointerDown(0, 49.5, 6); g.update(1 / 60); g.render();
-  g.pointerUp(0, 49.5, 6); g.update(1 / 60); g.render();
+  // the 8x button, bottom left: logical (90..109, 342..354) on the 640x360 layer = base px (45..54, 171..177)
+  g.pointerMove(49.5, 174); g.pointerDown(0, 49.5, 174); g.update(1 / 60); g.render();
+  g.pointerUp(0, 49.5, 174); g.update(1 / 60); g.render();
   assert.equal(g.speed, 8);
   // a click on the world elsewhere is not the UI's
   g.pointerMove(160, 120); g.pointerDown(0, 160, 120); g.update(1 / 60); g.render(); g.pointerUp(0, 160, 120); g.update(1 / 60); g.render();

@@ -12,4 +12,4 @@ One registry: `registerSetting({ id, label, category, kind: "slider" | "toggle" 
 | Game | autosave interval, pause on alert, simulation LOD |
 
 ## Key remapping
-The play screen's actions (move, interact, attack, core, vision, pack, build, quick re-place, schematic, quick save, continue, pause, slower, faster) are read through `Game.act` / `Game.held`, which look up `Settings.keys(action)`. CONTROLS lists them; click a row (or Enter) and press a key. A key bound to one action is taken off every other, so no key does two things in play. Menus keep their own keys, as before.
+The play screen's actions (move, interact, attack, core, vision, pack, build, quick re-place, schematic, quick save, continue, pause) are read through `Game.act` / `Game.held`, which look up `Settings.keys(action)`. CONTROLS lists them; click a row (or Enter) and press a key. A key bound to one action is taken off every other, so no key does two things in play. Menus keep their own keys, as before.

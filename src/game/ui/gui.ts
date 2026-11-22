@@ -140,8 +140,9 @@ export class Gui {
 
   private tip(hover: boolean, tip?: string) { if (hover && tip) this.tipText = tip; }
 
-  button(id: string, r: Rect, label: string, o: { tip?: string; disabled?: boolean; selected?: boolean; color?: string } = {}): boolean {
-    const s = this.reg(id, r, !o.disabled);
+  button(id: string, r: Rect, label: string, o: { tip?: string; disabled?: boolean; selected?: boolean; color?: string; noFocus?: boolean } = {}): boolean {
+    // noFocus: mouse only. Up / Down never land on it and Enter / E / Space never press it (the speed bar uses this).
+    const s = this.reg(id, r, !o.disabled && !o.noFocus);
     this.tip(s.hover, o.tip);
     const bg = o.disabled ? THEME.rowAlt : s.held ? THEME.sel : o.selected ? THEME.accentDim : s.hover ? THEME.panel2 : THEME.row;
     this.fill(r, bg);

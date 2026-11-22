@@ -54,20 +54,20 @@ export const settingDef = (id: string) => REGISTRY.find((d) => d.id === id);
 ].forEach((d) => registerSetting(d as SettingDef));
 
 /** The play screen's remappable actions. */
-export type Action = "up" | "down" | "left" | "right" | "interact" | "attack" | "core" | "scan" | "pack" | "build" | "quickPlace" | "schematic" | "save" | "load" | "pause" | "slower" | "faster";
+export type Action = "up" | "down" | "left" | "right" | "interact" | "attack" | "core" | "scan" | "pack" | "build" | "quickPlace" | "schematic" | "save" | "load" | "pause";
 
 export const ACTIONS: { id: Action; label: string }[] = [
   { id: "up", label: "Move up" }, { id: "down", label: "Move down" }, { id: "left", label: "Move left" }, { id: "right", label: "Move right" },
   { id: "interact", label: "Interact / use" }, { id: "attack", label: "Attack (slam)" }, { id: "core", label: "Slot / remove core" }, { id: "scan", label: "Vision mode" },
   { id: "pack", label: "Pack" }, { id: "build", label: "Build menu" }, { id: "quickPlace", label: "Quick re-place" }, { id: "schematic", label: "Schematic" },
-  { id: "save", label: "Quick save" }, { id: "load", label: "Continue (load latest)" }, { id: "pause", label: "Pause / resume" }, { id: "slower", label: "Slower" }, { id: "faster", label: "Faster" },
+  { id: "save", label: "Quick save" }, { id: "load", label: "Continue (load latest)" }, { id: "pause", label: "Pause / resume" },
 ];
 
 /** The keys every action had before remapping existed (KeyboardEvent.key, lowercased). */
 export const DEFAULT_KEYS: Record<Action, string[]> = {
   up: ["w", "arrowup"], down: ["s", "arrowdown"], left: ["a", "arrowleft"], right: ["d", "arrowright"],
   interact: ["e", "enter"], attack: [" "], core: ["c"], scan: ["z"], pack: ["i", "tab"], build: ["b"], quickPlace: ["v"], schematic: ["m"],
-  save: ["k"], load: ["l"], pause: ["p"], slower: ["-", "["], faster: ["=", "+", "]"],
+  save: ["k"], load: ["l"], pause: ["p"],
 };
 
 /** "arrowup" -> "Up", " " -> "Space". */

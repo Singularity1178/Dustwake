@@ -79,6 +79,9 @@ import { SaveStore, MemoryBackend, slotName, type LoadResult } from "./world/sav
 import { createArea } from "./world/world";
 import { SystemMenu } from "./screens/system";
 
+/** The number keys that pick a game speed, in GAME_SPEEDS order (pause, 1x, 2x, 4x, 8x). */
+const SPEED_KEYS = ["1", "2", "3", "4", "5"];
+
 /** Debug super-speed multiplier. 200% faster = base + 2x base = 3x. */
 const DEBUG_SPEED_MULT = 3;
 
@@ -1393,8 +1396,11 @@ export class Game {
   togglePause() { this.setSpeed(this.speed === 0 ? this.lastSpeed || 1 : 0); }
   speedKeys() {
     if (this.act("pause")) this.togglePause();
-    if (this.act("faster")) this.setSpeed(stepSpeed(this.speed, 1));
-    if (this.act("slower")) this.setSpeed(stepSpeed(this.speed, -1));
+    // Gamepad LT / RT step the ladder one rung (the keyboard has no step keys).
+    if (this.hit("padfaster")) this.setSpeed(stepSpeed(this.speed, 1));
+    if (this.hit("padslower")) this.setSpeed(stepSpeed(this.speed, -1));
+    // 1..5 pick the speed straight: 1 pause, 2 1x, 3 2x, 4 4x, 5 8x (GAME_SPEEDS in order). Fixed keys, not remappable.
+    SPEED_KEYS.forEach((k, i) => { if (this.hit(k)) this.setSpeed(GAME_SPEEDS[i]); });
   }
   /** An alert came into the feed: pause, if the player asked for that (settings: Pause on alert). */
   onAlert(n: Note) {

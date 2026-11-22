@@ -3,13 +3,14 @@
 // unchanged). Stick and D-pad move (and move the UI focus), A uses / activates,
 // B and Start are Esc (back; Start opens the system menu from play), X slams,
 // Y opens the pack, LB / RB switch tabs (Q / R), LT / RT change game speed,
-// Back / Select is Tab.
+// Back / Select is Tab. LT / RT are not keyboard keys: they send "padslower" / "padfaster",
+// which only the game speed reads (the keyboard picks a speed with 1-5).
 
 export interface KeySink { keyDown(k: string): void; keyUp(k: string): void }
 
 /** Standard-mapping button index -> key. */
 export const PAD_KEYS: Record<number, string> = {
-  0: "e", 1: "escape", 2: " ", 3: "i", 4: "q", 5: "r", 6: "-", 7: "=", 8: "tab", 9: "escape",
+  0: "e", 1: "escape", 2: " ", 3: "i", 4: "q", 5: "r", 6: "padslower", 7: "padfaster", 8: "tab", 9: "escape",
   12: "arrowup", 13: "arrowdown", 14: "arrowleft", 15: "arrowright",
 };
 const DEAD = 0.45;

@@ -8,7 +8,7 @@ The sim only ever sees `TICK` (1/60 s, `SIM_HZ = 60`). The host feeds real frame
 60 Hz (not 30) is deliberate: it is the dt the sim and its content were tuned on, so cutscene timings are unchanged and every host test that drives `update(1/60)` still sees exactly one tick per frame.
 
 ## Speeds
-`GAME_SPEEDS = [0, 1, 2, 4, 8]`. Keys (remappable, settings: Controls): `P` pause / resume, `=` / `]` faster, `-` / `[` slower; the speed bar (top left of the hi-res layer) takes clicks, gamepad LT / RT step it. Speed applies to the play screen only: cutscenes and the rune jump always run at 1x (`worldFrame(dt)` defaults to speed 1), overlays pause the world as before.
+`GAME_SPEEDS = [0, 1, 2, 4, 8]`. Keys (remappable, settings: Controls): `P` pause / resume, `1`-`5` set the speed directly (pause, 1x, 2x, 4x, 8x; fixed, not remappable); the speed bar (bottom left of the hi-res layer) is mouse only (its buttons are `noFocus`, so W / S / E / Enter / Space never move onto or press it), gamepad LT / RT step it (they send `padslower` / `padfaster`). Speed applies to the play screen only: cutscenes and the rune jump always run at 1x (`worldFrame(dt)` defaults to speed 1), overlays pause the world as before.
 
 ## One frame
 `Game.simulate(dt, speed, input?, play?)`:

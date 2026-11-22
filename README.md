@@ -44,7 +44,7 @@
 | `K` | Quick save (the quick slot of the save store: IndexedDB in the browser) |
 | `L` | Continue: load the newest save of any slot (also on the title screen) |
 | `Esc` (play screen) | System menu: GAME (resume, quick save, continue, dev tools for generated floors and caves, timing graphs), SAVES (every slot: save, load, export to a file, import, delete), SETTINGS, CONTROLS (remap keys), LOG (notification history). Closes a context menu, the inspector or the selection first |
-| `P` / `-` `[` / `=` `]` | Pause and resume / slower / faster: game speeds pause, 1x, 2x, 4x, 8x (also the speed bar at the top left) |
+| `P` / `1`-`5` | `P` pauses and resumes. `1`-`5` set the game speed directly: `1` pause, `2` 1x, `3` 2x, `4` 4x, `5` 8x (also the speed bar at the bottom left, mouse only: `W` / `S` / `E` never touch it) |
 | Mouse | Hover anything for a tooltip; click what `E` would use to use it; click an actor to select it, drag a box to select several; right-click for a context menu (inspect, use, select, pause, menu); the wheel zooms, or scrolls the list under the pointer. Every menu of the v2 interface is mouse-driven, with keyboard and gamepad parity |
 | Gamepad | Stick / D-pad move (and move the menu focus), A use, B back, X slam, Y pack, LB / RB tabs, LT / RT speed, Start menu |
 | `Esc` (during a cutscene) | Skip it: the opening, and the first jump through the translocation rune (any time from lift-off to the chapter card). The hint sits in the lower black bar. The world ends up the same as if you had watched: the same hour, the same thoughts on record |
