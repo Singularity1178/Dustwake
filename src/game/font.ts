@@ -1,3 +1,9 @@
+// The capital font: 3x5, fixed width, uppercase only. It is the world's own
+// voice and lettering: dialogue, the golem's monologue, speech bubbles and signs
+// on the world's pixel grid, the drafted schematic, the title. Interface text
+// (the HUD, menus, the pack, orders, key hints) is not drawn with this: it goes
+// through ui/text.ts in the mixed-case v2 face (ui/font2.ts). ui/text.ts falls
+// back to this font where there is no hi-res layer to draw on.
 const G: Record<string, string> = {
   A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
   E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",

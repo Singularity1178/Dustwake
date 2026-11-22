@@ -15,10 +15,8 @@ import type { Screen } from "../ui/screens";
 import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
 import { ITEMS, ITEM_IDS, effectLines, maxStack, type ItemId } from "../content/items";
 import { FLAGS } from "../content/flags";
-import { wrapText } from "../ui/textWrap";
 import { itemIcon } from "../art/items";
-import { drawText, textWidth } from "../font";
-import { BASE_W as W, BASE_H as H } from "../view/zoom";
+import { label, labelW, clipLabel, wrapLabel, flow, hints, shade } from "../ui/text";
 import { clamp } from "../util";
 import type { Sprite } from "../util";
 import {
@@ -86,7 +84,6 @@ const TABS = DEBUG_TABS;
 export const DEBUG_PANEL = { x: 4, y: 2, w: 312, h: 174 };
 const PX = DEBUG_PANEL.x, PY = DEBUG_PANEL.y, PW = DEBUG_PANEL.w, PH = DEBUG_PANEL.h;
 const LX = 9, LW = 150, DX = 164, DW = 145, TOP = 31, BOTTOM = 153, ROW = 12;
-const COLS = Math.floor((DW - 8 + 1) / 4);
 
 const ON = UI.ok, OFF = UI.dim;
 const onOff = (b: boolean): Pick<Row, "value" | "vcol"> => ({ value: b ? "ON" : "OFF", vcol: b ? ON : OFF });
@@ -339,17 +336,17 @@ export class DebugUi {
   private render() {
     const g = this.g, ctx = g.ctx, t = g.t;
     this.refresh();
-    ctx.fillStyle = "rgba(0,0,0,0.72)"; ctx.fillRect(0, 0, W, H);
+    shade(ctx, "rgba(0,0,0,0.72)");
     panel(ctx, PX, PY, PW, PH);
-    drawText(ctx, "DEBUG MENU", PX + 8, PY + 6, UI.gold);
-    drawText(ctx, "CTRL+0 / TAB / ESC CLOSE", PX + PW - 8, PY + 6, UI.dim, 1, "right");
+    label(ctx, "Debug menu", PX + 8, PY + 6, UI.gold, "left", { bold: true });
+    hints(ctx, [["Ctrl+0", ""], ["Tab", ""], ["Esc", "Close"]], PX + PW - 8, PY + 6, UI.dim, "right");
 
     // tabs
     const tw = Math.floor((PW - 16) / TABS.length);
     TABS.forEach((tb, i) => {
       const x = PX + 8 + i * tw, on = i === this.tab;
       frame(ctx, x, 16, tw - 3, 11, on ? "#2a2430" : "#141117", on ? selEdge(t) : "#2a2630", on ? "#e8d8a8" : "#3a3540");
-      drawText(ctx, `${i + 1} ${tb.name}`, x + (tw - 3) / 2, 19, on ? UI.title : UI.mid, 1, "center");
+      hints(ctx, [[String(i + 1), tb.name]], x + (tw - 3) / 2, 19, on ? UI.title : UI.mid, "center", tw - 7, { alpha: on ? 1 : 0.6 });
     });
 
     // list
@@ -357,7 +354,7 @@ export class DebugUi {
     if (tab.search) this.search.draw(ctx, LX, TOP, LW, t, "/ SEARCH");
     const cur = this.cursor[this.tab], sc = this.scroll[this.tab];
     frame(ctx, LX, top - 1, LW, BOTTOM - top + 2, "#0e0c10", "#2a2630", "#3a3540");
-    if (!this.rows.length) drawText(ctx, "NOTHING MATCHES", LX + LW / 2, top + 10, UI.dim, 1, "center");
+    if (!this.rows.length) label(ctx, "NOTHING MATCHES", LX + LW / 2, top + 10, UI.dim, "center");
     for (let i = 0; i < vis; i++) {
       const idx = sc + i, r = this.rows[idx];
       if (!r) break;
@@ -365,9 +362,10 @@ export class DebugUi {
       if (sel) frame(ctx, LX + 2, y, LW - 8, rh - 1, "#262030", selEdge(t), "#e8d8a8");
       let tx = LX + 6;
       if (r.icon) { ctx.drawImage(r.icon.a, LX + 4, y - 1, 16, 16); tx = LX + 22; }
-      const vw = r.value ? textWidth(r.value) + 6 : 0;
-      drawText(ctx, clipText(r.label, LW - 17 - (tx - LX) - vw), tx, ty, sel ? UI.title : UI.text);
-      if (r.value) drawText(ctx, r.value, LX + LW - 11, ty, r.vcol ?? UI.amber, 1, "right");
+      const vw = r.value ? labelW(r.value) + 6 : 0;
+      // an item's row is its name; the rest are options and places, written as sentences
+      label(ctx, clipLabel(r.label, LW - 17 - (tx - LX) - vw, { case: r.icon ? "title" : "sentence" }), tx, ty, sel ? UI.title : UI.text, "left", { case: "raw" });
+      if (r.value) label(ctx, r.value, LX + LW - 11, ty, r.vcol ?? UI.amber, "right");
     }
     if (this.rows.length > vis) {
       const h = BOTTOM - top, bh = Math.max(6, Math.round(h * vis / this.rows.length));
@@ -379,12 +377,12 @@ export class DebugUi {
     frame(ctx, DX, TOP, DW, BOTTOM - TOP, "#0e0c10", "#2a2630", "#3a3540");
     const row = this.cur();
     if (row) this.detail(row);
-    drawText(ctx, `${this.rows.length ? cur + 1 : 0}/${this.rows.length}`, DX + DW - 5, TOP + 4, UI.dim, 1, "right");
+    label(ctx, `${this.rows.length ? cur + 1 : 0}/${this.rows.length}`, DX + DW - 5, TOP + 4, UI.dim, "right");
 
     // key line and status
-    drawText(ctx, clipText(tab.hint, PW - 16), PX + 8, 158, UI.mid);
-    drawText(ctx, "Q/R OR 1-5 TABS", PX + 8, 166, UI.dim);
-    if (this.status) drawText(ctx, clipText(this.status.text, PW - 110), PX + PW - 8, 166, this.status.ok ? UI.ok : UI.bad, 1, "right");
+    hints(ctx, tab.hint, PX + 8, 158, UI.mid, "left", PW - 16);
+    hints(ctx, [["Q/R", "or"], ["1-5", "switch tabs"]], PX + 8, 166, UI.dim);
+    if (this.status) label(ctx, clipText(this.status.text, PW - 110), PX + PW - 8, 166, this.status.ok ? UI.ok : UI.bad, "right");
   }
 
   private detail(row: Row) {
@@ -393,31 +391,32 @@ export class DebugUi {
       const id = row.item!, def = ITEMS[id], pl = g.pl;
       frame(ctx, x, TOP + 12, 36, 36, "#141117", "#2a2630", "#3a3540");
       ctx.drawImage(row.icon!.a, x + 2, TOP + 14, 32, 32);
-      drawText(ctx, clipText(def.name, DW - 56), x + 42, TOP + 15, UI.title);
-      drawText(ctx, clipText(def.tags.join(" / ").toUpperCase(), DW - 56), x + 42, TOP + 24, UI.mid);
-      drawText(ctx, clipText(`ID: ${id.toUpperCase().replace(/_/g, " ")}`, DW - 56), x + 42, TOP + 33, UI.dim);
-      drawText(ctx, `STACK ${maxStack(id)}`, x + 42, TOP + 41, UI.dim);
+      label(ctx, clipLabel(def.name, DW - 56, { case: "title", bold: true }), x + 42, TOP + 15, UI.title, "left", { case: "raw", bold: true });
+      label(ctx, clipText(def.tags.join(", "), DW - 56), x + 42, TOP + 24, UI.mid);
+      label(ctx, clipText(`ID: ${id}`, DW - 56), x + 42, TOP + 33, UI.dim);
+      label(ctx, `STACK ${maxStack(id)}`, x + 42, TOP + 41, UI.dim);
       let y = TOP + 54;
-      for (const l of [...(def.desc ?? []), ...effectLines(id)]) { drawText(ctx, l, x, y, UI.text); y += 8; }
+      for (const l of flow(def.desc ?? [], DW - 10, 3)) { label(ctx, l, x, y, UI.text, "left", { case: "raw" }); y += 8; }
+      for (const l of effectLines(id)) { label(ctx, clipText(l, DW - 10), x, y, UI.gold); y += 8; }
       y = Math.max(y + 3, TOP + 86);
-      drawText(ctx, `IN PACK: ${countItem(pl, id)}`, x, y, UI.text);
-      drawText(ctx, def.wear ? `WORN: ${wears(pl, id) ? "YES" : "NO"}` : def.equip ? `INSTALLED: ${flagOn(g.world, def.equip.flag) ? "YES" : "NO"}` : "", x + 62, y, UI.text);
-      drawText(ctx, `HELD IN TOTAL: ${heldCount(pl, id)}`, x, y + 8, UI.dim);
+      label(ctx, `IN PACK: ${countItem(pl, id)}`, x, y, UI.text);
+      label(ctx, def.wear ? `WORN: ${wears(pl, id) ? "YES" : "NO"}` : def.equip ? `INSTALLED: ${flagOn(g.world, def.equip.flag) ? "YES" : "NO"}` : "", x + 62, y, UI.text);
+      label(ctx, `HELD IN TOTAL: ${heldCount(pl, id)}`, x, y + 8, UI.dim);
       const qy = BOTTOM - 19;
       frame(ctx, x, qy, DW - 10, 13, "#1c1820", "#3a3540", "#4e4856");
-      drawText(ctx, "QTY", x + 5, qy + 4, UI.mid);
-      drawText(ctx, `< ${this.qty} >`, x + 50, qy + 4, UI.amber, 1, "center");
-      drawText(ctx, def.equip ? "E INSTALL" : "E GIVE", x + DW - 15, qy + 4, UI.ok, 1, "right");
+      label(ctx, "QTY", x + 5, qy + 4, UI.mid);
+      label(ctx, `< ${this.qty} >`, x + 50, qy + 4, UI.amber, "center");
+      hints(ctx, def.equip ? "E INSTALL" : "E GIVE", x + DW - 15, qy + 4, UI.ok, "right");
       return;
     }
     let y = TOP + 12;
-    for (const l of wrapText(row.label, COLS).slice(0, 2)) { drawText(ctx, l, x, y, UI.title); y += 8; }
+    for (const l of wrapLabel(row.label, DW - 10, { bold: true }).slice(0, 2)) { label(ctx, l, x, y, UI.title, "left", { case: "raw", bold: true }); y += 8; }
     y += 5;
-    for (const l of wrapText(row.desc, COLS)) {
+    for (const l of wrapLabel(row.desc, DW - 10)) {
       if (y > BOTTOM - 16) break;
-      drawText(ctx, l, x, y, UI.text);
+      label(ctx, l, x, y, UI.text, "left", { case: "raw" });
       y += 8;
     }
-    if (row.value) drawText(ctx, `NOW: ${row.value}`, x, BOTTOM - 12, row.vcol ?? UI.amber);
+    if (row.value) label(ctx, `NOW: ${row.value}`, x, BOTTOM - 12, row.vcol ?? UI.amber);
   }
 }

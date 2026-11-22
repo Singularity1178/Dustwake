@@ -36,7 +36,8 @@ import { carvingVisible, clumpCleared } from "./runeReveal";
 import { RUNE_NODES } from "./content/runes";
 import { runeState } from "./sim/runes";
 import { RUNE_DUD, linkedGlow, runeDudGlow, severedGlow } from "./view/runeFx";
-import { drawText, drawTextS } from "./font";
+import { drawTextS } from "./font";
+import { bindUiText, label, labelS, labelW, hints, occlude, learnNames, forgetNames, titled } from "./ui/text";
 import { createWorld, player, currentArea, hasFlag, setFlag, clearFlag, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
 import { stepPlayer, stepWorld, addPlayTime } from "./sim/step";
@@ -901,7 +902,7 @@ export class Game {
   renderSkipHint(t: number) {
     const ctx = this.ctx;
     ctx.globalAlpha = clamp((t - 0.6) * 1.5, 0, 1) * 0.85;
-    drawText(ctx, "ESC - SKIP", W - 5, H - 9, "#8a8392", 1, "right");
+    hints(ctx, [["Esc", "Skip"]], W - 5, H - 9, "#8a8392", "right");
     ctx.globalAlpha = 1;
   }
 
@@ -1120,7 +1121,7 @@ export class Game {
     if (!this.note) return;
     const ctx = this.ctx;
     ctx.globalAlpha = clamp(3 - this.note.t, 0, 1);
-    drawTextS(ctx, this.note.text, W / 2, y, "#e8d8b0", 1, "center", "#000");
+    labelS(ctx, this.note.text, W / 2, y, "#f0e2bc", "center", "#000");
     ctx.globalAlpha = 1;
   }
 
@@ -1135,6 +1136,9 @@ export class Game {
       hx.clearRect(0, 0, this.hiCanvas.width, this.hiCanvas.height);
       hx.setTransform?.(L.k, 0, 0, L.k, 0, 0);
       hx.imageSmoothingEnabled = false;
+      // interface text asked for on the base grid (ui/text.ts) is drawn on this layer, in the v2 face
+      bindUiText({ base: this.ctx, hi: hx, s: L.cw / W, k: L.k });
+      this.learnNames();
       this.gui.begin(hx, L.lw, L.lh, this.guiInput(L.lw, L.lh));
       this.screens.render();
       this.hud.render();
@@ -1289,7 +1293,7 @@ export class Game {
     // debug message
     if (this.debugMsg) {
       ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
-      drawTextS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", 1, "center");
+      labelS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", "center");
       ctx.globalAlpha = 1;
     }
     // debug readout: active modes, and (menu option) where the golem is
@@ -1299,7 +1303,8 @@ export class Game {
         ...(this.debugHud ? [`${pl.area.toUpperCase()}  X ${Math.round(pl.x)}  Y ${Math.round(pl.y)}  TILE ${Math.floor(pl.x / TS)},${Math.floor((pl.y - 3) / TS)}`] : []),
         ...(modes ? [`DEBUG: ${modes}`] : []),
       ];
-      lines.forEach((l, i) => drawTextS(ctx, l, 4, H - 8 - (lines.length - 1 - i) * 8, "#ff9a5a", 1, "left", "#000"));
+      // above the speed bar, which has the corner
+      lines.forEach((l, i) => labelS(ctx, l, 4, H - 20 - (lines.length - 1 - i) * 7, "#ff9a5a", "left", "#000"));
     }
     // toast (the dialogue box draws it above itself)
     if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(H - 26);
@@ -1324,7 +1329,7 @@ export class Game {
       px("#ff9a40", [[2, 3, 3, 2], [1, 4, 5, 1], [3, 1], [1, 2], [5, 2]]);
       px("#8a5a3a", [[0, 5, 7, 1]]);
     }
-    drawText(ctx, clockText(hour), x + 10, y + 1, ph === "night" ? "#a8b4d8" : ph === "day" ? "#e8d8a0" : "#f0b078");
+    label(ctx, clockText(hour), x + 10, y + 1, ph === "night" ? "#a8b4d8" : ph === "day" ? "#e8d8a0" : "#f0b078");
   }
 
   renderToast(y: number) {
@@ -1333,13 +1338,14 @@ export class Game {
       const t = this.toast.t;
       const a = t < 0.2 ? t / 0.2 : t > 2.5 ? 1 - (t - 2.5) / 0.5 : 1;
       ctx.globalAlpha = clamp(a, 0, 1);
-      const name = this.toast.name;
-      const w = name.length * 4 + 30;
+      const name = titled(this.toast.name);
+      const w = Math.ceil(labelW(name)) + 31;
       const x = Math.round(W / 2 - w / 2);
+      occlude(ctx, x, y, w, 20);
       ctx.fillStyle = "#0c0a0e"; ctx.fillRect(x, y, w, 20);
       ctx.fillStyle = "#3a3540"; ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y + 19, w, 1); ctx.fillRect(x, y, 1, 20); ctx.fillRect(x + w - 1, y, 1, 20);
       ctx.drawImage(this.toast.icon.a, x + 3, y + 2);
-      drawText(ctx, name, x + 23, y + 8, "#d8d0b8");
+      label(ctx, name, x + 23, y + 8, "#d8d0b8");
       ctx.globalAlpha = 1;
     }
   }
@@ -1356,8 +1362,23 @@ export class Game {
   hiLayout(): { cw: number; ch: number; lw: number; lh: number; k: number } {
     const s = this.settings.str("uiScale");
     if (s === "compact") return { cw: W * 3, ch: H * 3, lw: W * 3, lh: H * 3, k: 1 };
-    if (s === "large") return { cw: W * 2, ch: H * 2, lw: W, lh: H, k: 2 };
+    // Large: the fine canvas at 2 px per logical px. One font px is then 2/3 of a base px: text a third larger than
+    // Normal, and the size at which the v2 face fills the same lines as the 5 px capitals did, so every screen that
+    // is laid out on the 320x180 grid (ui/text.ts) still fits.
+    if (s === "large") return { cw: W * 3, ch: H * 3, lw: W * 1.5, lh: H * 1.5, k: 2 };
     return { cw: W * 2, ch: H * 2, lw: W * 2, lh: H * 2, k: 1 };
+  }
+  /** Names in play (workers the keeper named, townsfolk, shopkeepers), for the interface's casing: "Bob", not "bob". */
+  private namesAt = -1;
+  private namesOf: World | null = null;
+  learnNames() {
+    if (!this.world) return;
+    if (this.namesOf !== this.world) { forgetNames(); this.namesOf = this.world; this.namesAt = -1; }
+    if (this.t - this.namesAt < 1 && this.namesAt >= 0) return;
+    this.namesAt = this.t;
+    const out: string[] = [];
+    for (const a of this.world.actors) { if (a.name) out.push(a.name); if (a.person?.name) out.push(a.person.name); if (a.keeper?.name) out.push(a.keeper.name); }
+    learnNames(out);
   }
   /** Apply every setting (ui/settings.ts) to the systems that read it. */
   applySettings() {

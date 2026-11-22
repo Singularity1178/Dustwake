@@ -42,8 +42,7 @@ import {
 import { itemIcon } from "../art/items";
 import { slotIcon } from "../art/slots";
 import { BODY_ART, workerPose, workerState } from "../workerArt";
-import { drawText } from "../font";
-import { BASE_W as W, BASE_H as H } from "../view/zoom";
+import { label, labelS, clipLabel, flow, hints, titled, shade } from "../ui/text";
 import { makeCanvas, Pen, clamp } from "../util";
 
 export type ManageView = "main" | "gather" | "craft" | "walk";
@@ -313,14 +312,14 @@ export class ManageUi {
   private render() {
     const g = this.g, ctx = g.ctx, a = this.target;
     if (!this.fresh || this.view !== "walk") this.refresh();
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, PX, PY, PW, PH);
     if (!a) return;
     const st = workerStatus(g.world, a);
     if (this.nameField.active) this.nameField.draw(ctx, LX - 1, PY + 3, 150, g.t, "NAME");
     else {
-      drawText(ctx, clipText(actorLabel(a), 150), LX, PY + 6, UI.title);
-      drawText(ctx, clipText(st.text, 120), PX + PW - 8, PY + 6, TONE[st.tone], 1, "right");
+      label(ctx, clipLabel(actorLabel(a), 150, { case: "title", bold: true }), LX, PY + 6, UI.title, "left", { case: "raw", bold: true });
+      label(ctx, clipText(st.text, 130), PX + PW - 8, PY + 6, TONE[st.tone], "right");
     }
     this.renderWorker(a);
     this.renderRows();
@@ -342,54 +341,54 @@ export class ManageUi {
     }
     // state, beside it
     const x = LX + 52, tw = 100, pw = powerState(a), v = jobView(w, a);
-    drawText(ctx, clipText(`POWER: ${pw.text}`, tw), x, 20, TONE[pw.tone]);
-    drawText(ctx, clipText(`AT: ${areaName(a.area)}`, tw), x, 29, UI.mid);
+    label(ctx, clipText(`POWER: ${pw.text}`, tw), x, 20, TONE[pw.tone]);
+    label(ctx, clipText(`At: ${titled(areaName(a.area))}`, tw), x, 29, UI.mid);
     if (v) {
-      drawText(ctx, clipText(`${v.title}${v.progress ? ` ${v.progress}` : ""}`, tw), x, 38, UI.text);
-      drawText(ctx, clipText(`PHASE: ${v.phase}`, tw), x, 47, UI.mid);
-      drawText(ctx, clipText(v.status, tw), x, 56, TONE[v.tone]);
-      v.lines.slice(0, 2).forEach((l, i) => drawText(ctx, clipText(l, 148), LX, 69 + i * 8, UI.dim));
+      label(ctx, clipText(`${v.title}${v.progress ? ` ${v.progress}` : ""}`, tw), x, 38, UI.text);
+      label(ctx, clipText(`PHASE: ${v.phase}`, tw), x, 47, UI.mid);
+      label(ctx, clipText(v.status, tw), x, 56, TONE[v.tone]);
+      v.lines.slice(0, 2).forEach((l, i) => label(ctx, clipText(l, 148), LX, 69 + i * 8, UI.dim));
     } else {
-      drawText(ctx, "NO ORDER", x, 38, UI.mid);
-      drawText(ctx, powered(a) ? "IT STANDS AND WAITS" : "IT IS SWITCHED OFF", x, 47, UI.dim);
-      drawText(ctx, clipText(workerStatus(w, a).text, tw), x, 56, TONE[workerStatus(w, a).tone]);
+      label(ctx, "NO ORDER", x, 38, UI.mid);
+      label(ctx, powered(a) ? "IT STANDS AND WAITS" : "IT IS SWITCHED OFF", x, 47, UI.dim);
+      label(ctx, clipText(workerStatus(w, a).text, tw), x, 56, TONE[workerStatus(w, a).tone]);
     }
     // what it carries
     const cap = capacity(w, a), used = a.inventory.slice(0, cap).filter(Boolean).length;
-    drawText(ctx, `CARRIES ${used}/${cap}`, LX, 87, UI.mid);
+    label(ctx, `CARRIES ${used}/${cap}`, LX, 87, UI.mid);
     for (let i = 0; i < cap; i++) {
       const cx = LX + (i % 4) * 19, cy = 95 + Math.floor(i / 4) * 19, s = a.inventory[i] ?? null;
       frame(ctx, cx, cy, 18, 18, s ? "#17141b" : "#100e12", s ? "#3a3540" : "#2a2630", "#4a4552");
       if (!s) continue;
       ctx.drawImage(itemIcon(s.item).a, cx + 1, cy + 1);
-      if (s.n > 1) drawText(ctx, String(s.n), cx + 17 - (String(s.n).length * 4 - 1), cy + 11, "#f0e8d0");
+      if (s.n > 1) labelS(ctx, String(s.n), cx + 16, cy + 11, "#f0e8d0", "right");
     }
     // what it wears
-    drawText(ctx, "WORN", LX + 84, 87, UI.mid);
+    label(ctx, "WORN", LX + 84, 87, UI.mid);
     const slots = actorDef(a).gearSlots.slice(0, 3);
     slots.forEach((id, i) => {
       const sx = LX + 84 + i * 24, item = wornIn(a, id);
       frame(ctx, sx, 95, 20, 20, item ? "#1c1722" : "#100e12", item ? "#6a5634" : "#2a2630", item ? "#a88a4c" : "#3a3540");
       if (item) ctx.drawImage(itemIcon(item).a, sx + 2, 97);
       else { ctx.globalAlpha = 0.28; ctx.drawImage(slotIcon(slotDef(id).kind).a, sx + 2, 97); ctx.globalAlpha = 1; }
-      drawText(ctx, slotDef(id).name, sx + 10, 118, item ? UI.dim : UI.lock, 1, "center");
+      label(ctx, slotDef(id).name, sx + 10, 118, item ? UI.dim : UI.lock, "center", { case: "title" });
     });
-    if (!slots.length) drawText(ctx, "NOTHING", LX + 84, 99, UI.dim);
+    if (!slots.length) label(ctx, "NOTHING", LX + 84, 99, UI.dim);
   }
 
   private renderRows() {
     const g = this.g, ctx = g.ctx, t = g.t;
     const title = this.view === "main" ? "ORDERS" : this.view === "gather" ? "GATHER ORDER" : this.view === "craft" ? "CRAFT ORDER" : "GO TO ORDER";
-    drawText(ctx, title, RX + 2, 18, UI.mid);
+    label(ctx, title, RX + 2, 18, UI.title, "left", { bold: true });
     ctx.fillStyle = "#26222c"; ctx.fillRect(RX - 4, 16, 1, 114);
     this.list.forEach((r, i) => {
       const y = RY + i * ROW, sel = i === this.row;
       if (sel) frame(ctx, RX, y - 2, RW, ROW, "#221d26", selEdge(t), "#3a3540");
       const col = sel ? UI.title : r.ok ? UI.text : UI.lock;
-      drawText(ctx, clipText(r.label, r.value !== undefined ? 36 : RW - 10), RX + 5, y + 1, col);
+      label(ctx, clipText(r.label, r.value !== undefined ? 36 : RW - 10), RX + 5, y + 1, col);
       if (r.value !== undefined) {
         const arrows = sel && r.step ? ["<", ">"] : [" ", " "];
-        drawText(ctx, `${arrows[0]} ${clipText(r.value, 88)} ${arrows[1]}`.replace(/^ {1,2}/, ""), RX + RW - 5, y + 1, r.ok ? (sel ? UI.title : UI.amber) : UI.lock, 1, "right");
+        label(ctx, `${arrows[0]} ${clipText(r.value, 88)} ${arrows[1]}`.replace(/^ {1,2}/, ""), RX + RW - 5, y + 1, r.ok ? (sel ? UI.title : UI.amber) : UI.lock, "right");
       }
     });
   }
@@ -399,8 +398,8 @@ export class ManageUi {
     const bx = PX + 4, by = PY + PH - 38, bw = PW - 8, bh = 34;
     frame(ctx, bx, by, bw, bh, "#0e0c10", "#2a2630", "#3a3540");
     const r = this.current;
-    (r?.note ?? []).slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, bw - 12), bx + 6, by + 5 + i * 7, r!.ok ? "#a89c80" : UI.mid));
+    flow(r?.note ?? [], bw - 12, 3).forEach((l, i) => label(ctx, l, bx + 6, by + 5 + i * 7, r!.ok ? "#b8ac90" : UI.mid, "left", { case: "raw" }));
     const keys = this.nameField.active ? "TYPE A NAME   ENTER KEEP   ESC CANCEL   EMPTY: NO NAME" : this.view === "main" ? "W/S CHOOSE   E SELECT   R RENAME   C CORE   ESC CLOSE" : "W/S CHOOSE   A/D CHANGE   E CONFIRM   C CORE   ESC BACK";
-    drawText(ctx, clipText(keys, bw - 12), bx + 6, by + bh - 9, UI.dim);
+    hints(ctx, keys, bx + 6, by + bh - 9, UI.dim, "left", bw - 12);
   }
 }

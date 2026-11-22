@@ -19,11 +19,10 @@ import type { PropInst } from "../world/area";
 
 type Pick = { kind: "actor"; a: Actor } | { kind: "prop"; p: PropInst } | { kind: "loose"; id: string; item: ItemId; x: number; y: number };
 
-/** "MARTA - LABOURER" -> "Marta - Labourer"; mixed case is left alone. */
-export function titled(s: string): string {
-  if (s !== s.toUpperCase()) return s;
-  return s.toLowerCase().replace(/(^|[\s(-])([a-z])/g, (_m, a: string, b: string) => a + b.toUpperCase());
-}
+import { titled } from "../ui/text";
+
+// "MARTA - LABOURER" -> "Marta - Labourer": the casing is shared with every base-grid screen (ui/text.ts).
+export { titled };
 
 export class HiHud {
   selection: string[] = [];

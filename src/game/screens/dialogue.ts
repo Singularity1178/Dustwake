@@ -12,6 +12,7 @@ import { DIALOGUE, type DialogueSegment } from "../content/dialogue";
 import { npcDef } from "../content/npcs";
 import { dialogueBeat, finishSegment, segmentPages, npcActor } from "../sim/dialogue";
 import { drawText, drawTextS, textWidth } from "../font";
+import { hints } from "../ui/text";
 import { DIALOGUE_BOX as BOX, layoutDialogue, type DialogueScreenPage } from "../ui/dialogueLayout";
 
 /** Seconds a beat holds the page before its text starts typing (presentation timing only). */
@@ -126,9 +127,10 @@ export class DialogueUi {
     const total = p.lines.reduce((n, l) => n + l.length, 0);
     if (d.hold <= 0 && d.chars >= total && Math.sin(g.t * 6) > -0.3) {
       const last = d.page === d.pages.length - 1;
-      drawText(ctx, last ? "E" : "E >", bx + bw - 8, by + BOX.footerY, "#8a8392", 1, "right");
+      // What is said stays in the speaker's capitals; the keys under it are the interface's.
+      hints(ctx, [["E", last ? "Close" : "Next"]], bx + bw - 8, by + BOX.footerY, "#8a8392", "right");
     }
-    drawText(ctx, "ESC LEAVE", bx + BOX.padX, by + BOX.footerY, "#4e4856");
+    hints(ctx, [["Esc", "Leave"]], bx + BOX.padX, by + BOX.footerY, "#6a6372", "left", Infinity, { alpha: 0.75 });
     g.renderNote(by - 36);
   }
 }

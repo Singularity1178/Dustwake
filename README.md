@@ -283,3 +283,12 @@ See [docs/index.md](docs/index.md) for how the pieces fit together (the old sing
 ## Status
 
 An early prototype — a short vertical slice rather than a finished game.
+
+## Interface text: two faces
+
+The world speaks in carved capitals; the interface writes in mixed case.
+
+- **Capital font** (`src/game/font.ts`): dialogue, the golem's monologue, speech bubbles and signs, the schematic, the title. It is a voice, and stays one.
+- **v2 font** (`src/game/ui/font2.ts`): everything a keeper reads to run the dungeon. The system menu, context menus, tooltips and speed bar already used it; the HUD (notices, item toasts, the clock), the pack, storage, transfer, worker orders, crafting, the build menu, the debug menu, books and every key hint now do too.
+
+Screens laid out on the 320x180 grid write through `src/game/ui/text.ts`, which draws on the high-resolution layer, measures in base pixels, turns capital content into sentences and titles at draw time, and draws key hints as key caps. The **UI scale** setting (Compact / Normal / Large) now sizes all of it; Large is the size of the old capitals. Details: [docs/ui/framework.md](docs/ui/framework.md). `npm test` renders every one of these screens at all three scales (`tests/uiText.test.ts`, shots in `.test-out/shots/text/`).

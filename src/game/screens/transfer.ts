@@ -19,7 +19,7 @@
 // headless. As much as fits moves; a full side, an empty slot, a body that can't
 // wear the item and the tutorial's undroppable items are refused with a message.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe } from "../ui/kit";
 import { ITEMS, effectLines, isDroppable, type ItemId } from "../content/items";
 import { actorDef } from "../content/actors";
 import { slotDef } from "../content/gear";
@@ -31,8 +31,7 @@ import { workerRefusal } from "../sim/jobs";
 import { equipActor, transferWithActor, unequipActor } from "../sim/commands";
 import { itemIcon } from "../art/items";
 import { slotIcon } from "../art/slots";
-import { drawText, drawTextS, textWidth } from "../font";
-import { BASE_W as W, BASE_H as H } from "../view/zoom";
+import { label, labelS, clipLabel, hints, shade } from "../ui/text";
 import { clamp } from "../util";
 
 export type TransferPane = "pack" | "carry" | "worn";
@@ -174,25 +173,26 @@ export class TransferUi {
   private render() {
     const g = this.g, ctx = g.ctx, a = this.target;
     this.clampCursors();
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, PX, PY, PW, PH);
     if (!a) return;
     for (const k of ["pack", "carry"] as const) {
       const { slots, cap } = this.slots(k), used = slots.slice(0, cap).filter(Boolean).length;
-      const head = k === "pack" ? `PACK ${used}/${cap}` : `${actorLabel(a)} ${used}/${cap}`;
-      drawText(ctx, clipText(head, PANE[k].w - 4), PANE[k].x + 2, PY + 6, this.pane === k ? UI.title : UI.mid);
+      const head = k === "pack" ? "PACK" : actorLabel(a), on = this.pane === k, col = on ? UI.title : UI.mid;
+      label(ctx, clipLabel(head, PANE[k].w - 34, { case: "title", bold: on }), PANE[k].x + 2, PY + 6, col, "left", { case: "raw", bold: on });
+      label(ctx, `${used}/${cap}`, PANE[k].x + PANE[k].w - 2, PY + 6, used >= cap ? UI.amber : UI.dim, "right");
       this.grid(k, slots, cap);
     }
     // what the worker wears, under its pack
     const cl = gridLayout(this.slots("carry").cap, "carry"), wy = cl.gy + cl.gh + 7;
     const worn = this.wornSlots();
-    drawText(ctx, "WORN", PANE.worn.x + 2, wy, this.pane === "worn" ? UI.title : UI.mid);
+    label(ctx, "WORN", PANE.worn.x + 2, wy, this.pane === "worn" ? UI.title : UI.mid, "left", { bold: this.pane === "worn" });
     worn.forEach((id, i) => this.wornCell(a, id as never, i, PANE.worn.x + 6 + i * WORN_PITCH, wy + 9));
-    if (!worn.length) drawText(ctx, "NOTHING", PANE.worn.x + 6, wy + 12, UI.dim);
+    if (!worn.length) label(ctx, "NOTHING", PANE.worn.x + 6, wy + 12, UI.dim);
     // the keys, under the worn slots
     const ky = wy + 9 + WORN_CELL + 3;
     const keys: [string, number, number, string][] = [["E GIVE / TAKE", 0, 0, UI.mid], ["F EQUIP", 1, 0, UI.mid], ["Q ONE ITEM", 0, 1, UI.mid], ["A/D OTHER SIDE", 1, 1, UI.dim], ["ESC BACK", 0, 2, UI.dim], ["TAB CLOSE", 1, 2, UI.dim]];
-    for (const [t, c, r, col] of keys) drawText(ctx, t, PANE.carry.x + 4 + c * 76, ky + r * 8, col);
+    for (const [t, c, r, col] of keys) hints(ctx, t, PANE.carry.x + 4 + c * 76, ky + r * 8, col);
     this.description(a);
     g.renderNote(PY + PH + 1);
   }
@@ -213,7 +213,7 @@ export class TransferUi {
       if (s) {
         const o = Math.floor((L.cell - 16) / 2);
         ctx.drawImage(itemIcon(s.item).a, x + o, y + o);
-        if (s.n > 1) { const t = String(s.n); drawTextS(ctx, t, x + L.cell - 1 - textWidth(t), y + L.cell - 7, "#f0e8d0", 1, "left", "#000"); }
+        if (s.n > 1) labelS(ctx, String(s.n), x + L.cell - 2, y + L.cell - 7, "#f0e8d0", "right", "#000");
       }
       if (sel) this.ticks(x, y, L.cell);
     }
@@ -245,19 +245,15 @@ export class TransferUi {
       empty = `${this.pane === "pack" ? "PACK" : "ITS PACK"} SLOT ${this.cursor + 1}`;
     }
     if (!item) {
-      drawText(ctx, "EMPTY", bx + 31, by + 5, UI.title);
-      drawText(ctx, empty, bx + 31 + 5 * 4 + 6, by + 5, UI.dim);
+      describe(ctx, bx + 31, by, bx + bw - 5, { name: "EMPTY", sub: empty });
       return;
     }
     const def = ITEMS[item.item];
     ctx.drawImage(itemIcon(item.item).a, bx + 7, by + 8);
     const name = def.name + (item.n > 1 ? ` X${item.n}` : "");
-    drawText(ctx, clipText(name, 120), bx + 31, by + 5, UI.title);
-    drawText(ctx, clipText(def.tags.join(" ").toUpperCase(), 100), bx + 31 + Math.min(120, name.length * 4) + 6, by + 5, UI.dim);
-    [...(def.desc ?? []), ...effectLines(item.item)].slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, 170), bx + 31, by + 13 + i * 6, "#a89c80"));
     const keys = this.pane === "worn" ? ["E TAKE OFF"]
       : this.pane === "pack" && !isDroppable(item.item) ? ["CAN'T GIVE THIS"]
       : [this.pane === "pack" ? "E GIVE STACK" : "E TAKE STACK", this.pane === "pack" ? "Q GIVE ONE" : "Q TAKE ONE", ...(this.wearable(item.item) ? ["F EQUIP"] : [])];
-    keys.forEach((k, i) => drawText(ctx, clipText(k, 86), bx + bw - 5, by + 8 + i * 7, i === 0 ? UI.text : UI.dim, 1, "right"));
+    describe(ctx, bx + 31, by, bx + bw - 5, { name, sub: def.tags.join(", "), lines: def.desc ?? [], facts: effectLines(item.item), keys });
   }
 }

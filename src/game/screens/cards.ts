@@ -7,6 +7,7 @@ import { relicCount } from "../sim/discovery";
 import type { World, Actor } from "../world/world";
 import { drawGolem, type GolemPose } from "../golem";
 import { drawText, drawTextS } from "../font";
+import { label, labelS, hints } from "../ui/text";
 import { BASE_W as W, BASE_H as H } from "../view/zoom";
 import { Pen, hash2, clamp } from "../util";
 
@@ -42,12 +43,12 @@ export function renderTitle(ctx: CanvasRenderingContext2D, t: number, particles:
   };
   const cy = 112;
   key(90, cy, "W"); key(80, cy + 11, "A"); key(90, cy + 11, "S"); key(100, cy + 11, "D");
-  drawText(ctx, "MOVE", 95, cy + 25, "#6a6372", 1, "center");
+  label(ctx, "Move", 95, cy + 25, "#8a8392", "center");
   key(150, cy + 11, "E");
-  drawText(ctx, "USE", 155, cy + 25, "#6a6372", 1, "center");
+  label(ctx, "Use", 155, cy + 25, "#8a8392", "center");
   key(200, cy + 11, "I"); key(212, cy + 11, "TAB", 17);
-  drawText(ctx, "PACK", 213, cy + 25, "#6a6372", 1, "center");
-  if (Math.sin(t * 3) > -0.3) drawText(ctx, "PRESS ANY KEY", W / 2, 164, "#8a8392", 1, "center");
+  label(ctx, "Pack", 213, cy + 25, "#8a8392", "center");
+  if (Math.sin(t * 3) > -0.3) label(ctx, "Press any key", W / 2, 164, "#a8a0b0", "center");
 }
 
 /** What the transit card needs of the crossing's clock and of the golem (screens/crossing.ts). */
@@ -201,9 +202,9 @@ export function renderChapter(ctx: CanvasRenderingContext2D, t: number, ct: numb
     ctx.globalAlpha = clamp(ct - 0.9, 0, 1);
     const s = Math.floor(world.playTime);
     const mm = String(Math.floor(s / 60)).padStart(2, "0"), ss = String(s % 60).padStart(2, "0");
-    drawTextS(ctx, `TIME ${mm}:${ss}`, W / 2, 136, "#d8c8b0", 1, "center", "#2a1a2a");
-    drawTextS(ctx, `RELICS ${relicCount(world, pl)}/3`, W / 2, 144, "#d8c8b0", 1, "center", "#2a1a2a");
+    labelS(ctx, `Time ${mm}:${ss}`, W / 2, 136, "#d8c8b0", "center", "#2a1a2a");
+    labelS(ctx, `Relics ${relicCount(world, pl)} of 3`, W / 2, 144, "#d8c8b0", "center", "#2a1a2a");
   }
   ctx.globalAlpha = 1;
-  if (ct > promptAfter && Math.sin(t * 3) > -0.3) drawText(ctx, "ANY KEY - WALK ON    R - WAKE AGAIN", W / 2, H - 9, "#c8b8a0", 1, "center");
+  if (ct > promptAfter && Math.sin(t * 3) > -0.3) hints(ctx, [["Any key", "Walk on"], ["R", "Wake again"]], W / 2, H - 9, "#c8b8a0", "center");
 }

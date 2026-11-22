@@ -1,7 +1,12 @@
 // Shared presentation helpers for overlay screens (build menu, crafting):
 // the pack's bevelled frame, a keyboard text field, and fitted sprite previews.
 // Presentation only (canvas); the sim never imports this.
-import { FONT_GLYPHS, drawText, textWidth } from "../font";
+//
+// Frames, slots and sprites are drawn on the base canvas, on the 320x180 grid.
+// Text is not: screens write through ui/text.ts (`label`, `hints`, `flow`),
+// which puts it on the hi-res layer in the mixed-case v2 face.
+import { FONT_GLYPHS } from "../font";
+import { label, labelW, clipLabel, clipLabelLeft, flow, hints, occlude, cellH, fontUnit, type Hint } from "./text";
 import type { Sprite } from "../util";
 import type { Sfx } from "../audio";
 import type { ScreenStack } from "./screens";
@@ -55,8 +60,9 @@ export function frame(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   ctx.fillStyle = fill; ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
 }
 
-/** A panel with the pack's corner rivets. */
+/** A panel with the pack's corner rivets. It covers what is beneath it on both canvases (the HUD's text is on the hi-res one). */
 export function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  occlude(ctx, x - 1, y - 1, w + 2, h + 2);
   frame(ctx, x, y, w, h, "#141117");
   for (const [cx, cy] of [[x + 3, y + 3], [x + w - 5, y + 3], [x + 3, y + h - 5], [x + w - 5, y + h - 5]]) { ctx.fillStyle = "#6a6372"; ctx.fillRect(cx, cy, 2, 2); }
 }
@@ -77,17 +83,44 @@ export function drawFitted(ctx: CanvasRenderingContext2D, s: Sprite, cx: number,
   ctx.globalAlpha = 1;
 }
 
-/** Text clipped to a pixel width (the font is 4 px per character). */
+/** What the pack, storage and transfer screens say about the thing under the cursor. */
+export interface Blurb {
+  /** Its name (shown as a title, bold) and a quiet note beside it (its tags, "Empty", "Locked"). */
+  name: string; sub?: string; subCol?: string;
+  /** Running text, as content writes it (hand-wrapped lines of capitals): flowed again to the width there is. */
+  lines?: readonly string[]; linesCol?: string;
+  /** Lines of their own under the text (what the item does while worn). */
+  facts?: readonly string[];
+  /** Up to three key hints at the right ("E TAKE OFF"), and the row they start on. */
+  keys?: readonly (string | readonly Hint[])[]; keysY?: number;
+}
+
+/** The description block: `x` is where its text starts, `y` the top of its box, `right` the edge the keys sit against. */
+export function describe(ctx: CanvasRenderingContext2D, x: number, y: number, right: number, b: Blurb) {
+  const keys = (b.keys ?? []).slice(0, 3), room = right - x - (keys.length ? 100 : 0);
+  const name = clipLabel(b.name, Math.min(130, room), { case: "title", bold: true });
+  label(ctx, name, x, y + 5, UI.title, "left", { case: "raw", bold: true });
+  const nw = labelW(name, { case: "raw", bold: true });
+  if (b.sub) label(ctx, clipLabel(b.sub, Math.max(20, right - x - nw - 8)), x + nw + 6, y + 5, b.subCol ?? UI.dim, "left", { case: "raw" });
+  const facts = (b.facts ?? []).slice(0, 2);
+  const text = flow(b.lines ?? [], room, Math.max(1, 3 - facts.length));
+  text.forEach((l, i) => label(ctx, l, x, y + 13 + i * 6, b.linesCol ?? "#b8ac90", "left", { case: "raw" }));
+  facts.forEach((l, i) => label(ctx, clipLabel(l, room), x, y + 13 + (text.length + i) * 6, UI.gold, "left", { case: "raw" }));
+  keys.forEach((k, i) => hints(ctx, k, right, y + (b.keysY ?? (keys.length > 2 ? 6 : 13)) + i * 8, i === 0 ? UI.text : UI.dim, "right", 98));
+}
+
+/** Text as the interface shows it (ui/text.ts), clipped to a width in base px. Measured, not counted. */
 export function clipText(s: string, maxW: number) {
-  const n = Math.max(0, Math.floor((maxW + 1) / 4));
-  return s.length <= n ? s : s.slice(0, Math.max(0, n - 1)) + ".";
+  return clipLabel(s, maxW);
 }
 
 /**
- * A one-line text field fed from the host's typed characters. Only glyphs
- * the bitmap font can draw are accepted, uppercased. While a field is active
- * the screen routes letters to it instead of treating them as commands, so
- * typing "WASD" or "E" never moves the cursor or confirms anything.
+ * A one-line text field fed from the host's typed characters. What is typed is
+ * kept as the sim keeps names: capitals, and only glyphs the capital font can
+ * draw (a name may be spoken in a dialogue box). It is shown as a name is shown
+ * everywhere else in the interface, in mixed case. While a field is active the
+ * screen routes letters to it instead of treating them as commands, so typing
+ * "WASD" or "E" never moves the cursor or confirms anything.
  */
 export class TextField {
   value = "";
@@ -108,10 +141,15 @@ export class TextField {
   clear() { this.value = ""; }
   draw(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, t: number, placeholder: string) {
     frame(ctx, x, y, w, 11, this.active ? "#1c1820" : "#100e12", this.active ? selEdge(t) : "#2a2630", this.active ? "#e8d8a8" : "#3a3540");
-    if (!this.value && !this.active) { drawText(ctx, placeholder, x + 4, y + 3, UI.dim); return; }
-    const shown = clipTextLeft(this.value, w - 12);
-    drawText(ctx, shown, x + 4, y + 3, UI.text);
-    if (this.active && Math.sin(t * 8) > -0.2) { ctx.fillStyle = UI.title; ctx.fillRect(x + 4 + textWidth(shown) + 2, y + 2, 1, 7); }
+    if (!this.value && !this.active) { hints(ctx, placeholder, x + 4, y + 3, UI.dim); return; }
+    const shown = clipLabelLeft(this.value, w - 12, { case: "title" });
+    label(ctx, shown, x + 4, y + 3, UI.text, "left", { case: "raw" });
+    if (this.active && Math.sin(t * 8) > -0.2) {
+      // the caret: as tall as the face it follows
+      const u = fontUnit(), h = u ? cellH() : 7, cy = u ? y + 3 + (5 - 7 * u) / 2 - u : y + 2;
+      // a trailing space is typed but not yet followed by a letter: keep the caret after it
+      const tail = this.value.endsWith(" ") ? labelW("a a") - labelW("aa") : 0;
+      ctx.fillStyle = UI.title; ctx.fillRect(Math.round(x + 4 + labelW(shown, { case: "raw" }) + tail + 1), Math.round(cy), 1, Math.max(5, Math.round(h)));
+    }
   }
 }
-const clipTextLeft = (s: string, maxW: number) => { const n = Math.floor((maxW + 1) / 4); return s.length <= n ? s : s.slice(s.length - n); };

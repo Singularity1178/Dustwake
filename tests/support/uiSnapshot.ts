@@ -41,14 +41,25 @@ class RCtx {
     d[i] = d[i] * (1 - k) + c[0] * k; d[i + 1] = d[i + 1] * (1 - k) + c[1] * k; d[i + 2] = d[i + 2] * (1 - k) + c[2] * k;
     d[i + 3] = Math.min(255, d[i + 3] + 255 * k);
   }
+  // The hi-res UI layer is drawn through a scale (Game.render: k canvas px per logical px). Scale and offset only.
+  private sx = 1; private sy = 1; private tx = 0; private ty = 0;
+  setTransform(a: number, _b: number, _c: number, d: number, e: number, f: number) { this.sx = a; this.sy = d; this.tx = e; this.ty = f; }
   fillRect(x: number, y: number, w: number, h: number) {
-    const c = parseColor(this.fillStyle), W = this.canvas.width, H = this.canvas.height;
-    const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y)), x1 = Math.min(W, Math.round(x + w)), y1 = Math.min(H, Math.round(y + h));
+    const c = parseColor(this.fillStyle), W = this.canvas.width, H = this.canvas.height, d = this.canvas.data;
+    const X = x * this.sx + this.tx, Y = y * this.sy + this.ty;
+    const x0 = Math.max(0, Math.round(X)), y0 = Math.max(0, Math.round(Y)), x1 = Math.min(W, Math.round(X + w * this.sx)), y1 = Math.min(H, Math.round(Y + h * this.sy));
+    if (this.globalCompositeOperation === "destination-out") {
+      // what is there is thinned (a UI layer's text under an overlay's shade: ui/text.ts); the layer holds premultiplied colour
+      const keep = 1 - c[3] * this.globalAlpha;
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) { const i = (yy * W + xx) * 4; d[i] *= keep; d[i + 1] *= keep; d[i + 2] *= keep; d[i + 3] *= keep; }
+      return;
+    }
     for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) this.blend((yy * W + xx) * 4, c, this.globalAlpha);
   }
   clearRect(x: number, y: number, w: number, h: number) {
-    const W = this.canvas.width;
-    for (let yy = Math.max(0, y); yy < Math.min(this.canvas.height, y + h); yy++) for (let xx = Math.max(0, x); xx < Math.min(W, x + w); xx++) this.canvas.data.fill(0, (yy * W + xx) * 4, (yy * W + xx) * 4 + 4);
+    const W = this.canvas.width, X = x * this.sx + this.tx, Y = y * this.sy + this.ty;
+    const x0 = Math.max(0, Math.round(X)), y0 = Math.max(0, Math.round(Y)), x1 = Math.min(W, Math.round(X + w * this.sx)), y1 = Math.min(this.canvas.height, Math.round(Y + h * this.sy));
+    for (let yy = y0; yy < y1; yy++) this.canvas.data.fill(0, (yy * W + x0) * 4, (yy * W + Math.max(x0, x1)) * 4);
   }
   createImageData(w: number, h: number) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; }
   getImageData(_x: number, _y: number, w: number, h: number) { return this.createImageData(w, h); }
@@ -56,6 +67,7 @@ class RCtx {
   drawImage(src: RCanvas, ...a: number[]) {
     let sx = 0, sy = 0, sw = src.width, sh = src.height, dx: number, dy: number, dw = src.width, dh = src.height;
     if (a.length === 2) [dx, dy] = a; else if (a.length === 4) [dx, dy, dw, dh] = a; else [sx, sy, sw, sh, dx, dy, dw, dh] = a;
+    dx = dx * this.sx + this.tx; dy = dy * this.sy + this.ty; dw *= this.sx; dh *= this.sy;
     const W = this.canvas.width, H = this.canvas.height;
     for (let j = 0; j < Math.round(dh); j++) for (let i = 0; i < Math.round(dw); i++) {
       const tx = Math.round(dx) + i, ty = Math.round(dy) + j;
@@ -90,6 +102,20 @@ export class RCanvas {
     if (this.data.length !== this.width * this.height * 4) this.data = new Uint8ClampedArray(this.width * this.height * 4);
     return (this.ctx ??= new RCtx(this));
   }
+}
+
+/**
+ * The base canvas (scaled up, nearest neighbour) with the hi-res UI layer over it, as the browser stacks them.
+ * The layer's colour is premultiplied by what was drawn on it (RCtx.blend onto transparent).
+ */
+export function composite(base: RCanvas, hi: RCanvas): RCanvas {
+  const out = new RCanvas(hi.width, hi.height), k = hi.width / base.width;
+  for (let y = 0; y < hi.height; y++) for (let x = 0; x < hi.width; x++) {
+    const o = (y * hi.width + x) * 4, b = (Math.floor(y / k) * base.width + Math.floor(x / k)) * 4, a = hi.data[o + 3] / 255;
+    for (let c = 0; c < 3; c++) out.data[o + c] = Math.min(255, base.data[b + c] * (1 - a) + hi.data[o + c]);
+    out.data[o + 3] = 255;
+  }
+  return out;
 }
 
 export function png(c: RCanvas, scale: number): Buffer {

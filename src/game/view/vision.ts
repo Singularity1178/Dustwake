@@ -32,7 +32,7 @@ import { rubbleSprite, doorSprite } from "../art/tiles";
 import { T } from "../content/tiles";
 import { ITEMS } from "../content/items";
 import { drawActor } from "./actors";
-import { drawText } from "../font";
+import { labelS, labelW } from "../ui/text";
 import { makeCanvas, hex, clamp, Pen } from "../util";
 import { drawGolem, type GolemPose } from "../golem";
 
@@ -627,8 +627,8 @@ export class VisionView {
     let x = W - 6;
     const item = (n: number, icon: (x: number) => void, col: string) => {
       const s = String(n);
-      drawText(ctx, s, x + 1, y + 1, "#000", 1, "right"); drawText(ctx, s, x, y, col, 1, "right");
-      x -= s.length * 4 + 6; icon(x); x -= 6;
+      labelS(ctx, s, x, y, col, "right", "#000");
+      x -= Math.ceil(labelW(s)) + 6; icon(x); x -= 6;
     };
     if (this.counts.done) item(this.counts.done, (ix) => {
       ctx.fillStyle = css(P.deep);

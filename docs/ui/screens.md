@@ -2,6 +2,9 @@
 
 > Split out of the old single `ARCHITECTURE.md` (Phase 0.9). Index: [docs/index.md](../index.md).
 
+## Text on these screens
+Every screen below is laid out on the 320x180 grid and draws its frames and sprites there, but its text is interface text: it goes through `ui/text.ts` to the hi-res layer in the mixed-case v2 face (names as titles, everything else as sentences, keys on key caps). Strings quoted in this document in capitals (`WORKING`, `BLOCKED: STORAGE FULL`, `BUILD A CRAFTING BENCH FIRST`) are the content as the sim writes it; on screen they read "Working", "Blocked: storage full". Dialogue is the exception: what is spoken stays in the capital font. See [framework.md](framework.md#two-faces-one-rule).
+
 ## Worker management and storage screens
 Two overlays behind `UiHost`, registered in `Game.makeScreens` and opened from the host's `onEvent`, only for the player's own event and only from the play screen (so a worker's events, or a player event arriving under another screen, never open or replace anything; `view/audience.ts` already filters the first). The world pauses under them; they hold no saved state (cursor memory aside), so **there is no schema change and no migration**.
 

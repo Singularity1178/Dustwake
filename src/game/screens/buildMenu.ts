@@ -20,7 +20,7 @@ import {
 } from "../sim/build";
 import { orderBuild, orderDeconstruct } from "../sim/commands";
 import { propSprite } from "../art/props";
-import { drawText, textWidth } from "../font";
+import { label, labelW, clipLabel, flow, hints, titled, shade, occlude } from "../ui/text";
 import { hasFlag } from "../world/world";
 import type { PropInst } from "../world/area";
 import { clamp } from "../util";
@@ -264,28 +264,28 @@ export class BuildUi {
 
   private renderMenu() {
     const g = this.g, ctx = g.ctx, t = g.t;
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, 320, 180);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, 6, 6, 308, 166);
-    drawText(ctx, "BUILD", 14, 12, UI.title);
-    drawText(ctx, `${this.list.length} OF ${this.all.length} PLANS`, 306, 12, UI.dim, 1, "right");
+    label(ctx, "Build", 14, 12, UI.title, "left", { bold: true });
+    label(ctx, `${this.list.length} of ${this.all.length} plans`, 306, 12, UI.dim, "right");
     // tabs
     let x = GX;
     TABS.forEach((tb, i) => {
-      const w = textWidth(tb.name) + 8, sel = i === this.tab;
+      const w = Math.ceil(labelW(tb.name, { case: "title" })) + 9, sel = i === this.tab;
       frame(ctx, x, 22, w, 11, sel ? "#2a2430" : "#100e12", sel ? "#9a8c66" : "#2a2630", sel ? "#e8d8a8" : "#3a3540");
-      drawText(ctx, tb.name, x + 4, 25, sel ? UI.title : UI.mid);
+      label(ctx, tb.name, x + 4, 25, sel ? UI.title : UI.mid, "left", { case: "title" });
       x += w + 3;
     });
     frame(ctx, 267, 22, 39, 11, "#1a1210", "#5a3a2a", "#7a5a3a");
-    drawText(ctx, "X REMOVE", 271, 25, UI.amber);
+    hints(ctx, "X REMOVE", 286.5, 25, UI.amber, "center");
     // search, sort, filter
     this.search.draw(ctx, GX, 37, 134, t, "/ SEARCH");
     frame(ctx, 152, 37, 56, 11, "#100e12", "#2a2630", "#3a3540");
-    drawText(ctx, "O", 156, 40, UI.dim); drawText(ctx, "SORT:" + SORT_NAMES[this.sort], 164, 40, UI.mid);
+    hints(ctx, [["O", `Sort: ${SORT_NAMES[this.sort].toLowerCase()}`]], 156, 40, UI.mid, "left", 50);
     frame(ctx, 212, 37, 94, 11, "#100e12", this.affordableOnly ? "#4a6a40" : "#2a2630", "#3a3540");
-    drawText(ctx, "G", 216, 40, UI.dim);
+    hints(ctx, [["G", ""]], 216, 40, UI.dim);
     ctx.fillStyle = this.affordableOnly ? UI.ok : "#2a2630"; ctx.fillRect(224, 40, 5, 5);
-    drawText(ctx, "CAN BUILD ONLY", 233, 40, this.affordableOnly ? UI.ok : UI.mid);
+    label(ctx, "CAN BUILD ONLY", 233, 40, this.affordableOnly ? UI.ok : UI.mid);
     // grid
     for (let i = 0; i < COLS * ROWS; i++) {
       const idx = this.scroll * COLS + i, e = this.list[idx];
@@ -294,11 +294,11 @@ export class BuildUi {
       if (!e) continue;
       const s = recipeSprite(e.recipe);
       if (s) drawFitted(ctx, s, cx + CELL / 2, cy + CELL / 2, CELL - 4, e.status === "unknown" ? 0.18 : 1);
-      if (e.status === "unknown") drawText(ctx, "?", cx + 9, cy + 8, UI.mid);
+      if (e.status === "unknown") label(ctx, "?", cx + 9, cy + 8, UI.mid);
       if (e.status === "cost") { ctx.fillStyle = "#c04a3a"; ctx.fillRect(cx + CELL - 5, cy + 3, 2, 2); }
       if (this.favorites.has(e.id)) { ctx.fillStyle = UI.gold; ctx.fillRect(cx + 3, cy + 3, 2, 2); }
     }
-    if (!this.list.length) drawText(ctx, "NO MATCHING PLANS", GX + (COLS * PITCH - 2) / 2, GY + 50, UI.dim, 1, "center");
+    if (!this.list.length) label(ctx, "NO MATCHING PLANS", GX + (COLS * PITCH - 2) / 2, GY + 50, UI.dim, "center");
     // scrollbar
     const rowsTotal = Math.ceil(this.list.length / COLS);
     if (rowsTotal > ROWS) {
@@ -309,45 +309,46 @@ export class BuildUi {
     this.renderDetail(this.list[this.cursor]);
     const hint = this.search.active
       ? "TYPE TO SEARCH   ARROWS MOVE   ENTER DONE   ESC CLEAR"
-      : "E SELECT  Q/R TAB  / SEARCH  O SORT  G FILTER  F FAV  X REMOVE  ESC";
-    drawText(ctx, hint, 160, 164, UI.dim, 1, "center");
+      : "E SELECT  Q/R TAB  / SEARCH  O SORT  G FILTER  F FAVORITE  X REMOVE  ESC CLOSE";
+    hints(ctx, hint, 160, 164, UI.dim, "center", 300);
     g.renderNote(174);
   }
 
   private renderDetail(e: CatalogEntry | undefined) {
     const ctx = this.g.ctx;
     frame(ctx, DX, DY, DW, DH, "#0e0c10");
-    if (!e) { drawText(ctx, "NOTHING SELECTED", DX + DW / 2, DY + 50, UI.dim, 1, "center"); return; }
+    if (!e) { label(ctx, "NOTHING SELECTED", DX + DW / 2, DY + 50, UI.dim, "center"); return; }
     const r = e.recipe, locked = e.status === "unknown";
     frame(ctx, DX + 4, DY + 4, 36, 36, "#100e12", "#2a2630", "#3a3540");
     const s = recipeSprite(r);
     if (s) drawFitted(ctx, s, DX + 22, DY + 22, 32, locked ? 0.2 : 1);
-    if (locked) drawText(ctx, "?", DX + 21, DY + 20, UI.mid);
+    if (locked) label(ctx, "?", DX + 21, DY + 20, UI.mid);
     const tx = DX + 44;
-    drawText(ctx, clipText(r.name, DW - 48), tx, DY + 6, locked ? UI.mid : UI.title);
-    drawText(ctx, categoryName(r.category), tx, DY + 14, UI.mid);
-    drawText(ctx, placeRule(r) === "wall" ? "HANGS ON A WALL" : "STANDS ON FLOOR", tx, DY + 22, UI.dim);
-    if (this.favorites.has(e.id)) drawText(ctx, "* FAVORITE", tx, DY + 30, UI.gold);
-    r.desc.slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, DW - 8), DX + 4, DY + 44 + i * 8, locked ? UI.lock : "#a89c80"));
+    label(ctx, clipLabel(r.name, DW - 48, { case: "title", bold: true }), tx, DY + 6, locked ? UI.mid : UI.title, "left", { case: "raw", bold: true });
+    label(ctx, categoryName(r.category), tx, DY + 14, UI.mid);
+    label(ctx, placeRule(r) === "wall" ? "HANGS ON A WALL" : "STANDS ON FLOOR", tx, DY + 22, UI.dim);
+    if (this.favorites.has(e.id)) label(ctx, "* Favorite", tx, DY + 30, UI.gold);
+    flow(r.desc, DW - 8, 3).forEach((l, i) => label(ctx, l, DX + 4, DY + 44 + i * 8, locked ? UI.lock : "#b8ac90", "left", { case: "raw" }));
     ctx.fillStyle = "#2a2630"; ctx.fillRect(DX + 4, DY + 69, DW - 8, 1);
-    drawText(ctx, "COST", DX + 4, DY + 73, UI.dim);
-    drawText(ctx, "CARRIED", DX + DW - 4, DY + 73, UI.dim, 1, "right");
+    label(ctx, "COST", DX + 4, DY + 73, UI.dim);
+    label(ctx, "CARRIED", DX + DW - 4, DY + 73, UI.dim, "right");
     e.lines.slice(0, 3).forEach((l, i) => {
       const y = DY + 81 + i * 7, enough = l.have >= l.need;
-      drawText(ctx, `${l.need} ${ITEM_NAMES[l.item]}`, DX + 4, y, locked ? UI.lock : UI.text);
-      drawText(ctx, String(l.have), DX + DW - 4, y, locked ? UI.lock : enough ? UI.ok : UI.bad, 1, "right");
+      label(ctx, clipText(`${l.need} ${titled(ITEM_NAMES[l.item])}`, DW - 30), DX + 4, y, locked ? UI.lock : UI.text);
+      label(ctx, String(l.have), DX + DW - 4, y, locked ? UI.lock : enough ? UI.ok : UI.bad, "right");
     });
     const status = e.status === "ok" ? "READY - E TO PLACE" : entryReason(e);
-    drawText(ctx, clipText(status, DW - 8), DX + 4, DY + DH - 8, e.status === "ok" ? UI.ok : e.status === "cost" ? UI.bad : UI.mid);
+    label(ctx, clipText(status, DW - 8), DX + 4, DY + DH - 8, e.status === "ok" ? UI.ok : e.status === "cost" ? UI.bad : UI.mid);
   }
 
   /** Top bar for the two world tools. */
   private bar(l1: string, l2: string, l2col: string, l3: string) {
     const ctx = this.g.ctx;
+    occlude(ctx, 0, 0, 320, 30);
     ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(0, 0, 320, 30);
-    drawText(ctx, clipText(l1, 312), 160, 3, UI.title, 1, "center");
-    drawText(ctx, clipText(l2, 312), 160, 12, l2col, 1, "center");
-    drawText(ctx, clipText(l3, 312), 160, 21, UI.dim, 1, "center");
+    label(ctx, clipLabel(l1, 312, { bold: true }), 160, 3, UI.title, "center", { case: "raw", bold: true });
+    label(ctx, clipText(l2, 312), 160, 12, l2col, "center");
+    hints(ctx, l3, 160, 21, UI.dim, "center", 312);
   }
   private reachOutline(col: string) {
     const g = this.g, ctx = g.wctx, t = actorTile(g.pl);
@@ -389,7 +390,7 @@ export class BuildUi {
     if (s) { const a = recipeAnchor(id, c.tx, c.ty); ctx.globalAlpha = ok.ok ? 0.65 : 0.4; ctx.drawImage(s.a, Math.round(a.x - s.ax - camX), Math.round(a.y - s.ay - camY)); ctx.globalAlpha = 1; }
     const cost = r.cost.map((k) => `${k.n} ${ITEM_NAMES[k.item]} (${countOf(g, k.item)})`).join("  ");
     this.bar(`BUILD ${r.name}: ${cost}`, ok.ok ? (placeRule(r) === "wall" ? "READY - HANGS ON THIS WALL FACE" : "READY") : BLOCK_TEXT[ok.reason], ok.ok ? UI.ok : UI.bad,
-      `E PLACE  ARROWS MOVE  T REPEAT:${this.repeat ? "ON" : "OFF"}  B MENU  X REMOVE  ESC DONE`);
+      `E PLACE  ARROWS MOVE  T REPEAT: ${this.repeat ? "ON" : "OFF"}  B MENU  X REMOVE  ESC DONE`);
     g.renderNote(170);
   }
 
@@ -412,7 +413,7 @@ export class BuildUi {
     const pulse = 0.2 + 0.1 * Math.sin(g.t * 6);
     this.box(x, y, TS, TS, chk.ok ? `rgba(240,170,60,${pulse})` : `rgba(230,70,70,${pulse * 0.8})`, chk.ok ? "#f0b050" : target ? "#e05a5a" : "#8a8392");
     if (target && !chk.ok) { const b = spriteBounds(target); this.box(b.x - camX - 1, b.y - camY - 1, b.w + 2, b.h + 2, "rgba(230,70,70,0.15)", "#e05a5a"); }
-    const hints = `E TAKE APART  ARROWS MOVE  T REPEAT:${this.repeat ? "ON" : "OFF"}  B MENU  X BUILD  ESC DONE`;
+    const hints = `E TAKE APART  ARROWS MOVE  T REPEAT: ${this.repeat ? "ON" : "OFF"}  B MENU  X BUILD  ESC DONE`;
     if (chk.ok) this.bar(`TAKE APART ${propLabel(chk.prop)}`, `REFUND ${costText(chk.refund)}`, UI.ok, hints);
     else if (target && chk.reason === "reach") this.bar(`TAKE APART ${propLabel(target)}`, `${DECON_TEXT.reach} - REFUND ${costText(salvageOf(target) ?? [])}`, UI.bad, hints);
     else this.bar(target ? propLabel(target) : "TAKE APART", chk.ok ? DECON_TEXT.none : deconMessage(chk), target ? UI.bad : UI.mid, hints);

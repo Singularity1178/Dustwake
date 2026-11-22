@@ -22,7 +22,7 @@
 //            doll is dimmed and out of reach.
 // Presentation only: dropping, placing and wearing go through sim commands.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe } from "../ui/kit";
 import { ITEMS, effectLines, isGlyph, type GearSlot } from "../content/items";
 import { GEAR_SLOT_DEFS, slotDef, type GearSlotDef } from "../content/gear";
 import { FLAGS } from "../content/flags";
@@ -36,8 +36,7 @@ import { itemIcon } from "../art/items";
 import { slotIcon } from "../art/slots";
 import { propSprite } from "../art/props";
 import { drawGolem, type GolemPose } from "../golem";
-import { drawText, drawTextS, textWidth } from "../font";
-import { BASE_W as W, BASE_H as H } from "../view/zoom";
+import { label, labelS, labelW, shade } from "../ui/text";
 import { makeCanvas, Pen, clamp } from "../util";
 
 export type PackMode = "view" | "select";
@@ -219,15 +218,16 @@ export class PackUi {
     const g = this.g, ctx = g.ctx, pl = g.pl, inv = pl.inventory, cap = this.cap;
     const L = packLayout(cap);
     const select = this.mode === "select";
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, PX, PY, PW, PH);
     // ---- headers
-    drawText(ctx, "GEAR", DX, PY + 6, UI.mid);
+    label(ctx, "Gear", DX, PY + 6, UI.title, "left", { bold: true });
     const used = inv.slice(0, cap).filter(Boolean).length;
-    drawText(ctx, `PACK ${used}/${cap}`, L.gx, PY + 6, UI.mid);
+    label(ctx, "Pack", L.gx, PY + 6, UI.title, "left", { bold: true });
+    label(ctx, `${used} of ${cap} slots`, L.gx + L.gw, PY + 6, used >= cap ? UI.amber : UI.mid, "right");
     if (select) {
       ctx.drawImage(propSprite("pedestal", 0, false)!.a, PX + PW - 22, PY + 2);
-      drawText(ctx, "?", PX + PW - 24, PY + 4, "#a070ff");
+      label(ctx, "?", PX + PW - 24, PY + 4, "#a070ff");
     }
     // ---- the paper doll (dimmed while a ritual socket is being filled)
     ctx.globalAlpha = select ? 0.3 : 1;
@@ -247,7 +247,7 @@ export class PackUi {
       const o = Math.floor((L.cell - 16) / 2);
       ctx.drawImage(ic.a, r.x + o, r.y + o);
       ctx.globalAlpha = 1;
-      if (slot.n > 1) { const t = String(slot.n); drawTextS(ctx, t, r.x + L.cell - 1 - textWidth(t), r.y + L.cell - 7, "#f0e8d0", 1, "left", "#000"); }
+      if (slot.n > 1) labelS(ctx, String(slot.n), r.x + L.cell - 2, r.y + L.cell - 7, "#f0e8d0", "right", "#000");
       if (sel) this.ticks(r);
     }
     this.renderDescription();
@@ -282,8 +282,9 @@ export class PackUi {
     }
     // relics found (the three old treasures), beside the header
     const rel = relicCount(g.world, pl);
-    for (let i = 0; i < 3; i++) { ctx.fillStyle = i < rel ? "#c9a040" : "#2a2630"; ctx.fillRect(DX + 22 + i * 6, PY + 7, 4, 4); }
-    drawText(ctx, "RUNES", DX + FEET.x, DY + 86, UI.dim, 1, "center");
+    const rx = DX + Math.ceil(labelW("Gear", { bold: true })) + 6;
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = i < rel ? "#c9a040" : "#2a2630"; ctx.fillRect(rx + i * 6, PY + 7, 4, 4); }
+    label(ctx, "RUNES", DX + FEET.x, DY + 86, UI.dim, "center");
   }
 
   /** Corner brackets round the selected cell: the cursor reads at a glance, even on a filled slot. */
@@ -313,9 +314,9 @@ export class PackUi {
       ctx.globalAlpha *= sel ? 0.5 : 0.28;
       ctx.drawImage((d.kind === "back" ? itemIcon("basket") : slotIcon(d.kind)).a, r.x + (r.w - 16) / 2, r.y + (r.h - 16) / 2);
       ctx.globalAlpha /= sel ? 0.5 : 0.28;
-      if (d.kind === "rune") drawText(ctx, d.name.slice(-1), r.x + 3, r.y + 3, UI.dim);
+      if (d.kind === "rune") label(ctx, d.name.slice(-1), r.x + 3, r.y + 3, UI.dim);
     }
-    if (d.kind !== "rune") drawText(ctx, d.name, r.x + r.w / 2, r.y + r.h + 2, sel ? UI.title : usable ? UI.dim : UI.lock, 1, "center");
+    if (d.kind !== "rune") label(ctx, d.name, r.x + r.w / 2, r.y + r.h + 2, sel ? UI.title : usable ? UI.mid : UI.lock, "center", { case: "title" });
     if (sel) this.ticks(r);
   }
 
@@ -335,8 +336,9 @@ export class PackUi {
     frame(ctx, bx, by, bw, bh, "#0e0c10", "#2a2630", "#3a3540");
     let icon: HTMLCanvasElement | null = null, ghost = false;
     let name = "", sub = "", subCol: string = UI.dim;
-    let lines: string[] = [], keys: string[] = [];
-    let linesCol: string = "#a89c80";
+    // `lines` is running text (hand-wrapped for the capitals: it is flowed again), `facts` are lines of their own
+    let lines: string[] = [], facts: string[] = [], keys: string[] = [];
+    let linesCol: string = "#b8ac90";
     if (this.slot) {
       const d = slotDef(this.slot), usable = slotUsable(w, pl, d.id), item = wornIn(pl, d.id);
       if (!usable) {
@@ -345,7 +347,7 @@ export class PackUi {
       } else if (item) {
         const def = ITEMS[item];
         icon = itemIcon(item).a; name = def.name; sub = `WORN: ${d.name}`; subCol = UI.gold;
-        lines = [...(def.desc ?? []), ...effectLines(item)]; keys = ["E TAKE OFF"];
+        lines = def.desc ?? []; facts = effectLines(item); keys = ["E TAKE OFF"];
       } else {
         icon = (d.kind === "back" ? itemIcon("basket") : slotIcon(d.kind)).a; ghost = true;
         name = d.name; sub = "EMPTY"; lines = d.hint ?? []; keys = this.mode === "view" ? ["WEAR FROM THE PACK"] : [];
@@ -355,8 +357,8 @@ export class PackUi {
       if (s) {
         const def = ITEMS[s.item];
         icon = itemIcon(s.item).a; name = def.name + (s.n > 1 ? ` X${s.n}` : "");
-        sub = def.tags.join(" ").toUpperCase();
-        lines = [...(def.desc ?? []), ...effectLines(s.item)];
+        sub = def.tags.join(", ");
+        lines = def.desc ?? []; facts = effectLines(s.item);
         if (this.mode === "select") keys = isGlyph(s.item) ? ["E PLACE"] : [];
         else {
           if (def.opens) keys.push("E READ");
@@ -368,9 +370,6 @@ export class PackUi {
     // icon box
     frame(ctx, bx + 4, by + 5, 22, 22, "#100e12", "#2a2630", "#3a3540");
     if (icon) { ctx.globalAlpha = ghost ? 0.35 : 1; ctx.drawImage(icon, bx + 7, by + 8); ctx.globalAlpha = 1; }
-    drawText(ctx, clipText(name, 120), bx + 31, by + 5, UI.title);
-    drawText(ctx, clipText(sub, 100), bx + 31 + Math.min(120, name.length * 4) + 6, by + 5, subCol);
-    lines.slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, 170), bx + 31, by + 13 + i * 6, linesCol));
-    keys.slice(0, 2).forEach((k, i) => drawText(ctx, clipText(k, 86), bx + bw - 5, by + 14 + i * 7, i === 0 ? UI.text : UI.dim, 1, "right"));
+    describe(ctx, bx + 31, by, bx + bw - 5, { name, sub, subCol, lines, linesCol, facts, keys });
   }
 }

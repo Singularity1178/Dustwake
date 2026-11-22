@@ -19,15 +19,14 @@
 // and testable headless. As much as fits moves; a full destination, an empty
 // source and the tutorial's undroppable items are refused with a message.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe, TextField } from "../ui/kit";
 import { ITEMS, effectLines, isDroppable } from "../content/items";
 import { propDef } from "../content/props";
 import { capacity } from "../sim/inventory";
 import { moveStorageSlot, renameStorage } from "../sim/commands";
 import { PROP_NAME_MAX, propName } from "../sim/orders";
 import { itemIcon } from "../art/items";
-import { drawText, drawTextS, textWidth } from "../font";
-import { BASE_W as W, BASE_H as H } from "../view/zoom";
+import { label, labelS, clipLabel, hints, shade } from "../ui/text";
 import { clamp } from "../util";
 import type { Slot } from "../world/world";
 
@@ -165,14 +164,19 @@ export class StorageUi {
   private render() {
     const g = this.g, ctx = g.ctx;
     this.clampCursors();
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, W, H);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, PX, PY, PW, PH);
     const name = this.name, renaming = this.nameField.active;
     for (const k of ["pack", "chest"] as const) {
       const { slots, cap } = this.slots(k), used = slots.slice(0, cap).filter(Boolean).length;
-      const head = k === "pack" ? `PACK ${used}/${cap}` : `${name} ${used}/${cap}`;
+      const head = k === "pack" ? "PACK" : name, count = `${used}/${cap}`;
       if (k === "chest" && renaming) this.nameField.draw(ctx, PANE.chest.x, PY + 3, PANE.chest.w - 2, g.t, "NAME");
-      else drawText(ctx, clipText(head, PANE[k].w - 4), PANE[k].x + 2, PY + 6, this.pane === k ? UI.title : UI.mid);
+      else {
+        // the pane's name (bold while the cursor is in it) and how full it is, against the pane's right edge
+        const on = this.pane === k, col = on ? UI.title : UI.mid;
+        label(ctx, clipLabel(head, PANE[k].w - 34, { case: "title", bold: on }), PANE[k].x + 2, PY + 6, col, "left", { case: "raw", bold: on });
+        label(ctx, count, PANE[k].x + PANE[k].w - 2, PY + 6, used >= cap ? UI.amber : UI.dim, "right");
+      }
       this.grid(k, slots, cap);
     }
     // the keys, under the chest's grid
@@ -180,7 +184,7 @@ export class StorageUi {
     const keys: [string, number, number, string][] = renaming
       ? [["ENTER KEEP NAME", 0, 0, UI.mid], ["ESC CANCEL", 0, 1, UI.dim], ["EMPTY: DEFAULT NAME", 0, 2, UI.dim]].map(([t, c, r, col]) => [t as string, c as number, r as number, col as string])
       : [["E MOVE STACK", 0, 0, UI.mid], ["R RENAME", 1, 0, UI.mid], ["Q MOVE ONE", 0, 1, UI.mid], ["A/D OTHER SIDE", 1, 1, UI.dim], ["ESC CLOSE", 0, 2, UI.dim]];
-    for (const [t, c, r, col] of keys) drawText(ctx, t, PANE.chest.x + 4 + c * 76, ky + r * 8, col);
+    for (const [t, c, r, col] of keys) hints(ctx, t, PANE.chest.x + 4 + c * 76, ky + r * 8, col);
     this.description();
     g.renderNote(PY + PH + 1);
   }
@@ -194,7 +198,7 @@ export class StorageUi {
       if (s) {
         const o = Math.floor((L.cell - 16) / 2);
         ctx.drawImage(itemIcon(s.item).a, x + o, y + o);
-        if (s.n > 1) { const t = String(s.n); drawTextS(ctx, t, x + L.cell - 1 - textWidth(t), y + L.cell - 7, "#f0e8d0", 1, "left", "#000"); }
+        if (s.n > 1) labelS(ctx, String(s.n), x + L.cell - 2, y + L.cell - 7, "#f0e8d0", "right", "#000");
       }
       if (sel) this.ticks(x, y, L.cell);
     }
@@ -217,17 +221,13 @@ export class StorageUi {
     const s = this.slots(this.pane).slots[this.cursor] ?? null;
     frame(ctx, bx + 4, by + 5, 22, 22, "#100e12", "#2a2630", "#3a3540");
     if (!s) {
-      drawText(ctx, "EMPTY", bx + 31, by + 5, UI.title);
-      drawText(ctx, `${this.pane === "pack" ? "PACK" : "STORAGE"} SLOT ${this.cursor + 1}`, bx + 31 + 5 * 4 + 6, by + 5, UI.dim);
+      describe(ctx, bx + 31, by, bx + bw - 5, { name: "EMPTY", sub: `${this.pane === "pack" ? "PACK" : "STORAGE"} SLOT ${this.cursor + 1}` });
       return;
     }
     const def = ITEMS[s.item], store = this.pane === "pack";
     ctx.drawImage(itemIcon(s.item).a, bx + 7, by + 8);
     const name = def.name + (s.n > 1 ? ` X${s.n}` : "");
-    drawText(ctx, clipText(name, 120), bx + 31, by + 5, UI.title);
-    drawText(ctx, clipText(def.tags.join(" ").toUpperCase(), 100), bx + 31 + Math.min(120, name.length * 4) + 6, by + 5, UI.dim);
-    [...(def.desc ?? []), ...effectLines(s.item)].slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, 170), bx + 31, by + 13 + i * 6, "#a89c80"));
     const keys = store && !isDroppable(s.item) ? ["CAN'T STORE THIS"] : store ? ["E STORE STACK", "Q STORE ONE"] : ["E TAKE STACK", "Q TAKE ONE"];
-    keys.forEach((k, i) => drawText(ctx, clipText(k, 86), bx + bw - 5, by + 14 + i * 7, i === 0 ? UI.text : UI.dim, 1, "right"));
+    describe(ctx, bx + 31, by, bx + bw - 5, { name, sub: def.tags.join(", "), lines: def.desc ?? [], facts: effectLines(s.item), keys });
   }
 }

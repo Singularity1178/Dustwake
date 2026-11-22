@@ -28,7 +28,7 @@ import { STATIONS, isStation, type StationDef, type StationTab } from "../conten
 import { craftList, craftLocked, craftReason, orderCraft, type CraftEntry } from "../sim/crafting";
 import { itemIcon } from "../art/items";
 import { propSprite } from "../art/props";
-import { drawText } from "../font";
+import { label, clipLabel, flow, hints, titled, shade, thin } from "../ui/text";
 import { clamp } from "../util";
 
 const PX = 34, PY = 18, PW = 252, PH = 146;
@@ -149,12 +149,12 @@ export class CraftingUi {
     const locked = this.locked, def = this.def, tabs = this.tabs, rows = this.rows;
     // With tabs the lists start lower and are a row shorter; the detail's lower half closes up to fit.
     const top = LY + (tabs.length ? TAB_H + TAB_GAP : 0), DH = rows * ROW + 6, DY = top, tight = tabs.length ? 1 : 0;
-    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, 0, 320, 180);
+    shade(ctx, "rgba(0,0,0,0.55)");
     panel(ctx, PX, PY, PW, PH);
     const art = propSprite(def.prop, 0, false);
     if (art) { ctx.globalAlpha = locked ? 0.4 : 1; ctx.drawImage(art.a, PX + 8, PY + 3, 16, 15); ctx.globalAlpha = 1; }
-    drawText(ctx, def.name, PX + 28, PY + 8, locked ? UI.mid : def.accent);
-    drawText(ctx, "PACK + NEARBY STORAGE", PX + PW - 8, PY + 8, UI.dim, 1, "right");
+    label(ctx, def.name, PX + 28, PY + 8, locked ? UI.mid : def.accent, "left", { case: "title", bold: true });
+    label(ctx, "PACK + NEARBY STORAGE", PX + PW - 8, PY + 8, UI.dim, "right");
     // the station's colour under the header: steady for the bench and the anvil, breathing like a fire for the smelter
     ctx.globalAlpha = locked ? 0.12 : this.station === "smelting" ? 0.4 + 0.2 * Math.sin(t * 5) : 0.3;
     ctx.fillStyle = def.accent; ctx.fillRect(PX + 8, PY + 19, PW - 16, 1);
@@ -166,7 +166,7 @@ export class CraftingUi {
         const x = PX + 8 + i * tw, on = i === this.tab && !locked;
         const n = locked ? 0 : craftList(g.world, g.pl, this.station, this.propId, tb.id).length;
         frame(ctx, x, LY, tw - 2, TAB_H, on ? "#221d26" : "#0e0c10", on ? def.accent : "#2a2630", on ? "#3a3540" : "#1c1a20");
-        drawText(ctx, `${i + 1} ${tb.name}`, x + (tw - 2) / 2, LY + 3, on ? UI.title : n ? UI.text : UI.dim, 1, "center");
+        hints(ctx, [[String(i + 1), tb.name]], x + (tw - 2) / 2, LY + 3, on ? UI.title : n ? UI.text : UI.dim, "center", tw - 6, { alpha: on ? 1 : 0.6 });
       });
     }
     // recipe list
@@ -177,12 +177,12 @@ export class CraftingUi {
       const y = top + 3 + i * ROW, sel = idx === this.cursor;
       if (sel) frame(ctx, LX + 2, y, LW - 4, ROW - 1, "#221d26", this.focus === "list" ? selEdge(t) : "#5a5040", "#3a3540");
       const col = e.status === "ok" ? UI.text : e.status === "unknown" ? UI.lock : UI.mid;
-      drawText(ctx, clipText(e.status === "unknown" ? "???" : e.recipe.name, LW - 12), LX + 6, y + 2, sel ? UI.title : col);
+      label(ctx, e.status === "unknown" ? "???" : clipLabel(e.recipe.name, LW - 12, { case: "title" }), LX + 6, y + 2, sel ? UI.title : col, "left", { case: "raw" });
     }
     if (this.list.length > rows) {
       // more above / below
-      if (this.scroll > 0) drawText(ctx, "^", LX + LW - 6, top + 2, UI.dim);
-      if (this.scroll + rows < this.list.length) drawText(ctx, "V", LX + LW - 6, top + DH - 8, UI.dim);
+      if (this.scroll > 0) label(ctx, "^", LX + LW - 6, top + 2, UI.dim);
+      if (this.scroll + rows < this.list.length) label(ctx, "v", LX + LW - 6, top + DH - 8, UI.dim, "left", { case: "raw" });
     }
     // detail
     frame(ctx, DX, DY, DW, DH, "#0e0c10");
@@ -191,48 +191,49 @@ export class CraftingUi {
       // Empty rows, no names: the list is there but there is nothing to read in it.
       for (let i = 0; i < 5; i++) { ctx.fillStyle = "#17141b"; ctx.fillRect(LX + 6, top + 5 + i * ROW, 40 + ((i * 17) % 28), 5); }
     } else if (!this.list.length) {
-      drawText(ctx, "NOTHING HERE", LX + LW / 2, top + 40, UI.dim, 1, "center");
-      (tabs[this.tab]?.empty ?? ["NO PLANS"]).forEach((l, i) => drawText(ctx, clipText(l, DW - 8), DX + DW / 2, DY + 30 + i * 9, i ? UI.dim : UI.mid, 1, "center"));
+      label(ctx, "NOTHING HERE", LX + LW / 2, top + 40, UI.dim, "center");
+      flow(tabs[this.tab]?.empty ?? ["NO PLANS"], DW - 12, 4).forEach((l, i) => label(ctx, l, DX + DW / 2, DY + 30 + i * 9, i ? UI.dim : UI.mid, "center", { case: "raw" }));
     }
     if (e) {
       const r = e.recipe, pitch = tight ? 7 : 8, low = tight ? -4 : 0;
       frame(ctx, DX + 4, DY + 4, 22, 22, "#100e12", "#2a2630", "#3a3540");
       ctx.drawImage(itemIcon(r.output.item).a, DX + 7, DY + 7);
-      drawText(ctx, clipText(r.name, DW - 36), DX + 30, DY + 6, UI.title);
-      const also = (r.also ?? []).map((x) => ` + ${ITEM_NAMES[x.item]}`).join("");
-      drawText(ctx, clipText(`MAKES ${r.output.n} ${ITEM_NAMES[r.output.item]}${also}`, DW - 36), DX + 30, DY + 14, UI.dim);
-      r.desc.slice(0, 3).forEach((l, i) => drawText(ctx, clipText(l, DW - 8), DX + 4, DY + 30 + i * pitch, "#a89c80"));
+      label(ctx, clipLabel(r.name, DW - 36, { case: "title", bold: true }), DX + 30, DY + 6, UI.title, "left", { case: "raw", bold: true });
+      const also = (r.also ?? []).map((x) => ` + ${titled(ITEM_NAMES[x.item])}`).join("");
+      label(ctx, clipText(`Makes ${r.output.n} ${titled(ITEM_NAMES[r.output.item])}${also}`, DW - 36), DX + 30, DY + 14, UI.mid);
+      flow(r.desc, DW - 8, 3).forEach((l, i) => label(ctx, l, DX + 4, DY + 30 + i * pitch, "#b8ac90", "left", { case: "raw" }));
       ctx.fillStyle = "#2a2630"; ctx.fillRect(DX + 4, DY + 55 + low, DW - 8, 1);
-      drawText(ctx, "NEEDS", DX + 4, DY + 59 + low - tight, UI.dim);
-      drawText(ctx, "AVAILABLE", DX + DW - 4, DY + 59 + low - tight, UI.dim, 1, "right");
+      label(ctx, "NEEDS", DX + 4, DY + 59 + low - tight, UI.dim);
+      label(ctx, "AVAILABLE", DX + DW - 4, DY + 59 + low - tight, UI.dim, "right");
       e.lines.slice(0, 2).forEach((l, i) => {
         const y = DY + 67 + low - tight + i * 7;
-        drawText(ctx, clipText(`${l.need} ${ITEM_NAMES[l.item]}`, DW - 24), DX + 4, y, UI.text);
-        drawText(ctx, String(l.have), DX + DW - 4, y, l.have >= l.need ? UI.ok : UI.bad, 1, "right");
+        label(ctx, clipText(`${l.need} ${titled(ITEM_NAMES[l.item])}`, DW - 24), DX + 4, y, UI.text);
+        label(ctx, String(l.have), DX + DW - 4, y, l.have >= l.need ? UI.ok : UI.bad, "right");
       });
       // Tools are carried, not used up: shown after the materials, with a tick or a cross.
       e.tools.slice(0, 1).forEach((tl, i) => {
         const y = DY + 67 + low - tight + Math.min(2, e.lines.length) * 7 + i * 7;
-        drawText(ctx, clipText(`TOOL ${ITEM_NAMES[tl.item]}`, DW - 20), DX + 4, y, UI.mid);
-        drawText(ctx, tl.have ? "HAVE" : "MISSING", DX + DW - 4, y, tl.have ? UI.ok : UI.bad, 1, "right");
+        label(ctx, clipText(`Tool: ${titled(ITEM_NAMES[tl.item])}`, DW - 30), DX + 4, y, UI.mid);
+        label(ctx, tl.have ? "HAVE" : "MISSING", DX + DW - 4, y, tl.have ? UI.ok : UI.bad, "right");
       });
     }
     // the action button (also drawn dead while locked, so the layout is the same)
     if (e || locked) {
       const bx = DX + 4, by = DY + DH - 16, bw = 40, can = !locked && e?.status === "ok", foc = !locked && this.focus === "button";
       frame(ctx, bx, by, bw, 12, can ? "#1e2a1c" : "#16131a", foc ? selEdge(t) : can ? "#4a6a40" : "#2a2630", foc ? "#e8d8a8" : "#3a3540");
-      drawText(ctx, this.verb(e), bx + bw / 2, by + 4, can ? UI.ok : UI.dim, 1, "center");
+      label(ctx, this.verb(e), bx + bw / 2, by + 4, can ? UI.ok : UI.dim, "center", { bold: true });
       const why = !e ? "LOCKED" : e.status === "ok" ? "READY" : craftReason(e);
-      drawText(ctx, clipText(why, DW - bw - 14), bx + bw + 5, by + 4, can ? UI.ok : UI.mid);
+      label(ctx, clipText(why, DW - bw - 14), bx + bw + 5, by + 4, can ? UI.ok : UI.mid);
     }
     if (locked) {
       // Grey the whole station over, then say why on top of it.
       ctx.fillStyle = "rgba(34,32,40,0.5)"; ctx.fillRect(PX + 2, PY + 2, PW - 4, PH - 4);
-      drawText(ctx, clipText(def.lockedText, DW - 8), DX + DW / 2, DY + 30, UI.mid, 1, "center");
-      drawText(ctx, clipText(def.lockedHint, DW - 8), DX + DW / 2, DY + 40, UI.dim, 1, "center");
+      thin(ctx, PX + 2, PY + 2, PW - 4, PH - 4, 0.5);
+      label(ctx, clipText(def.lockedText, DW - 8), DX + DW / 2, DY + 30, UI.mid, "center");
+      label(ctx, clipText(def.lockedHint, DW - 8), DX + DW / 2, DY + 40, UI.dim, "center");
     }
     const keys = locked ? "ESC CLOSE" : `${tabs.length ? "Q/R TAB   " : ""}W/S CHOOSE   D/E TO BUTTON   E ${this.verb(e)}   ESC CLOSE`;
-    drawText(ctx, keys, 160, PY + PH - 10, UI.dim, 1, "center");
+    hints(ctx, keys, 160, PY + PH - 10, UI.dim, "center", PW - 16);
     g.renderNote(PY + PH + 6);
   }
 }
