@@ -85,11 +85,19 @@ test("saves through the host: K to the quick slot, L loads the latest, and an ar
 
 test("the mouse: clicking the speed bar on the hi-res layer sets the speed", () => {
   const g = host();
+  g.settings.set("uiScale", "normal");
   g.render();
   // the 8x button, bottom left: logical (90..109, 342..354) on the 640x360 layer = base px (45..54, 171..177)
   g.pointerMove(49.5, 174); g.pointerDown(0, 49.5, 174); g.update(1 / 60); g.render();
   g.pointerUp(0, 49.5, 174); g.update(1 / 60); g.render();
   assert.equal(g.speed, 8);
+  // at Large (the default) the layer is 480x270 logical: the same button, 1.5 logical px per base px
+  g.setSpeed(1);
+  g.settings.set("uiScale", "large");
+  g.render();
+  g.pointerMove(66, 172); g.pointerDown(0, 66, 172); g.update(1 / 60); g.render();
+  g.pointerUp(0, 66, 172); g.update(1 / 60); g.render();
+  assert.equal(g.speed, 8, "Large: the speed bar is where the layer puts it");
   // a click on the world elsewhere is not the UI's
   g.pointerMove(160, 120); g.pointerDown(0, 160, 120); g.update(1 / 60); g.render(); g.pointerUp(0, 160, 120); g.update(1 / 60); g.render();
   assert.equal(g.speed, 8);
@@ -115,8 +123,15 @@ test("settings apply at once: shake off stops shakes, LOD follows its toggle, th
   assert.equal(g.world.lod, null);
   g.settings.set("lod", true);
   assert.ok(g.world.lod);
+  assert.equal(g.settings.str("uiScale"), "large", "Large is the default");
+  assert.equal(g.uiCanvas.width, 320, "Large: the UI canvas is the 320x180 layout as designed");
   g.settings.set("uiScale", "compact");
-  assert.equal(g.hiCanvas.width, 960);
+  assert.equal(g.hiCanvas.width, 1920, "the hi layer does not change with the scale");
+  assert.equal(g.uiCanvas.width, 640, "Compact: the same interface at half the size, so twice the UI px across");
+  assert.equal(g.uiCanvas.height, 360);
+  g.settings.set("uiScale", "normal");
+  assert.equal(g.uiCanvas.width, 427);
+  assert.equal(g.uiCanvas.height, 240);
   assert.equal(g.flashK, 1);
   g.settings.set("flashes", false);
   assert.ok(g.flashK < 1);
@@ -138,7 +153,7 @@ test("smoke: every system-menu tab and settings category at every UI scale, and 
     press(g, "Escape");
     assert.ok(g.screens.is("play"), `closed at ${scale}`);
   }
-  g.settings.set("uiScale", "normal");
+  g.settings.set("uiScale", "large");
   for (let i = 0; i < 20; i++) { g.update(1 / 60); g.render(); }
   // hover the golem itself, right-click it, pick the first entry of the context menu
   const pl = g.pl, bx = ((pl.x - g.cam.x) * 320) / g.vw, by = ((pl.y - 10 - g.cam.y) * 180) / g.vh;

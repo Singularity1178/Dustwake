@@ -14,15 +14,23 @@
 import assert from "node:assert/strict";
 import { RCanvas, png, composite } from "./uiSnapshot";
 import { currentArea, player, type SimEvent, type World } from "../../src/game/world/world";
-import { ScreenStack, type Screen } from "../../src/game/ui/screens";
+import { ScreenStack, FRAMED_SCREENS, type Screen } from "../../src/game/ui/screens";
 import { FONT_GLYPHS, textWidth } from "../../src/game/font";
 import { fitsFont2 } from "../../src/game/ui/font2";
-import { bindUiText, textTap } from "../../src/game/ui/text";
+import { bindUiText, textTap, inFrame } from "../../src/game/ui/text";
+import { HI_W, HI_H } from "../../src/game/ui/scale";
 
 export interface TextBox { text: string; shown: string; v2: boolean; x0: number; x1: number; y0: number; y1: number }
 
-/** The three UI scales (Game.hiLayout): canvas px of the hi layer per base px, and per logical (font) px. */
-export const UI_SCALES = { compact: { s: 3, k: 1 }, normal: { s: 2, k: 1 }, large: { s: 3, k: 2 } } as const;
+/**
+ * The three UI scales (ui/scale.ts, Game.hiLayout): the hi layer is always HI_W x HI_H; `s` canvas px of it per UI px,
+ * `k` per logical (font) px; the scaled UI canvas is uw x uh UI px. Large is the 320x180 interface as designed.
+ */
+export const UI_SCALES = {
+  compact: { s: 3, k: 2, uw: 640, uh: 360 },
+  normal: { s: 4.5, k: 3, uw: 427, uh: 240 },
+  large: { s: 6, k: 4, uw: 320, uh: 180 },
+} as const;
 export type UiScale = keyof typeof UI_SCALES;
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -81,12 +89,12 @@ export interface ScreenHost {
   setScale(scale: UiScale): void;
 }
 
-export function screenHost(w: World, scale: UiScale = "normal"): ScreenHost {
+export function screenHost(w: World, scale: UiScale = "large"): ScreenHost {
   (globalThis as any).document = { createElement: () => new RCanvas() };
   let sc = UI_SCALES[scale];
-  const ui = new RCanvas(320, 180), hi = new RCanvas(320 * sc.s, 180 * sc.s), keys = new Set<string>(), notes: string[] = [], seen: SimEvent[] = [];
+  const ui = new RCanvas(sc.uw, sc.uh), hi = new RCanvas(HI_W, HI_H), keys = new Set<string>(), notes: string[] = [], seen: SimEvent[] = [];
   const host: any = {
-    ctx: ui.getContext(), wctx: new RCanvas(320, 180).getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
+    ctx: ui.getContext(), fctx: new RCanvas(320, 180).getContext(), fromFixedY: (y: number) => (y * sc.uh) / 180, wctx: new RCanvas(320, 180).getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
     t: 0.1, cam: { x: 0, y: 0 }, vw: 320, vh: 180, screens: new ScreenStack(), typed: [],
     sfx: new Proxy({}, { get: () => () => {} }),
     hit: (...k: string[]) => k.some((x) => keys.has(x)),
@@ -99,20 +107,22 @@ export function screenHost(w: World, scale: UiScale = "normal"): ScreenHost {
   };
   const base: Screen = { id: "play", opaque: true, t: 0, update() {}, render() {} };
   host.screens.set(base);
+  // as Game does: the overlay screens are centred on the scaled canvas
+  host.screens.drawWith = (s: Screen, draw: () => void) => (FRAMED_SCREENS.has(s.id) ? inFrame(host.ctx, draw) : draw());
   // As Game.render does each frame: clear the layer, scale it, and point the interface's text at it.
   const bind = () => {
     const hx = hi.getContext();
     hx.setTransform(1, 0, 0, 1, 0, 0);
     hi.data.fill(0);
     hx.setTransform(sc.k, 0, 0, sc.k, 0, 0);
-    bindUiText({ base: host.ctx, hi: hx as unknown as CanvasRenderingContext2D, s: sc.s, k: sc.k });
+    bindUiText({ base: host.ctx, fixed: host.fctx, hi: hx as unknown as CanvasRenderingContext2D, s: sc.s, k: sc.k, uw: sc.uw, uh: sc.uh });
   };
   bind();
-  const draw = () => captureText(() => { bind(); ui.data.fill(0); host.ctx.fillStyle = "#1a1620"; host.ctx.fillRect(0, 0, 320, 180); host.screens.render(); });
+  const draw = () => captureText(() => { bind(); ui.data.fill(0); host.ctx.fillStyle = "#1a1620"; host.ctx.fillRect(0, 0, sc.uw, sc.uh); host.screens.render(); });
   return {
     host, ui, hi, notes, seen, draw,
     press(...k) { bind(); for (const x of k) keys.add(x); host.screens.update(1 / 60); keys.clear(); },
-    save(path) { require("node:fs").mkdirSync(require("node:path").dirname(path), { recursive: true }); require("node:fs").writeFileSync(path, png(composite(ui, hi), sc.s === 2 ? 2 : 1)); },
-    setScale(next) { sc = UI_SCALES[next]; hi.width = 320 * sc.s; hi.height = 180 * sc.s; hi.getContext(); bind(); },
+    save(path) { require("node:fs").mkdirSync(require("node:path").dirname(path), { recursive: true }); require("node:fs").writeFileSync(path, png(composite(ui, hi), 1)); },
+    setScale(next) { sc = UI_SCALES[next]; ui.width = sc.uw; ui.height = sc.uh; ui.getContext(); bind(); },
   };
 }

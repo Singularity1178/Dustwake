@@ -25,6 +25,7 @@
 import { drawText2, drawText2B, textWidth2, textWidth2B, clipText2, wrapText2, fitsFont2, CELL_H2, LINE_H2, type Align } from "./font2";
 import { drawText as drawCaps, textWidth as capsWidth } from "../font";
 import { BASE_W, BASE_H } from "../view/zoom";
+import { FIXED_METRICS, HI_W, HI_H } from "./scale";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -107,24 +108,60 @@ const show = (s: string, c: Case = "sentence") => (c === "raw" ? s : c === "titl
 
 // ------------------------------------------------------------------ the layer
 export interface TextLayer {
-  /** The base UI canvas's context: text asked for on it is drawn on `hi` instead. */
+  /** The scaled UI canvas's context (the HUD and the overlay screens): text asked for on it is drawn on `hi` instead. */
   base: Ctx;
+  /** The fixed 320x180 canvas's context (cutscene cards, the dialogue box): its text is drawn on `hi` at the Large size. */
+  fixed?: Ctx;
   /** The hi-res UI layer's context, scaled `k` canvas px per logical px by the host. */
   hi: Ctx;
-  /** Canvas px of the hi layer per base px (2, or 3 for Compact and Large). */
+  /** Canvas px of the hi layer per UI px of the scaled canvas (6 at Large, 4.5 Normal, 3 Compact). */
   s: number;
-  /** Canvas px per logical px, which is one font px (1, or 2 for Large). */
+  /** Canvas px per logical px, which is one font px (4 at Large, 3 Normal, 2 Compact). */
   k: number;
+  /** The scaled canvas's size in UI px (320x180 at Large). Defaults to what `s` makes of the hi layer. */
+  uw?: number;
+  uh?: number;
 }
 let L: TextLayer | null = null;
 /** The host binds the layer every frame (Game.render); null unbinds (text falls back to the capitals). */
-export function bindUiText(l: TextLayer | null) { L = l; }
+export function bindUiText(l: TextLayer | null) { L = l; fx = 0; fy = 0; }
 export const uiTextBound = () => L !== null;
-/** Base px per v2 font px (0 with no layer bound). */
+/**
+ * UI px per v2 font px (0 with no layer bound). A constant 2/3 at every scale: the scale changes how big a UI px is on
+ * screen, not how many of them a letter takes, so a layout drawn for the capitals fits at Large, Normal and Compact alike.
+ */
 export const fontUnit = () => (L ? L.k / L.s : 0);
-/** Logical px of the hi layer per base px. */
-const f = () => L!.s / L!.k;
-const on = (ctx: Ctx) => L !== null && ctx === L.base;
+
+/** Where text for a canvas lands: hi canvas px per UI px (`s`) and per font px (`k`). Null: not a UI canvas. */
+function space(ctx: Ctx): { s: number; k: number } | null {
+  if (!L) return null;
+  if (ctx === L.base) return L;
+  if (ctx === L.fixed) return FIXED_METRICS;
+  return null;
+}
+const on = (ctx: Ctx) => space(ctx) !== null;
+
+// ------------------------------------------------------------------ the frame
+// The overlay screens are laid out as a 320x180 box. On the scaled canvas (427x240 or 640x360 UI px at Normal and
+// Compact) the box is centred, and what is anchored to the screen's own edges (the HUD, a tool's top bar) asks
+// `edge()` for where they are.
+let fx = 0, fy = 0;
+/** The layout box's offset on the scaled canvas when it is centred there (0, 0 at Large). */
+export function frameOffset(): { x: number; y: number } {
+  return L ? { x: Math.round(((L.uw ?? BASE_W) - BASE_W) / 2), y: Math.round(((L.uh ?? BASE_H) - BASE_H) / 2) } : { x: 0, y: 0 };
+}
+/** Draw a screen laid out on the 320x180 grid, centred on the scaled canvas `ctx` (text and panels follow). */
+export function inFrame(ctx: Ctx, draw: () => void) {
+  const o = frameOffset();
+  if (!L || ctx !== L.base || fx || fy || (!o.x && !o.y)) { draw(); return; }
+  ctx.save(); ctx.translate?.(o.x, o.y); fx = o.x; fy = o.y;
+  try { draw(); } finally { fx = 0; fy = 0; ctx.restore(); }
+}
+/** The screen's edges in the coordinates being drawn in: (0, 0, 320, 180) at Large and inside a centred frame, else the whole canvas. */
+export function edge(): { l: number; t: number; r: number; b: number; cx: number; cy: number } {
+  const w = L?.uw ?? BASE_W, h = L?.uh ?? BASE_H;
+  return { l: -fx, t: -fy, r: w - fx, b: h - fy, cx: (w - 2 * fx) / 2, cy: (h - 2 * fy) / 2 };
+}
 
 /** What a `label` call put on screen, in base px: the tests' lint reads these (tests/support/screenHost.ts). */
 export interface TextRec { text: string; raw: string; x0: number; x1: number; y0: number; y1: number }
@@ -194,9 +231,13 @@ function capsWrap(s: string, cols: number): string[] {
 }
 
 function put(ctx: Ctx, t: string, x: number, y: number, color: string, align: Align, bold?: boolean) {
-  const l = L!, k = f(), a = ctx.globalAlpha, hi = l.hi, was = hi.globalAlpha;
+  const l = L!, sp = space(ctx)!, a = ctx.globalAlpha, hi = l.hi, was = hi.globalAlpha;
+  const ox = ctx === l.base ? fx : 0, oy = ctx === l.base ? fy : 0, c = sp.s / sp.k;
   if (a !== was) hi.globalAlpha = a;
-  (bold ? drawText2B : drawText2)(hi, t, x * k, (y + lift()) * k, color, align, l.k);
+  // the fixed layer's text is drawn at the Large size whatever the scale: its own px-per-font-px, then back
+  if (sp.k !== l.k) hi.setTransform?.(sp.k, 0, 0, sp.k, 0, 0);
+  (bold ? drawText2B : drawText2)(hi, t, (x + ox) * c, (y + oy + lift()) * c, color, align, sp.k);
+  if (sp.k !== l.k) hi.setTransform?.(l.k, 0, 0, l.k, 0, 0);
   if (a !== was) hi.globalAlpha = was;
 }
 
@@ -230,13 +271,17 @@ export function labelS(ctx: Ctx, s: string, x: number, y: number, color: string,
 export const fitsLabel = (s: string, c?: Case) => fitsFont2(show(s, c));
 
 // ------------------------------------------------------------------ the two canvases
-/** A rect on the hi layer, given in base px. */
-function hiRect(x: number, y: number, w: number, h: number, color: string, alpha: number) {
-  const l = L!, k = f(), hi = l.hi, was = hi.globalAlpha, r = (v: number) => Math.round(v * k * l.k) / l.k;
-  const x0 = r(x), y0 = r(y), x1 = r(x + w), y1 = r(y + h);
+/** A rect on the hi layer, given in UI px of the canvas `ctx`. */
+function hiRect(ctx: Ctx, x: number, y: number, w: number, h: number, color: string, alpha: number) {
+  const l = L!, sp = space(ctx)!, hi = l.hi, was = hi.globalAlpha, c = sp.s / sp.k;
+  const ox = ctx === l.base ? fx : 0, oy = ctx === l.base ? fy : 0;
+  const r = (v: number) => Math.round(v * c * sp.k) / sp.k;
+  const x0 = r(x + ox), y0 = r(y + oy), x1 = r(x + ox + w), y1 = r(y + oy + h);
+  if (sp.k !== l.k) hi.setTransform?.(sp.k, 0, 0, sp.k, 0, 0);
   if (alpha !== was) hi.globalAlpha = alpha;
   hi.fillStyle = color; hi.fillRect(x0, y0, x1 - x0, y1 - y0);
   if (alpha !== was) hi.globalAlpha = was;
+  if (sp.k !== l.k) hi.setTransform?.(l.k, 0, 0, l.k, 0, 0);
 }
 
 /**
@@ -244,9 +289,11 @@ function hiRect(x: number, y: number, w: number, h: number, color: string, alpha
  * text from the screen beneath does not show through it.
  */
 export function occlude(ctx: Ctx, x: number, y: number, w: number, h: number) {
-  if (!on(ctx)) return;
-  const k = f();
-  L!.hi.clearRect(x * k, y * k, w * k, h * k);
+  const sp = space(ctx);
+  if (!sp) return;
+  // hi px: a rect in UI px, through the layer's current scale (the fixed layer has its own)
+  const hi = L!.hi, c = sp.s / L!.k, ox = ctx === L!.base ? fx : 0, oy = ctx === L!.base ? fy : 0;
+  hi.clearRect((x + ox) * c, (y + oy) * c, w * c, h * c);
 }
 
 /**
@@ -254,22 +301,27 @@ export function occlude(ctx: Ctx, x: number, y: number, w: number, h: number) {
  * the hi layer (it is thinned, not painted over, so the base canvas is not dimmed twice).
  */
 export function shade(ctx: Ctx, color = "rgba(0,0,0,0.55)") {
-  ctx.fillStyle = color; ctx.fillRect(0, 0, BASE_W, BASE_H);
-  if (!on(ctx)) return;
-  const m = color.match(/rgba\([^)]*,\s*([\d.]+)\s*\)/), a = m ? Number(m[1]) : 1, hi = L!.hi, k = f();
-  if (a >= 1) { hi.clearRect(0, 0, BASE_W * k, BASE_H * k); return; }
+  const sp = space(ctx), base = L !== null && ctx === L.base;
+  // the whole canvas, whatever frame the screen is drawn in
+  if (base) ctx.fillStyle = color, ctx.fillRect(-fx, -fy, L!.uw ?? BASE_W, L!.uh ?? BASE_H);
+  else ctx.fillStyle = color, ctx.fillRect(0, 0, BASE_W, BASE_H);
+  if (!sp) return;
+  const m = color.match(/rgba\([^)]*,\s*([\d.]+)\s*\)/), a = m ? Number(m[1]) : 1, hi = L!.hi, k = L!.k;
+  if (a >= 1) { hi.clearRect(0, 0, HI_W / k, HI_H / k); return; }
   const op = hi.globalCompositeOperation, was = hi.globalAlpha;
   hi.globalCompositeOperation = "destination-out"; hi.globalAlpha = a;
-  hi.fillStyle = "#000"; hi.fillRect(0, 0, BASE_W * k, BASE_H * k);
+  hi.fillStyle = "#000"; hi.fillRect(0, 0, HI_W / k, HI_H / k);
   hi.globalCompositeOperation = op; hi.globalAlpha = was;
 }
 
 /** A translucent veil was drawn over part of the base canvas (a locked station greyed over): thin the hi layer's text there as much. */
 export function thin(ctx: Ctx, x: number, y: number, w: number, h: number, alpha: number) {
-  if (!on(ctx)) return;
-  const hi = L!.hi, k = f(), op = hi.globalCompositeOperation, was = hi.globalAlpha;
+  const sp = space(ctx);
+  if (!sp) return;
+  const hi = L!.hi, c = sp.s / L!.k, ox = ctx === L!.base ? fx : 0, oy = ctx === L!.base ? fy : 0;
+  const op = hi.globalCompositeOperation, was = hi.globalAlpha;
   hi.globalCompositeOperation = "destination-out"; hi.globalAlpha = alpha;
-  hi.fillStyle = "#000"; hi.fillRect(x * k, y * k, w * k, h * k);
+  hi.fillStyle = "#000"; hi.fillRect((x + ox) * c, (y + oy) * c, w * c, h * c);
   hi.globalCompositeOperation = op; hi.globalAlpha = was;
 }
 
@@ -324,9 +376,9 @@ export function hints(ctx: Ctx, h: string | readonly Hint[], x: number, y: numbe
     if (i) cx += HINT_GAP * u;
     if (k) {
       const lg = legend(k), kw = (textWidth2(lg) + KEY_PAD * 2) * u;
-      hiRect(cx, top - u, kw, 9 * u, o.cap ?? "#2c2733", a);
-      hiRect(cx, top + 8 * u, kw, u, o.lip ?? "#131016", a);
-      hiRect(cx, top - u, kw, u, o.rim ?? "#443d4d", a);
+      hiRect(ctx, cx, top - u, kw, 9 * u, o.cap ?? "#2c2733", a);
+      hiRect(ctx, cx, top + 8 * u, kw, u, o.lip ?? "#131016", a);
+      hiRect(ctx, cx, top - u, kw, u, o.rim ?? "#443d4d", a);
       put(ctx, lg, cx + KEY_PAD * u, y, o.key ?? "#f0e6cc", "left");
       cx += kw + (t ? KEY_GAP * u : 0);
     }

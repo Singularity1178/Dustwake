@@ -20,7 +20,7 @@ import {
 } from "../sim/build";
 import { orderBuild, orderDeconstruct } from "../sim/commands";
 import { propSprite } from "../art/props";
-import { label, labelW, clipLabel, flow, hints, titled, shade, occlude } from "../ui/text";
+import { label, labelW, clipLabel, flow, hints, titled, shade, occlude, inFrame, edge as screenEdge } from "../ui/text";
 import { hasFlag } from "../world/world";
 import type { PropInst } from "../world/area";
 import { clamp } from "../util";
@@ -257,7 +257,8 @@ export class BuildUi {
 
   // ---------------------------------------------------------------- render
   private render() {
-    if (this.mode === "menu") this.renderMenu();
+    // the menu is a 320x180 screen, centred on the scaled canvas; the two world tools' bars hang from its edges
+    if (this.mode === "menu") inFrame(this.g.ctx, () => this.renderMenu());
     else if (this.mode === "place") this.renderPlace();
     else this.renderRemove();
   }
@@ -344,11 +345,12 @@ export class BuildUi {
   /** Top bar for the two world tools. */
   private bar(l1: string, l2: string, l2col: string, l3: string) {
     const ctx = this.g.ctx;
-    occlude(ctx, 0, 0, 320, 30);
-    ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(0, 0, 320, 30);
-    label(ctx, clipLabel(l1, 312, { bold: true }), 160, 3, UI.title, "center", { case: "raw", bold: true });
-    label(ctx, clipText(l2, 312), 160, 12, l2col, "center");
-    hints(ctx, l3, 160, 21, UI.dim, "center", 312);
+    const e = screenEdge();
+    occlude(ctx, e.l, e.t, e.r - e.l, 30);
+    ctx.fillStyle = "rgba(8,7,10,0.85)"; ctx.fillRect(e.l, e.t, e.r - e.l, 30);
+    label(ctx, clipLabel(l1, 312, { bold: true }), e.cx, e.t + 3, UI.title, "center", { case: "raw", bold: true });
+    label(ctx, clipText(l2, 312), e.cx, e.t + 12, l2col, "center");
+    hints(ctx, l3, e.cx, e.t + 21, UI.dim, "center", 312);
   }
   private reachOutline(col: string) {
     const g = this.g, ctx = g.wctx, t = actorTile(g.pl);
@@ -391,7 +393,7 @@ export class BuildUi {
     const cost = r.cost.map((k) => `${k.n} ${ITEM_NAMES[k.item]} (${countOf(g, k.item)})`).join("  ");
     this.bar(`BUILD ${r.name}: ${cost}`, ok.ok ? (placeRule(r) === "wall" ? "READY - HANGS ON THIS WALL FACE" : "READY") : BLOCK_TEXT[ok.reason], ok.ok ? UI.ok : UI.bad,
       `E PLACE  ARROWS MOVE  T REPEAT: ${this.repeat ? "ON" : "OFF"}  B MENU  X REMOVE  ESC DONE`);
-    g.renderNote(170);
+    g.renderNote(screenEdge().b - 10);
   }
 
   private renderRemove() {
@@ -417,7 +419,7 @@ export class BuildUi {
     if (chk.ok) this.bar(`TAKE APART ${propLabel(chk.prop)}`, `REFUND ${costText(chk.refund)}`, UI.ok, hints);
     else if (target && chk.reason === "reach") this.bar(`TAKE APART ${propLabel(target)}`, `${DECON_TEXT.reach} - REFUND ${costText(salvageOf(target) ?? [])}`, UI.bad, hints);
     else this.bar(target ? propLabel(target) : "TAKE APART", chk.ok ? DECON_TEXT.none : deconMessage(chk), target ? UI.bad : UI.mid, hints);
-    g.renderNote(170);
+    g.renderNote(screenEdge().b - 10);
   }
 }
 

@@ -2,7 +2,7 @@
 // the pack's bevelled frame, a keyboard text field, and fitted sprite previews.
 // Presentation only (canvas); the sim never imports this.
 //
-// Frames, slots and sprites are drawn on the base canvas, on the 320x180 grid.
+// Frames, slots and sprites are drawn on the scaled UI canvas, laid out on the 320x180 grid (centred in it).
 // Text is not: screens write through ui/text.ts (`label`, `hints`, `flow`),
 // which puts it on the hi-res layer in the mixed-case v2 face.
 import { FONT_GLYPHS } from "../font";
@@ -20,7 +20,12 @@ import type { ItemId } from "../content/items";
  * render loop; screens only read state and call back through these members.
  */
 export interface UiHost {
+  /** The scaled UI canvas: the HUD and the overlay screens draw their frames and sprites here (ui/scale.ts). */
   readonly ctx: CanvasRenderingContext2D;
+  /** The fixed 320x180 canvas, which never scales: cutscene cards, the dialogue box, the letterbox. */
+  readonly fctx: CanvasRenderingContext2D;
+  /** A height on the fixed layer as a height on the scaled UI canvas (a notice placed above the dialogue box). */
+  fromFixedY(y: number): number;
   readonly wctx: CanvasRenderingContext2D;
   readonly world: World;
   readonly pl: Actor;

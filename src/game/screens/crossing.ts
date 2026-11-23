@@ -167,7 +167,7 @@ export class CrossingCutscene {
   private render() {
     const g = this.g, c = this.script, A = this.at, t = this.screen.t;
     if (t < A.surface) {
-      renderTransit(g.ctx, g.t, {
+      renderTransit(g.fctx, g.t, {
         et: t, stallAt: A.stall, rewriteAt: A.rewrite, endAt: A.surface, whiteOut: c.whiteOut,
         hasArm: hasFlag(g.world, FLAGS.golemArm), eyeFixed: hasFlag(g.world, FLAGS.golemEye),
       });
@@ -175,7 +175,7 @@ export class CrossingCutscene {
     } else {
       g.renderScene();
       g.arriveOverlay(t - A.surface);
-      if (t >= A.chapter) renderChapter(g.ctx, g.t, t - A.chapter, c.promptAfter, g.world, g.pl);
+      if (t >= A.chapter) renderChapter(g.fctx, g.t, t - A.chapter, c.promptAfter, g.world, g.pl);
     }
     if (t < A.chapter) g.renderSkipHint(t);
   }

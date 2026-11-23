@@ -71,9 +71,9 @@ const newGame = () => new Game(canvas(320, 180) as unknown as HTMLCanvasElement,
 function shot(g: Game): RCanvas {
   (g.canvas as unknown as RCanvas).getContext();
   g.render();
-  const wc = g.canvas as unknown as RCanvas, uc = g.uiCanvas as unknown as RCanvas;
+  const wc = g.canvas as unknown as RCanvas, fc = g.fixedCanvas as unknown as RCanvas, uc = g.uiCanvas as unknown as RCanvas;
   const out = canvas(wc.width, wc.height), ctx: any = out.getContext();
-  ctx.drawImage(wc, 0, 0); ctx.drawImage(uc, 0, 0, wc.width, wc.height);
+  ctx.drawImage(wc, 0, 0); ctx.drawImage(fc, 0, 0, wc.width, wc.height); ctx.drawImage(uc, 0, 0, wc.width, wc.height);
   return out;
 }
 function sheet(cols: number, frames: { label: string; img: RCanvas }[]): RCanvas {

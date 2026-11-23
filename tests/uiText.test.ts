@@ -9,6 +9,7 @@ import { screenHost, assertTextFits, captureText, UI_SCALES, type UiScale, type 
 import { fixture, worker, beside, CHEST, BENCH, besideChest } from "./support/workerFixture";
 import { installDom, scene, shot } from "./support/folkSnapshot";
 import { composite, png, type RCanvas } from "./support/uiSnapshot";
+import { HI_W } from "../src/game/ui/scale";
 import { sentence, titled, learnNames, forgetNames, parseHints, labelW, hintsW, clipLabel, wrapLabel, flow, label, shade, fontUnit, lineH, bindUiText, fitsLabel } from "../src/game/ui/text";
 import { panel } from "../src/game/ui/kit";
 import { textWidth } from "../src/game/font";
@@ -194,10 +195,10 @@ test("what a screen says: titles for names, sentences for the rest, keys on caps
 });
 
 test("the two canvases: a panel wipes the text under it, an overlay's shade thins it, alpha carries over", () => {
-  const sh = screenHost(fixture().w), ctx = sh.host.ctx as CanvasRenderingContext2D;
+  const sh = screenHost(fixture().w, "large"), ctx = sh.host.ctx as CanvasRenderingContext2D, S = UI_SCALES.large.s;
   const ink = (x0: number, y0: number, x1: number, y1: number) => {
     let n = 0;
-    for (let y = y0 * 2; y < y1 * 2; y++) for (let x = x0 * 2; x < x1 * 2; x++) n += sh.hi.data[(y * sh.hi.width + x) * 4 + 3];
+    for (let y = y0 * S; y < y1 * S; y++) for (let x = x0 * S; x < x1 * S; x++) n += sh.hi.data[(y * sh.hi.width + x) * 4 + 3];
     return n;
   };
   sh.draw();
@@ -259,7 +260,10 @@ test("the HUD through the real host: notices, the item toast and the clock are i
   for (const scale of SCALES) {
     g.settings.set("uiScale", scale);
     const L = g.hiLayout();
-    assert.equal(L.cw / 320, UI_SCALES[scale].s, `${scale}: canvas px per base px`);
+    assert.equal(L.s, UI_SCALES[scale].s, `${scale}: canvas px per UI px`);
+    assert.equal(L.cw, HI_W, `${scale}: the hi layer does not change with the scale`);
+    assert.equal(g.uiCanvas.width, UI_SCALES[scale].uw, `${scale}: the UI canvas is the interface's size in UI px`);
+    assert.equal(g.uiCanvas.height, UI_SCALES[scale].uh);
     assert.equal(L.k, UI_SCALES[scale].k, `${scale}: canvas px per font px`);
     assert.equal(L.lw * L.k, L.cw);
     g.say("THE CHEST IS FULL");
@@ -268,7 +272,10 @@ test("the HUD through the real host: notices, the item toast and the clock are i
     has(b, "The chest is full"); has(b, "Iron Ore");
     assert.ok(b.some((x) => x.v2 && /^\d\d:\d\d$/.test(x.shown)), `${scale}: the clock`);
     assert.deepEqual(b.filter((x) => !x.v2).map((x) => x.text), [], `${scale}: nothing on the HUD is left in the capital font`);
-    for (const x of b) assert.ok(x.x0 >= 0 && x.x1 <= 320 && x.y0 >= 0 && x.y1 <= 181, `${scale}: "${x.shown}" is on screen`);
+    for (const x of b) assert.ok(x.x0 >= 0 && x.x1 <= UI_SCALES[scale].uw && x.y0 >= 0 && x.y1 <= UI_SCALES[scale].uh + 1, `${scale}: "${x.shown}" is on screen`);
+    // anchored to the screen's own edges: the clock at the foot, at the right
+    const clock = b.find((x) => x.v2 && /^\d\d:\d\d$/.test(x.shown))!;
+    assert.ok(clock.x1 > UI_SCALES[scale].uw - 40 && clock.y1 > UI_SCALES[scale].uh - 14, `${scale}: the clock sits in the corner`);
     save(`${scale}-hud`);
     // an overlay over the play screen: its panel hides the HUD's text, its own text is drawn after
     g.packUi.open("view");
@@ -278,5 +285,5 @@ test("the HUD through the real host: notices, the item toast and the clock are i
     g.screens.popToBase();
     g.note = null; g.toast = null;
   }
-  g.settings.set("uiScale", "normal");
+  g.settings.set("uiScale", "large");
 });

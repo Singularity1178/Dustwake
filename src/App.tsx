@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Game, W, H } from "./game/game";
+import { HI_W, HI_H } from "./game/ui/scale";
 import { serialize } from "./game/world/save";
 import { saveToStorage, loadFromStorage, openBrowserStore } from "./game/view/persistence";
 import { foundationDemo, registerFoundations } from "./game/sim/debugFoundations";
@@ -11,17 +12,20 @@ import { runSoak, type SoakOptions } from "./game/sim/soak";
 
 export default function App() {
   const ref = useRef<HTMLCanvasElement>(null);
+  const fixedRef = useRef<HTMLCanvasElement>(null);
   const uiRef = useRef<HTMLCanvasElement>(null);
   const hiRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    // Three stacked layers with the same display rect. The world canvas is sized to the current view (W x H times
-    // the zoom level, 1 world px = 1 canvas px) and stays pixel-perfect; the base UI canvas stays at W x H for the
-    // HUD and the original overlays; the high-resolution UI canvas (2x the base, or 3x for the compact UI scale)
-    // carries the v2 interface: the speed bar, the notification feed, tooltips, the system menu. It is on top, so it
-    // takes the mouse. All three scale with nearest-neighbour (pixelated).
-    const canvas = ref.current!, ui = uiRef.current!, hi = hiRef.current!;
-    const game = new Game(canvas, ui, hi);
+    // Four stacked layers with the same display rect. The world canvas is sized to the current view (W x H times
+    // the zoom level, 1 world px = 1 canvas px) and stays pixel-perfect. The fixed canvas stays at W x H: cutscene
+    // cards, the dialogue box and the letterbox, which are not interface and never scale. The UI canvas carries the
+    // HUD and the overlay screens at the chosen UI scale: Game sizes it (320x180 at Large, the interface as designed;
+    // larger at Normal and Compact, so the whole interface comes out smaller). The high-resolution layer (always
+    // 6x the base) carries the v2 text of both and the widget kit: the speed bar, the notification feed, tooltips,
+    // the system menu. It is on top, so it takes the mouse. All of them scale with nearest-neighbour (pixelated).
+    const canvas = ref.current!, fixed = fixedRef.current!, ui = uiRef.current!, hi = hiRef.current!;
+    const game = new Game(canvas, ui, hi, fixed);
     let alive = true;
     // Saves live in IndexedDB (world/saveStore.ts over view/persistence.ts); until it opens, a memory store stands in.
     openBrowserStore()
@@ -60,7 +64,7 @@ export default function App() {
       if (s >= 2) s = Math.floor(s);
       const dw = Math.round(W * s), dh = Math.round(H * s);
       const ws = dw / game.vw;
-      for (const c of [canvas, ui, hi]) {
+      for (const c of [canvas, fixed, ui, hi]) {
         c.style.width = `${dw}px`;
         c.style.height = `${dh}px`;
       }
@@ -148,8 +152,9 @@ export default function App() {
     <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden select-none">
       <div className="relative">
         <canvas ref={ref} width={W} height={H} className="block outline-none" style={{ imageRendering: "pixelated" }} />
+        <canvas ref={fixedRef} width={W} height={H} className="absolute inset-0 block outline-none pointer-events-none" style={{ imageRendering: "pixelated" }} />
         <canvas ref={uiRef} width={W} height={H} className="absolute inset-0 block outline-none pointer-events-none" style={{ imageRendering: "pixelated" }} />
-        <canvas ref={hiRef} width={W * 2} height={H * 2} tabIndex={0} className="absolute inset-0 block outline-none" style={{ imageRendering: "pixelated", touchAction: "none", cursor: "default" }} />
+        <canvas ref={hiRef} width={HI_W} height={HI_H} tabIndex={0} className="absolute inset-0 block outline-none" style={{ imageRendering: "pixelated", touchAction: "none", cursor: "default" }} />
       </div>
     </div>
   );

@@ -95,7 +95,7 @@ test("settings: defaults, clamping, a rebound key leaves every other action, and
   assert.equal(s.bool("pauseOnAlert"), false);
   s.set("volMaster", 143); assert.equal(s.num("volMaster"), 100);
   s.set("volMaster", 42); assert.equal(s.num("volMaster"), 40, "snapped to the step");
-  s.set("uiScale", "huge"); assert.equal(s.str("uiScale"), "normal", "not an option");
+  s.set("uiScale", "huge"); assert.equal(s.str("uiScale"), "large", "not an option: the default, Large");
   s.bind("attack", "e");
   assert.deepEqual(s.keys("attack").slice(0, 1), ["e"]);
   assert.ok(!s.keys("interact").includes("e"));

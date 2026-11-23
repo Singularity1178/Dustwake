@@ -125,7 +125,7 @@ export class IntroCutscene {
   /** Drawn after the host's world scene and HUD: the fade from black. */
   renderFade() {
     const t = this.screen.t, f = this.script.fadeIn;
-    if (t < f) { this.g.ctx.fillStyle = `rgba(0,0,0,${1 - t / f})`; this.g.ctx.fillRect(0, 0, W, H); }
+    if (t < f) { this.g.fctx.fillStyle = `rgba(0,0,0,${1 - t / f})`; this.g.fctx.fillRect(0, 0, W, H); }
   }
 
   private render() { this.g.renderScene(); this.renderFade(); this.g.renderSkipHint(this.screen.t); }

@@ -44,6 +44,7 @@ class RCtx {
   // The hi-res UI layer is drawn through a scale (Game.render: k canvas px per logical px). Scale and offset only.
   private sx = 1; private sy = 1; private tx = 0; private ty = 0;
   setTransform(a: number, _b: number, _c: number, d: number, e: number, f: number) { this.sx = a; this.sy = d; this.tx = e; this.ty = f; }
+  translate(x: number, y: number) { this.tx += x * this.sx; this.ty += y * this.sy; }
   fillRect(x: number, y: number, w: number, h: number) {
     const c = parseColor(this.fillStyle), W = this.canvas.width, H = this.canvas.height, d = this.canvas.data;
     const X = x * this.sx + this.tx, Y = y * this.sy + this.ty;
@@ -80,10 +81,10 @@ class RCtx {
   // Drawing state and paths, as far as the game uses them: save/restore keep the state (vision mode sets a
   // composite operation and an alpha inside a save), and a path is rects (vision's rings and ticks are 1 px rects),
   // filled once as their union. Anything else the browser has is left out, so a new use fails loudly here.
-  private stack: [string, number, string, boolean][] = [];
+  private stack: [string, number, string, boolean, number, number, number, number][] = [];
   private path: [number, number, number, number][] = [];
-  save() { this.stack.push([this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled]); }
-  restore() { const s = this.stack.pop(); if (s) [this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled] = s; }
+  save() { this.stack.push([this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled, this.sx, this.sy, this.tx, this.ty]); }
+  restore() { const s = this.stack.pop(); if (s) [this.fillStyle, this.globalAlpha, this.globalCompositeOperation, this.imageSmoothingEnabled, this.sx, this.sy, this.tx, this.ty] = s; }
   beginPath() { this.path = []; }
   rect(x: number, y: number, w: number, h: number) { this.path.push([x, y, w, h]); }
   fill() {
@@ -143,7 +144,7 @@ export function png(c: RCanvas, scale: number): Buffer {
 export function renderDialogueScreens(w: World, npc: string, script: string, shot: (name: string, ui: RCanvas) => void) {
   const ui = new RCanvas(320, 180);
   const host: any = {
-    ctx: ui.getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
+    ctx: ui.getContext(), fctx: ui.getContext(), fromFixedY: (y: number) => y, world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
     t: 0, screens: new ScreenStack(), typed: [], sfx: new Proxy({}, { get: () => () => {} }),
     hit: () => false, say: () => {}, renderNote: () => {}, renderToast: () => {}, animate: () => {}, drainEvents: () => { w.events = []; },
   };
@@ -172,7 +173,7 @@ export function run(dir = "snapshots") {
   setFlag(w, FLAGS.knowBuild); addItems(w, pl, "wood", 5); addItems(w, pl, "stone", 3);
   const ui = new RCanvas(320, 180), world = new RCanvas(320, 180);
   const host: any = {
-    ctx: ui.getContext(), wctx: world.getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
+    ctx: ui.getContext(), fctx: ui.getContext(), fromFixedY: (y: number) => y, wctx: world.getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
     t: 0.1, cam: { x: 0, y: 0 }, vw: 320, vh: 180, screens: new ScreenStack(), typed: [],
     sfx: new Proxy({}, { get: () => () => {} }), hit: () => false, say: (s: string) => { host.note = s; }, renderNote: () => {}, drainEvents: () => { w.events = []; },
   };

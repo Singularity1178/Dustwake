@@ -14,8 +14,16 @@ export interface Screen {
   render(): void;
 }
 
+/**
+ * The overlay screens that are laid out as a 320x180 box and centred on the scaled UI canvas (ui/text.ts `inFrame`).
+ * The build screen frames its menu itself: its two world tools hang from the screen's edges.
+ */
+export const FRAMED_SCREENS: ReadonlySet<string> = new Set(["inv", "storage", "transfer", "crafting", "manage", "debug", "book"]);
+
 export class ScreenStack {
   private stack: Screen[] = [];
+  /** The host's say in how a screen is drawn (Game: the overlay screens are centred on the scaled UI canvas). */
+  drawWith: ((s: Screen, draw: () => void) => void) | null = null;
 
   get top(): Screen | undefined { return this.stack[this.stack.length - 1]; }
   get size() { return this.stack.length; }
@@ -39,6 +47,9 @@ export class ScreenStack {
   render() {
     let i = this.stack.length - 1;
     while (i > 0 && !this.stack[i].opaque) i--;
-    for (; i < this.stack.length; i++) this.stack[i].render();
+    for (; i < this.stack.length; i++) {
+      const s = this.stack[i];
+      if (this.drawWith) this.drawWith(s, () => s.render()); else s.render();
+    }
   }
 }

@@ -37,13 +37,14 @@ import { RUNE_NODES } from "./content/runes";
 import { runeState } from "./sim/runes";
 import { RUNE_DUD, linkedGlow, runeDudGlow, severedGlow } from "./view/runeFx";
 import { drawTextS } from "./font";
-import { bindUiText, label, labelS, labelW, hints, occlude, learnNames, forgetNames, titled } from "./ui/text";
+import { bindUiText, label, labelS, labelW, hints, occlude, inFrame, edge, learnNames, forgetNames, titled } from "./ui/text";
+import { uiMetrics, HI_W, HI_H } from "./ui/scale";
 import { createWorld, player, currentArea, hasFlag, setFlag, clearFlag, type World, type SimEvent } from "./world/world";
 import type { PropInst } from "./world/area";
 import { stepPlayer, stepWorld, addPlayTime } from "./sim/step";
 import { interactables, type Interactable } from "./sim/interact";
 import { AreaView } from "./view/areaView";
-import { ScreenStack, type Screen } from "./ui/screens";
+import { ScreenStack, FRAMED_SCREENS, type Screen } from "./ui/screens";
 import { BASE_W, BASE_H, ZOOM_STEPS, ZOOM_DEFAULT, viewSize, nextZoomStep } from "./view/zoom";
 import { npcDef } from "./content/npcs";
 import { actorDef } from "./content/actors";
@@ -246,6 +247,9 @@ export class Game {
   autosave = { t: 0, soon: -1 };
   /** The high-resolution UI layer (2x the base), its context, and the widget kit that draws on it. */
   hiCanvas!: HTMLCanvasElement;
+  /** The fixed 320x180 layer: what is not interface and never scales (cutscene cards, the dialogue box, the letterbox, the title). */
+  fixedCanvas!: HTMLCanvasElement;
+  fctx!: CanvasRenderingContext2D;
   hctx!: CanvasRenderingContext2D;
   gui = new Gui();
   hud!: HiHud;
@@ -257,15 +261,18 @@ export class Game {
   /** Frame and simulation timing (the performance readout and graphs). */
   perf = { fps: 60, ticks: 0, simMs: 0, history: [] as number[], tickHistory: [] as number[], dropped: 0 };
 
-  constructor(public canvas: HTMLCanvasElement, public uiCanvas: HTMLCanvasElement, hiCanvas?: HTMLCanvasElement) {
+  constructor(public canvas: HTMLCanvasElement, public uiCanvas: HTMLCanvasElement, hiCanvas?: HTMLCanvasElement, fixedCanvas?: HTMLCanvasElement) {
     this.wctx = canvas.getContext("2d")!;
     this.wctx.imageSmoothingEnabled = false;
     this.ctx = uiCanvas.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
+    this.fixedCanvas = fixedCanvas ?? makeCanvas(W, H).c;
+    this.fctx = this.fixedCanvas.getContext("2d")!;
+    this.fctx.imageSmoothingEnabled = false;
     this.outImg = this.wctx.createImageData(W, H);
     this.shaft = this.buildShaft(["#1c2638", "#121a28", "#26324a"]);
     this.sunShaft = this.buildShaft(["#4a3a1c", "#33280f", "#5e4a22"]);
-    this.hiCanvas = hiCanvas ?? makeCanvas(W * 2, H * 2).c;
+    this.hiCanvas = hiCanvas ?? makeCanvas(HI_W, HI_H).c;
     this.hctx = this.hiCanvas.getContext("2d")!;
     this.fx.onDrip = (p) => this.sfx.drip(this.volAt(p.x, p.y));
     this.notes.onAlert = (n) => this.onAlert(n);
@@ -551,13 +558,15 @@ export class Game {
     this.crossingUi = new CrossingCutscene(this);
     this.systemMenu = new SystemMenu(this);
     this.hud = new HiHud(this);
+    // the overlay screens are laid out as a 320x180 box: centred on the scaled UI canvas (the build tool places itself)
+    this.screens.drawWith = (sc, draw) => (FRAMED_SCREENS.has(sc.id) ? inFrame(this.ctx, draw) : draw());
     this.S = {
       title: scr("title", true, (dt) => {
         if (g.hit("l") && g.loadGame()) { g.sfx.init(); return; }
         if (g.pressed.size) { g.sfx.init(); g.introUi.start(); }
         if (Math.random() < 0.3) g.spawn({ x: Math.random() * W, y: H + 2, vy: -10 - Math.random() * 12, vx: (Math.random() - 0.5) * 4, life: 6, kind: "ember", col: Math.random() < 0.5 ? "#ff8a3a" : "#c84a10", emit: true });
         g.updateParticles(dt);
-      }, () => renderTitle(g.ctx, g.t, g.particles)),
+      }, () => renderTitle(g.fctx, g.t, g.particles)),
       intro: this.introUi.screen,
       play: scr("play", true, (dt) => g.updatePlay(dt), () => g.renderWorldScene()),
       tele: scr("tele", true, (dt) => {
@@ -569,7 +578,7 @@ export class Game {
       }, () => {
         g.renderWorldScene();
         const t = g.S.tele.t, w0 = g.tele.dur - 1.6;
-        if (t > w0) { g.ctx.fillStyle = `rgba(235,240,255,${clamp((t - w0) / 1.4, 0, 1) * g.flashK})`; g.ctx.fillRect(0, 0, W, H); }
+        if (t > w0) { g.fctx.fillStyle = `rgba(235,240,255,${clamp((t - w0) / 1.4, 0, 1) * g.flashK})`; g.fctx.fillRect(0, 0, W, H); }
         if (g.tele.first) g.renderSkipHint(t);
       }),
       crossing: this.crossingUi.screen,
@@ -886,7 +895,7 @@ export class Game {
 
   /** Over the arrival's world scene: the cut in from black, and the white of the summoning flash. */
   arriveOverlay(t: number) {
-    const A = ARRIVE, ctx = this.ctx;
+    const A = ARRIVE, ctx = this.fctx;
     if (t < A.FADE) { ctx.fillStyle = `rgba(0,0,0,${1 - t / A.FADE})`; ctx.fillRect(0, 0, W, H); }
     if (t > A.FLASH && t < A.FLASH + 1) { ctx.fillStyle = `rgba(235,240,255,${1 - (t - A.FLASH)})`; ctx.fillRect(0, 0, W, H); }
   }
@@ -895,12 +904,12 @@ export class Game {
   renderCinema() {
     this.renderBars();
     const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
-    drawMonologue(this.ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
+    drawMonologue(this.fctx, this.monologue, this.t, 7 + Math.round(12 * bar));
   }
 
   /** "ESC - SKIP", small in the lower bar of a cutscene that can be skipped (`t`: seconds it has run). */
   renderSkipHint(t: number) {
-    const ctx = this.ctx;
+    const ctx = this.fctx;
     ctx.globalAlpha = clamp((t - 0.6) * 1.5, 0, 1) * 0.85;
     hints(ctx, [["Esc", "Skip"]], W - 5, H - 9, "#8a8392", "right");
     ctx.globalAlpha = 1;
@@ -1104,8 +1113,8 @@ export class Game {
     const b = this.bars.v;
     if (b <= 0) return;
     const e = b * b * (3 - 2 * b), h = Math.round(14 * e);
-    this.ctx.fillStyle = "#000";
-    this.ctx.fillRect(0, 0, W, h); this.ctx.fillRect(0, H - h, W, h);
+    this.fctx.fillStyle = "#000";
+    this.fctx.fillRect(0, 0, W, h); this.fctx.fillRect(0, H - h, W, h);
   }
   /** Open an item's reading screen (pack E, UiHost.read). */
   read(id: ItemId) {
@@ -1117,11 +1126,15 @@ export class Game {
   /** World presentation without simulation (overlays that keep the scene alive, e.g. dialogue). */
   animate(dt: number) { this.updateWorldFx(dt); }
 
-  renderNote(y = H - 40) {
+  /** A height on the fixed 320x180 layer, as a height on the scaled UI canvas (a notice shown above the dialogue box). */
+  fromFixedY(y: number) { return (y * uiMetrics(this.settings.str("uiScale")).uh) / H; }
+
+  /** The notice (`say`): centred at the screen's foot by default; the overlay screens place it under their panel. */
+  renderNote(y = edge().b - 40) {
     if (!this.note) return;
     const ctx = this.ctx;
     ctx.globalAlpha = clamp(3 - this.note.t, 0, 1);
-    labelS(ctx, this.note.text, W / 2, y, "#f0e2bc", "center", "#000");
+    labelS(ctx, this.note.text, edge().cx, y, "#f0e2bc", "center", "#000");
     ctx.globalAlpha = 1;
   }
 
@@ -1130,14 +1143,17 @@ export class Game {
     // drawn between the last two ticks (view/interp.ts); the sim's own positions are put back afterwards
     const restore = this.interp.apply(this.world, this.pl.area);
     try {
-      this.ctx.clearRect(0, 0, W, H);
       const L = this.hiLayout(), hx = this.hctx;
+      this.fctx.clearRect(0, 0, W, H);
+      this.fctx.imageSmoothingEnabled = false;
+      this.ctx.clearRect(0, 0, this.uiCanvas.width, this.uiCanvas.height);
+      this.ctx.imageSmoothingEnabled = false;
       hx.setTransform?.(1, 0, 0, 1, 0, 0);
       hx.clearRect(0, 0, this.hiCanvas.width, this.hiCanvas.height);
       hx.setTransform?.(L.k, 0, 0, L.k, 0, 0);
       hx.imageSmoothingEnabled = false;
       // interface text asked for on the base grid (ui/text.ts) is drawn on this layer, in the v2 face
-      bindUiText({ base: this.ctx, hi: hx, s: L.cw / W, k: L.k });
+      bindUiText({ base: this.ctx, fixed: this.fctx, hi: hx, s: L.s, k: L.k, uw: L.uw, uh: L.uh });
       this.learnNames();
       this.gui.begin(hx, L.lw, L.lh, this.guiInput(L.lw, L.lh));
       this.screens.render();
@@ -1271,7 +1287,8 @@ export class Game {
   }
 
   renderHud() {
-    const ctx = this.ctx;
+    // Cinema and screen-wide fades are drawn on the fixed layer; the readouts on the scaled UI canvas (ctx), anchored to its edges.
+    const ctx = this.fctx, ui = this.ctx, e = edge();
     // interaction marker (world space: drawn on the world layer)
     if (this.screens.is("play") && this.target) {
       const ctx = this.wctx;
@@ -1289,12 +1306,12 @@ export class Game {
     // below the letterbox while it is up; it rises with the bars as control is handed over
     const bar = this.bars.v * this.bars.v * (3 - 2 * this.bars.v);
     drawMonologue(ctx, this.monologue, this.t, 7 + Math.round(12 * bar));
-    if (this.screens.is("play")) { this.renderNote(); this.vision.drawHud(ctx, W); this.renderClock(); }
+    if (this.screens.is("play")) { this.renderNote(); this.vision.drawHud(ui, e.r); this.renderClock(); }
     // debug message
     if (this.debugMsg) {
-      ctx.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
-      labelS(ctx, this.debugMsg.text, W / 2, 6, "#ff9a5a", "center");
-      ctx.globalAlpha = 1;
+      ui.globalAlpha = clamp(2 - this.debugMsg.t, 0, 1);
+      labelS(ui, this.debugMsg.text, e.cx, e.t + 6, "#ff9a5a", "center");
+      ui.globalAlpha = 1;
     }
     // debug readout: active modes, and (menu option) where the golem is
     if (this.debugHud || this.debugNoclip || this.debugSpeed) {
@@ -1304,10 +1321,10 @@ export class Game {
         ...(modes ? [`DEBUG: ${modes}`] : []),
       ];
       // above the speed bar, which has the corner
-      lines.forEach((l, i) => labelS(ctx, l, 4, H - 20 - (lines.length - 1 - i) * 7, "#ff9a5a", "left", "#000"));
+      lines.forEach((l, i) => labelS(ui, l, e.l + 4, e.b - 20 - (lines.length - 1 - i) * 7, "#ff9a5a", "left", "#000"));
     }
     // toast (the dialogue box draws it above itself)
-    if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(H - 26);
+    if (!this.screens.is("schem") && !this.screens.is("dialogue")) this.renderToast(e.b - 26);
   }
 
   /**
@@ -1316,7 +1333,7 @@ export class Game {
    */
   renderClock() {
     if (!this.area.base.outdoor && !hasFlag(this.world, FLAGS.tutorialDone)) return;
-    const ctx = this.ctx, hour = worldHour(this.world), ph = phaseAt(hour), x = W - 35, y = H - 11;
+    const ctx = this.ctx, hour = worldHour(this.world), ph = phaseAt(hour), e = edge(), x = e.r - 35, y = e.b - 11;
     ctx.fillStyle = "rgba(6,5,9,0.6)"; ctx.fillRect(x - 3, y - 2, 36, 11);
     const px = (c: string, cells: number[][]) => { ctx.fillStyle = c; for (const [cx, cy, w = 1, h = 1] of cells) ctx.fillRect(x + cx, y + cy, w, h); };
     if (ph === "day") {
@@ -1340,7 +1357,7 @@ export class Game {
       ctx.globalAlpha = clamp(a, 0, 1);
       const name = titled(this.toast.name);
       const w = Math.ceil(labelW(name)) + 31;
-      const x = Math.round(W / 2 - w / 2);
+      const x = Math.round(edge().cx - w / 2);
       occlude(ctx, x, y, w, 20);
       ctx.fillStyle = "#0c0a0e"; ctx.fillRect(x, y, w, 20);
       ctx.fillStyle = "#3a3540"; ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y + 19, w, 1); ctx.fillRect(x, y, 1, 20); ctx.fillRect(x + w - 1, y, 1, 20);
@@ -1358,15 +1375,15 @@ export class Game {
   npcDust(a: Actor) { this.reactions.npcDust(a); }
 
   // ---------------------------------------------------------------- Phase 0: settings, keys and game speed
-  /** The hi-res UI layer's canvas size and logical size, by the UI scale setting (k: logical px to canvas px). */
-  hiLayout(): { cw: number; ch: number; lw: number; lh: number; k: number } {
-    const s = this.settings.str("uiScale");
-    if (s === "compact") return { cw: W * 3, ch: H * 3, lw: W * 3, lh: H * 3, k: 1 };
-    // Large: the fine canvas at 2 px per logical px. One font px is then 2/3 of a base px: text a third larger than
-    // Normal, and the size at which the v2 face fills the same lines as the 5 px capitals did, so every screen that
-    // is laid out on the 320x180 grid (ui/text.ts) still fits.
-    if (s === "large") return { cw: W * 3, ch: H * 3, lw: W * 1.5, lh: H * 1.5, k: 2 };
-    return { cw: W * 2, ch: H * 2, lw: W * 2, lh: H * 2, k: 1 };
+  /**
+   * The UI layers' geometry by the UI scale setting (ui/scale.ts). The hi-res layer is always HI_W x HI_H; `k` canvas
+   * px make one logical px (one font px): Large 4, Normal 3, Compact 2. The scaled UI canvas (`ctx`: the HUD and the
+   * overlay screens) is uw x uh UI px, 1:1: 320x180 at Large, which is the interface as designed, and larger canvases
+   * at the smaller scales, so everything drawn on it (frames, sprites and text alike) shrinks together.
+   */
+  hiLayout(): { cw: number; ch: number; lw: number; lh: number; k: number; s: number; uw: number; uh: number } {
+    const m = uiMetrics(this.settings.str("uiScale"));
+    return { cw: HI_W, ch: HI_H, lw: HI_W / m.k, lh: HI_H / m.k, k: m.k, s: m.s, uw: m.uw, uh: m.uh };
   }
   /** Names in play (workers the keeper named, townsfolk, shopkeepers), for the interface's casing: "Bob", not "bob". */
   private namesAt = -1;
@@ -1390,7 +1407,10 @@ export class Game {
     const p = applyPalette(s.str("palette"));
     this.gui.palette = { alert: p.alert, warn: p.warn, info: p.info, select: p.select };
     const L = this.hiLayout();
-    if (this.hiCanvas && (this.hiCanvas.width !== L.cw || this.hiCanvas.height !== L.ch)) { this.hiCanvas.width = L.cw; this.hiCanvas.height = L.ch; this.onView?.(this.vw, this.vh); }
+    let resized = false;
+    if (this.hiCanvas && (this.hiCanvas.width !== L.cw || this.hiCanvas.height !== L.ch)) { this.hiCanvas.width = L.cw; this.hiCanvas.height = L.ch; resized = true; }
+    if (this.uiCanvas.width !== L.uw || this.uiCanvas.height !== L.uh) { this.uiCanvas.width = L.uw; this.uiCanvas.height = L.uh; this.ctx.imageSmoothingEnabled = false; resized = true; }
+    if (resized) this.onView?.(this.vw, this.vh);
     if (this.world) this.applyLod();
   }
   /** Simulation LOD (sim/lod.ts) on the presented world, by the setting. */

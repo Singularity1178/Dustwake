@@ -46,7 +46,7 @@ export class SchematicUi {
   }
 
   private render() {
-    const g = this.g, ctx = g.ctx;
+    const g = this.g, ctx = g.fctx;
     if (!this.canvas) return;
     const k = clamp(this.screen.t / 0.45, 0, 1);
     const e = 1 - (1 - k) * (1 - k);

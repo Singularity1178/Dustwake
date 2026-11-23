@@ -100,11 +100,11 @@ export class DialogueUi {
   private render() {
     const g = this.g, d = this.dlg;
     if (!d) return;
-    const ctx = g.ctx, p = d.pages[d.page];
+    const ctx = g.fctx, p = d.pages[d.page];
     const npc = npcActor(g.world, d.npc);
     const name = p.speaker ?? npcDef(npc?.npc)?.name ?? "";
     const bx = BOX.x, bw = BOX.w, bh = BOX.h, by = BOX.y;
-    g.renderToast(by - 24);
+    g.renderToast(g.fromFixedY(by - 24));
     // box
     ctx.fillStyle = "#08070a"; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     ctx.fillStyle = "#3a3540"; ctx.fillRect(bx, by, bw, bh);
@@ -131,6 +131,6 @@ export class DialogueUi {
       hints(ctx, [["E", last ? "Close" : "Next"]], bx + bw - 8, by + BOX.footerY, "#8a8392", "right");
     }
     hints(ctx, [["Esc", "Leave"]], bx + BOX.padX, by + BOX.footerY, "#6a6372", "left", Infinity, { alpha: 0.75 });
-    g.renderNote(by - 36);
+    g.renderNote(g.fromFixedY(by - 36));
   }
 }
