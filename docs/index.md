@@ -54,6 +54,7 @@ Phase 0 (groundwork for a management sim) is in: the fixed tick and game speeds,
 ### Content and art
 
 - [Rocks and the stair, redrawn](art/rocks-and-stair.md)
+- [Trees and stumps, redrawn](art/trees-and-stumps.md)
 - [The stair below (v15, v16)](art/stair-depth.md)
 - [Content as data](content/data.md)
 - [Inner monologue and the opening](content/monologue.md)

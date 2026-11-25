@@ -44,7 +44,12 @@ import type { ItemId } from "../src/game/content/items";
 // as it was (pixel hash per kind, six variants, both states), no sprite that was there changed; `stairfoot` was
 // removed and `stairpost` and `staircheek` added, which is all that moved this hash. surface: unmoved (0 of 6912
 // tiles differ).
-const GOLDEN = { props: "694d07cd", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
+// The tree and stump retexture (docs/art/trees-and-stumps.md): props (was "694d07cd"): compared sprite by sprite with
+// the tree as it was (trace hash per kind, six variants, both states), exactly two kinds differ, both redrawn on
+// purpose: `tree` (with its felled "taken" stump, which `towntree` shares) and `stump`. The 145 other sprites hash as
+// before, and no kind was added or removed. surface: unmoved (the bake holds no props). Their own golden is in
+// tests/treeArt.test.ts.
+const GOLDEN = { props: "8a1fa652", items: "94b2678e", tiles: "c9958a0", glyphs: "25b715f1", surface: "6b2c4609" };
 
 test("every PROP_ART sprite is pixel-identical", () => {
   resetTrace();

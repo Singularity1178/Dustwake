@@ -22,7 +22,7 @@ import { S } from "./palette";
 type V3 = readonly [number, number, number];
 const unit = (x: number, y: number, z: number): V3 => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
 /** Upper left and a little toward the viewer: tops brightest, west and south faces lit, east faces in shade. */
-const LIGHT = unit(-0.45, 0.35, 0.82);
+export const LIGHT = unit(-0.45, 0.35, 0.82);
 
 /** A convex chunk: the solid where n . P <= d for every plane, above the ground (x east, y south, z up; pixels). */
 export interface Chunk { n: V3[]; d: number[] }

@@ -52,6 +52,7 @@ This file used to hold everything (about 180 KB). It is now split into one page 
 ### Content and art
 
 - [Rocks and the stair, redrawn](art/rocks-and-stair.md)
+- [Trees and stumps, redrawn](art/trees-and-stumps.md)
 - [The stair below (v15, v16)](art/stair-depth.md)
 - [Content as data](content/data.md)
 - [Inner monologue and the opening](content/monologue.md)

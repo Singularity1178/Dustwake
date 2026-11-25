@@ -1,48 +1,16 @@
 // Surface prop sprites (trees, rocks, foliage, ruins in the wild, the buried
 // gate) plus the dungeon's collapsed-gate rock piles, which share the stone and
 // overgrowth helpers. Registered into PROP_ART by art/props.ts.
-import { hash2, mulberry, clamp, rgb } from "../util";
+import { mulberry, clamp, rgb } from "../util";
 import type { Pen, Rng } from "../util";
 import { S, WD, IR } from "./palette";
 import { stoneBlob, type PropArt } from "./common";
+import { MOSS, mossOver, ivyOn, tufts, fernTuft, leafBlob } from "./overgrowth";
+import { TREE_ART } from "./trees";
 import { paintRock, rockForm, ROCK_SEEDS, IRONSTONE, ORE } from "./rocks";
 import { stepShade, cornerShade, treadTone, stairRGB, TOP_LEVEL } from "./stairs";
 
-// ---- overgrowth helpers shared by the surface sprites
-const MOSS = ["#2e4a22", "#3e5e2a", "#527636", "#6e8e34"];
-/** Moss speckled over a rect (the upper faces of stone or wood), thinning toward the bottom. */
-function mossOver(p: Pen, r: Rng, x: number, y: number, w: number, h: number, dens: number) {
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-    if (r() > dens * (1 - j / (h + 1)) * (hash2(x + i >> 1, y + j >> 1, 140) * 0.8 + 0.4)) continue;
-    p.p(x + i, y + j, MOSS[(r() * 4) | 0]);
-  }
-}
-/** A strand of ivy hanging down from (x, y), with leaves. */
-function ivyOn(p: Pen, r: Rng, x: number, y: number, len: number) {
-  let vx = x;
-  for (let j = 0; j < len; j++) {
-    p.p(vx, y + j, "#2e3e1c");
-    if (j % 2 === 0) p.p(vx + (j % 4 === 0 ? 1 : -1), y + j, r() < 0.5 ? "#4e7a34" : "#3a6228");
-    if (r() < 0.2) vx += r() < 0.5 ? -1 : 1;
-  }
-}
-/** A row of grass blades along a base line. */
-function tufts(p: Pen, r: Rng, x: number, y: number, w: number, k: number) {
-  const cols = ["#4e7a3a", "#628e44", "#3a5e2c"];
-  for (let i = 0; i < k; i++) { const bx = x + ((r() * w) | 0), h = 1 + ((r() * 3) | 0); p.r(bx, y - h, 1, h, cols[(r() * 3) | 0]); }
-}
-function fernTuft(p: Pen, r: Rng, x: number, y: number) {
-  for (let f = -2; f <= 2; f++) { let fx = x, fy = y; for (let s = 0; s < 4; s++) { fx += f * 0.6; fy -= 1; p.p(Math.round(fx), Math.round(fy), r() < 0.5 ? "#3e6a3a" : "#5a8a4e"); } }
-}
-function leafBlob(p: Pen, r: Rng, cx: number, cy: number, rr: number, leaf: string[]) {
-  for (let y = -rr; y <= rr; y++) for (let x = -rr; x <= rr; x++) {
-    const d = (x * x + y * y) / (rr * rr);
-    if (d > 1 || (d > 0.75 && r() < 0.35)) continue;
-    let c = d > 0.75 ? leaf[0] : x + y < -rr * 0.5 ? leaf[3] : x + y < 0 ? leaf[2] : leaf[1];
-    if (r() < 0.1) c = leaf[0];
-    p.p(cx + x, cy + y, c);
-  }
-}
+// overgrowth helpers (moss, ivy, tufts, ferns, leaf blobs): art/overgrowth.ts
 
 /** What a rock leaves when it is broken up: a few angular chips, lit on top, and grit between them (flecked with ore for a vein). */
 function shards(p: Pen, r: Rng, ore: boolean) {
@@ -56,29 +24,8 @@ function shards(p: Pen, r: Rng, ore: boolean) {
 
 export const SURFACE_PROP_ART: Record<string, PropArt> = {
   // ---------- surface
-  tree: (v, alt, M) => {
-    if (alt) return M(18, 12, (p) => {
-      p.r(2, 9, 14, 3, "#1a1208");
-      p.o(4, 3, 10, 8, WD.m, WD.o); p.o(4, 1, 10, 4, "#b08a5a", WD.o); p.p(8, 2, WD.d); p.p(10, 3, WD.l);
-      p.r(1, 10, 3, 1, WD.d); p.r(14, 10, 3, 1, WD.d);
-    });
-    const leaf = [["#1e3a1c", "#2e5226", "#3e6a30", "#5a8a40"], ["#24361a", "#365022", "#4a6a2c", "#6a8a3e"], ["#1a3226", "#284a34", "#386442", "#4e8456"]][v % 3];
-    return M(34, 44, (p, r) => {
-      p.r(9, 40, 16, 3, "rgba(0,0,0,0.35)");
-      p.o(14, 26, 6, 17, WD.m, WD.o); p.r(15, 27, 1, 15, WD.l); p.r(18, 27, 1, 15, WD.d);
-      p.r(12, 41, 3, 2, WD.d); p.r(19, 41, 3, 2, WD.d);
-      const blob = (cx: number, cy: number, rr: number) => {
-        for (let y = -rr; y <= rr; y++) for (let x = -rr; x <= rr; x++) {
-          const d = (x * x + y * y) / (rr * rr);
-          if (d > 1) continue;
-          let c = d > 0.8 ? leaf[0] : x + y < -rr * 0.5 ? leaf[3] : x + y < 0 ? leaf[2] : leaf[1];
-          if (r() < 0.08) c = leaf[0];
-          p.p(cx + x, cy + y, c);
-        }
-      };
-      blob(17, 18, 10); blob(10, 22, 7); blob(24, 22, 7); blob(13, 11, 7); blob(22, 12, 6);
-    });
-  },
+  // The tree and its stumps are drawn together (art/trees.ts) so that all three have the same trunk.
+  tree: TREE_ART.tree,
   // An iron vein: a broken tooth of dark ironstone standing out of the ground, a shelf against it and a piece
   // fallen from it. The ore is in the rock, not on it: rust-red seams run through the mass and show on every
   // face they cut, with brighter metal where a seam is richest and rust washed down the stone beneath.
@@ -255,15 +202,7 @@ export const SURFACE_PROP_ART: Record<string, PropArt> = {
     p.r(7, 9, 1, 12, WD.m); p.p(6, 13, WD.l); p.p(8, 15, WD.d);
     leafBlob(p, r, 7, 7, 4, pal); leafBlob(p, r, 4, 10, 3, pal); leafBlob(p, r, 10, 9, 3, pal);
   }),
-  stump: (v, _alt, M) => M(18, 13, (p, r) => {
-    p.r(2, 10, 14, 3, "rgba(0,0,0,0.3)");
-    p.o(4, 4, 10, 8, WD.m, WD.o); p.r(5, 5, 1, 6, WD.l); p.r(12, 5, 1, 6, WD.d);
-    p.o(4, 2, 10, 4, "#8a6a44", WD.o); p.p(8, 3, WD.d); p.p(10, 4, WD.l);
-    p.r(1, 11, 3, 1, WD.d); p.r(14, 11, 3, 1, WD.d); p.p(3, 10, WD.m);
-    mossOver(p, r, 4, 2, 10, 3, 0.45);
-    if (v & 1) { p.r(13, 7, 3, 1, "#c8a870"); p.r(13, 8, 2, 1, "#8a6a44"); }
-    tufts(p, r, 2, 12, 14, 3);
-  }),
+  stump: TREE_ART.stump,
   log: (v, alt, M) => {
     if (alt) return M(30, 9, (p, r) => {
       for (let i = 0; i < 6; i++) { const x = (r() * 24) | 0, y = 3 + ((r() * 5) | 0); p.r(x, y, 4, 1, WD.m); p.p(x, y, WD.l); p.p(x + 3, y + 1, WD.o); }
