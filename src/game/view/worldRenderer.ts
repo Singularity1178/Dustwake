@@ -63,15 +63,15 @@ export class WorldRenderer {
       if (ccx > -140 && ccx < W + 10 && ccy > -140 && ccy < H + 10) {
         sc.drawImage(this.g.circle.base, ccx, ccy);
         sc.drawImage(r.carved ? this.g.circle.gapCarved : this.g.circle.chalk, ccx, ccy);
-        let lvl = r.active ? 0.55 + 0.35 * Math.sin(this.g.t * 3) + Math.min(0.3, r.actT * 0.1) : 0.16 + 0.06 * Math.sin(this.g.t * 1.3);
+        let lvl = r.active ? 0.55 + 0.35 * Math.sin(this.g.envT * 3) + Math.min(0.3, r.actT * 0.1) : 0.16 + 0.06 * Math.sin(this.g.envT * 1.3);
         if (this.g.fizzT > 0) lvl = Math.random() * 0.8;
         ec.globalAlpha = clamp(lvl, 0, 1);
         ec.drawImage(this.g.circle.glow, ccx, ccy);
         if (r.carved) ec.drawImage(this.g.circle.glowGap, ccx, ccy);
-        if (!r.carved && schemRead) { ec.globalAlpha = 0.45 + 0.3 * Math.sin(this.g.t * 4); ec.drawImage(this.g.circle.ghost, ccx, ccy); }
+        if (!r.carved && schemRead) { ec.globalAlpha = 0.45 + 0.3 * Math.sin(this.g.envT * 4); ec.drawImage(this.g.circle.ghost, ccx, ccy); }
         if (r.active) {
           ec.globalCompositeOperation = "lighter";
-          ec.globalAlpha = 0.35 + 0.25 * Math.sin(this.g.t * 5);
+          ec.globalAlpha = 0.35 + 0.25 * Math.sin(this.g.envT * 5);
           ec.drawImage(this.g.circle.glow, ccx, ccy);
           ec.drawImage(this.g.circle.glowGap, ccx, ccy);
           ec.globalCompositeOperation = "source-over";
@@ -108,7 +108,7 @@ export class WorldRenderer {
           if (p.lit && def.fire && lvl > 0.05) this.drawFlame(p, def.fire.big, camX, camY);
           if (p.item && !p.container && !p.taken && ITEMS[p.item].showOnProp !== false) {
             const ic = itemIcon(p.item);
-            const bob = isGlyph(p.item) ? Math.round(Math.sin(this.g.t * 2) * 0.6) : 0;
+            const bob = isGlyph(p.item) ? Math.round(Math.sin(this.g.envT * 2) * 0.6) : 0;
             spr(ic, p.x + (def.itemDx ?? 0), p.y - (p.itemZ ?? 8) + bob);
           }
         },
@@ -139,7 +139,7 @@ export class WorldRenderer {
     // NPCs (one generic path: art looked up by NpcDef id)
     for (const a of this.g.world.actors) {
       if (a.id === this.g.world.playerId || a.area !== area.id || a.x < vx0 || a.x > vx1 || a.y < vy0 || a.y > vy1) continue;
-      list.push({ y: a.y, f: () => drawActor(sc, ec, this.g.world, a, camX, camY, this.g.t, this.g.npcLook(a)) });
+      list.push({ y: a.y, f: () => drawActor(sc, ec, this.g.world, a, camX, camY, this.g.envT, this.g.npcLook(a)) });
     }
     // player
     const pl = this.g.pl;
@@ -235,7 +235,7 @@ export class WorldRenderer {
     ec.globalCompositeOperation = "lighter";
     for (let yy = y + 4; yy > -2; yy -= 2) {
       const f = 1 - ((y - yy) / Math.max(1, y + 2)) * 0.6;
-      const wob = Math.round(Math.sin(yy * 0.21 + this.g.t * 9) * k);
+      const wob = Math.round(Math.sin(yy * 0.21 + this.g.envT * 9) * k);
       ec.globalAlpha = clamp(k * f * 0.5, 0, 1); ec.fillStyle = "#9a70ff"; ec.fillRect(x - w + wob, yy - 2, w * 2, 2);
       ec.globalAlpha = clamp(k * f, 0, 1); ec.fillStyle = "#e8e0ff"; ec.fillRect(x - 1 + wob, yy - 2, 2 + Math.round(k * 2), 2);
     }
@@ -260,7 +260,7 @@ export class WorldRenderer {
     const dx = Math.round(p.x - s.ax - camX), dy = Math.round(p.y - s.ay - camY);
     if (dx > this.g.vw || dy > this.g.vh || dx + s.w < 0 || dy + s.h < 0) return;
     const sc = this.g.scene.ctx, ec = this.g.emit.ctx;
-    const wv = Math.sin(this.g.t * 1.6 + p.x * 0.031 + p.y * 0.017) + 0.4 * Math.sin(this.g.t * 3.7 + p.x * 0.11);
+    const wv = Math.sin(this.g.envT * 1.6 + p.x * 0.031 + p.y * 0.017) + 0.4 * Math.sin(this.g.envT * 3.7 + p.x * 0.11);
     const o = Math.round(wv * 0.75);
     if (!o) { sc.drawImage(s.a, dx, dy); ec.drawImage(s.e, dx, dy); return; }
     const cut = Math.floor(s.h * 0.55);
@@ -273,7 +273,7 @@ export class WorldRenderer {
   drawFlame(p: PropInst, big: boolean, camX: number, camY: number) {
     const ec = this.g.emit.ctx;
     const bx = Math.round(p.x - camX), by = Math.round(p.y - camY - 15 + (propDef(p.kind).fire?.dy ?? 0));
-    const t = this.g.t * 12 + p.x;
+    const t = this.g.envT * 12 + p.x;
     const cols = ["#ff5a10", "#ff9a30", "#ffd060", "#fff0b0"];
     const w = big ? 8 : 3;
     for (let i = 0; i < w; i++) {
@@ -300,7 +300,7 @@ export class WorldRenderer {
         const pen = new Pen(ec, true);
         glyphPattern(pen, g, Math.round(p.x - camX) - 4, Math.round(topY - camY) - 7, GLYPHS[g].color, true);
       }
-      if (r.wrong[i] && this.g.fizzT > 0 && Math.sin(this.g.t * 30) > 0) {
+      if (r.wrong[i] && this.g.fizzT > 0 && Math.sin(this.g.envT * 30) > 0) {
         ec.fillStyle = "#ff2040";
         ec.globalAlpha = 0.6;
         ec.fillRect(Math.round(p.x - camX) - 6, Math.round(topY - camY) - 8, 12, 12);
@@ -309,15 +309,15 @@ export class WorldRenderer {
     }
     if (hasFlag(this.g.world, FLAGS.knowSchematic) && g !== r.solution[i] && !r.active) {
       const pen = new Pen(ec, true);
-      ec.globalAlpha = 0.35 + 0.2 * Math.sin(this.g.t * 3 + i);
-      const bob = Math.round(Math.sin(this.g.t * 2 + i) * 1.5);
+      ec.globalAlpha = 0.35 + 0.2 * Math.sin(this.g.envT * 3 + i);
+      const bob = Math.round(Math.sin(this.g.envT * 2 + i) * 1.5);
       glyphPattern(pen, r.solution[i], Math.round(p.x - camX) - 3, Math.round(topY - camY) - 16 + bob - (g >= 0 ? 4 : 0), GLYPHS[r.solution[i]].color, true);
       ec.globalAlpha = 1;
     }
     if (i === 0 && r.core) {
       // core floating above center
       const c = area.ritualPos;
-      const bob = Math.round(Math.sin(this.g.t * 2) * 1.5) + (r.active ? -3 : 0);
+      const bob = Math.round(Math.sin(this.g.envT * 2) * 1.5) + (r.active ? -3 : 0);
       spr(itemIcon("core"), c.x, c.y - 4 + bob);
     }
   }
@@ -345,7 +345,7 @@ export class WorldRenderer {
     }
     const pose: GolemPose = {
       facing: this.g.gaze ?? pl.facing, phase: pl.phase, moving: pl.moving && !a, hasArm: this.g.hasArm, dormant: lk.dormant,
-      eye: clamp(lk.eye + this.g.eyeBoost + this.g.vision.k * 0.35, 0, 1.6), core: lk.core, raise, reach, t: this.g.t,
+      eye: clamp(lk.eye + this.g.eyeBoost + this.g.vision.k * 0.35, 0, 1.6), core: lk.core, raise, reach, t: this.g.envT,
       eyeFixed: hasFlag(this.g.world, FLAGS.golemEye), back: pl.gear.back, runes: runeMarks(this.g.world, pl), slam, dip,
     };
     const ox = pl.x - camX + (a?.kind === "push" ? Math.round(Math.sin(a.t * 40)) : 0), oy = pl.y - camY - lk.z;

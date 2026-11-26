@@ -617,9 +617,35 @@ export class Game {
   // ---------------------------------------------------------------- update
   /** The last update's dt (the folk bubbles age on it while drawing). */
   frameDt = 0;
+  /**
+   * The environment's clock (presentation only). The world around the golem (drifting motes and leaves, embers, smoke,
+   * drips, lamp flicker, foliage sway, rune pulses, worker animation) runs on this, not on the real clock, so it keeps
+   * step with the game speed: frozen while paused, twice as fast at 2x, eight times at 8x. `envScale` eases toward the
+   * speed in force so a change of speed reads as a change of pace rather than a jump.
+   */
+  envScale = 1;
+  /** Environment seconds this frame (real dt x envScale) and the running total (the env's `t`). */
+  envDt = 0;
+  envT = 0;
+  private stepEnv(dt: number) {
+    // Only the play screen has a game speed; under a menu, cutscene or title the scenery keeps its usual 1x.
+    const play = this.screens.is("play");
+    const target = play ? this.speed * (this.debugSpeed ? this.debugSpeedMult : 1) : 1;
+    const d = target - this.envScale;
+    if (Math.abs(d) < 0.01) this.envScale = target;
+    else this.envScale += d * (1 - Math.exp(-dt * 12));
+    this.envDt = dt * this.envScale;
+    this.envT += this.envDt;
+  }
+  /** How many things a Poisson process of `perSecond` x env time spawns this frame (at 8x that can be more than one a frame). */
+  private rolls(perSecond: number): number {
+    const x = perSecond * this.envDt, n = Math.floor(x);
+    return n + (Math.random() < x - n ? 1 : 0);
+  }
   update(dt: number) {
     this.frameDt = dt;
     this.t += dt;
+    this.stepEnv(dt);
     if (this.uiTimers.length) {
       const due = this.uiTimers.filter((u) => u.at <= this.t);
       this.uiTimers = this.uiTimers.filter((u) => u.at > this.t);
@@ -817,7 +843,7 @@ export class Game {
   surfaceRuneState(): { t: number; glow: number; column: number } {
     if (this.runeAnim) return this.runeAnim;
     const state = runeState(this.world, RUNE_NODES.surface);
-    const rest = state === "linked" ? linkedGlow(this.t) : state === "severed" ? severedGlow(this.t) : 0;
+    const rest = state === "linked" ? linkedGlow(this.envT) : state === "severed" ? severedGlow(this.envT) : 0;
     const d = this.runeDud, p = d ? this.area.prop(RUNE_NODES.surface.prop) : undefined;
     const glow = d && p && Math.hypot(p.x - d.x, p.y - d.y) < 4 ? runeDudGlow(d.t, rest, state === "dormant" ? 0.5 : 1) : rest;
     return { t: state === "dormant" ? 0 : 1, glow, column: 0 };
@@ -942,7 +968,7 @@ export class Game {
 
   /** Presentation that follows the world each simulated frame. */
   updateWorldFx(dt: number) {
-    const pl = this.pl, area = this.area;
+    const pl = this.pl, area = this.area, edt = this.envDt, et = this.envT;
     // camera
     const VW = this.vw, VH = this.vh;
     const tx = clamp(pl.x - VW / 2, 0, area.w * TS - VW), ty = clamp(pl.y - 12 - VH / 2, 0, area.h * TS - VH);
@@ -957,13 +983,13 @@ export class Game {
     applyGlow(gl, golemGlow(this.world, pl));
     if (Math.abs(gl.x - gl.vx) > 2 || Math.abs(gl.y - gl.vy) > 2) computeVis(gl, area);
     const base = this.screens.is("tele") ? gl.int : 1.0;
-    gl.cur = base * this.look.core * (0.95 + 0.05 * Math.sin(this.t * 13) * Math.sin(this.t * 3.1)) + this.eyeBoost * 0.3;
+    gl.cur = base * this.look.core * (0.95 + 0.05 * Math.sin(et * 13) * Math.sin(et * 3.1)) + this.eyeBoost * 0.3;
     // NPCs: eased pose and eye, eye light through the light registry
     this.updateNpcLooks(dt);
     // light flicker, and the hour: tended lamps are lit and put out with the day, sky light takes the sky's colour
     const hour = worldHour(this.world), sun = sunLevel(hour);
     for (const L of this.view.lights.values()) {
-      const n = Math.sin(this.t * 9 + L.seed) * 0.5 + Math.sin(this.t * 23.7 + L.seed * 2) * 0.3 + Math.sin(this.t * 3.3 + L.seed) * 0.2;
+      const n = Math.sin(et * 9 + L.seed) * 0.5 + Math.sin(et * 23.7 + L.seed * 2) * 0.3 + Math.sin(et * 3.3 + L.seed) * 0.2;
       L.cur = L.int * (1 - L.flick * (0.5 + 0.5 * n));
       if (L.habit) L.day = litLevel(L.habit, L.owner!, hour);
       else if (L.sky) { const s = skyLight(L.sky, hour); L.r = s.col[0]; L.g = s.col[1]; L.b = s.col[2]; L.day = s.gain; }
@@ -975,35 +1001,35 @@ export class Game {
       this.sfx.setHum(Math.min(1, r.actT / 2));
       if (cl) {
         const target = 120;
-        if (cl.rad < target) { cl.rad = Math.min(target, cl.rad + dt * 30); if (Math.abs(cl.rad - cl.vx) > 0) computeVis(cl, area); }
+        if (cl.rad < target) { cl.rad = Math.min(target, cl.rad + edt * 30); if (Math.abs(cl.rad - cl.vx) > 0) computeVis(cl, area); }
         cl.int = 0.6 + Math.min(1, r.actT / 3) * 0.6;
-        cl.cur = cl.int * (0.85 + 0.15 * Math.sin(this.t * 3));
+        cl.cur = cl.int * (0.85 + 0.15 * Math.sin(et * 3));
       }
       const c = area.ritualPos;
-      if (Math.random() < dt * 30) {
+      for (let n = this.rolls(30); n > 0; n--) {
         const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
         this.spawn({ x: c.x + p.x, y: c.y + p.y, z: 0, vz: 8 + Math.random() * 12, life: 1.5, kind: "rune", col: Math.random() < 0.6 ? "#a070ff" : "#70d0ff", emit: true, g: -2 });
       }
     } else if (cl) {
-      cl.cur = cl.int * (0.8 + 0.2 * Math.sin(this.t * 1.3)) + (this.fizzT > 0 ? Math.random() * 0.6 : 0);
+      cl.cur = cl.int * (0.8 + 0.2 * Math.sin(et * 1.3)) + (this.fizzT > 0 ? Math.random() * 0.6 : 0);
     }
-    this.fizzT = Math.max(0, this.fizzT - dt);
+    this.fizzT = Math.max(0, this.fizzT - edt);
     // a rune that refused: its sputter runs its course, spitting sparks off the carvings while it gutters
     if (this.runeDud) {
       const d = this.runeDud;
-      if (d.t < RUNE_DUD.gutter && Math.random() < dt * 40) {
+      if (d.t < RUNE_DUD.gutter) for (let n = this.rolls(40); n > 0; n--) {
         const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
         this.spawn({ x: d.x + p.x, y: d.y + p.y, z: 1, vx: (Math.random() - 0.5) * 50, vy: (Math.random() - 0.5) * 30, vz: 20 + Math.random() * 30, life: 0.45, kind: "spark", col: Math.random() < 0.5 ? "#ff6a8a" : "#a070ff", emit: true, g: 120 });
       }
-      if ((d.t += dt) >= RUNE_DUD.dur) this.runeDud = null;
+      if ((d.t += edt) >= RUNE_DUD.dur) this.runeDud = null;
     }
     // surface rune glow: dark and dead while dormant (no baseline), driven by the cutscene, steady once restored
     const rg = this.view.byId("runeglow");
     if (rg) {
       const st = this.surfaceRuneState();
-      rg.cur = rg.int * (st.glow * (0.92 + 0.08 * Math.sin(this.t * 2.3)) + st.column * 0.7);
+      rg.cur = rg.int * (st.glow * (0.92 + 0.08 * Math.sin(et * 2.3)) + st.column * 0.7);
       // motes rise from the carvings only while the rune has somewhere to carry them
-      if (!this.runeAnim && runeState(this.world, RUNE_NODES.surface) === "linked" && Math.random() < dt * 8) {
+      if (!this.runeAnim && runeState(this.world, RUNE_NODES.surface) === "linked") for (let n = this.rolls(8); n > 0; n--) {
         const p = this.circle.pixels[(Math.random() * this.circle.pixels.length) | 0];
         this.spawn({ x: rg.x + p.x, y: rg.y + p.y, z: 0, vz: 6 + Math.random() * 10, life: 1.4, kind: "rune", col: Math.random() < 0.6 ? "#a070ff" : "#70d0ff", emit: true, g: -2 });
       }
@@ -1014,22 +1040,22 @@ export class Game {
     if (this.note) { this.note.t += dt; if (this.note.t > 3) this.note = null; }
     this.stepMonologue(dt);
     // drifting leaves on the wind
-    if (area.base.outdoor && Math.random() < dt * 1.5)
+    if (area.base.outdoor) for (let n = this.rolls(1.5); n > 0; n--)
       this.spawn({ x: this.cam.x - 20 + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 30 + Math.random() * 40, vx: 8 + Math.random() * 8, vy: (Math.random() - 0.3) * 3, vz: -4 - Math.random() * 3, life: 7, kind: "mote", col: ["#7a5630", "#946a34", "#5a7a34", "#a07c40"][(Math.random() * 4) | 0], emit: false, g: 0 });
     // fireflies under the open sky: the night's, thinning out as the sun comes up
-    if (area.base.outdoor && Math.random() < dt * 3 * this.zoom * this.zoom * (1 - sun))
+    if (area.base.outdoor) for (let n = this.rolls(3 * this.zoom * this.zoom * (1 - sun)); n > 0; n--)
       this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 6 + Math.random() * 20, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 3, life: 4, kind: "mote", col: "#d8f080", emit: true, g: 0 });
     // by day: pollen on the air and the odd butterfly instead
-    if (area.base.outdoor && Math.random() < dt * 1.2 * this.zoom * this.zoom * sun)
+    if (area.base.outdoor) for (let n = this.rolls(1.2 * this.zoom * this.zoom * sun); n > 0; n--)
       this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 8 + Math.random() * 18, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 6, life: 5, kind: "mote", col: ["#f0e8c0", "#e8c860", "#d8d0e8", "#e89a5a"][(Math.random() * 4) | 0], emit: false, g: 0 });
     // and the open air sounds its hour: birds by day, crickets by night, a hush while one hands over to the other
-    if (area.base.outdoor && (this.skyT -= dt) <= 0) {
+    if (area.base.outdoor && (this.skyT -= edt) <= 0) {
       this.skyT = 2.5 + Math.random() * 6;
       if (sun > 0.6) this.sfx.bird(); else if (sun < 0.25) this.sfx.cricket();
     }
     // drips
     area.drips.forEach((d, i) => {
-      this.dripT[i] -= dt;
+      this.dripT[i] -= edt;
       if (this.dripT[i] <= 0) {
         this.dripT[i] = 1.5 + Math.random() * 4;
         if (Math.abs(d.x - this.cam.x - VW / 2) < VW / 2 + 100 && Math.abs(d.y - this.cam.y - VH / 2) < VH / 2 + 90)
@@ -1042,25 +1068,25 @@ export class Game {
       const fire = propDef(p.kind).fire;
       if (!fire || this.tendedLevel(p, hour) <= 0.05) continue;
       if (Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 50) continue;
-      if (Math.random() < dt * fire.embers)
+      for (let n = this.rolls(fire.embers); n > 0; n--)
         this.spawn({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + fire.emberDy, z: 14, vx: (Math.random() - 0.5) * 6, vz: 10 + Math.random() * 10, life: 1 + Math.random(), kind: "ember", col: Math.random() < 0.5 ? "#ffb040" : "#ff6a1a", emit: true, g: -4 });
     }
     // chimney smoke over the town's roofs (props with a `smoke` row), leaning on the same night wind as the leaves
     for (const p of area.props) {
       const sm = propDef(p.kind).smoke;
       if (!sm || Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 70) continue;
-      if (Math.random() < dt * sm.rate * (area.base.tended ? hearthSmoke(hour) : 1)) // thick at breakfast and supper
+      for (let n = this.rolls(sm.rate * (area.base.tended ? hearthSmoke(hour) : 1)); n > 0; n--) // thick at breakfast and supper
         this.spawn({ x: p.x + sm.dx + (Math.random() - 0.5) * 3, y: p.y, z: sm.z, vx: 3 + Math.random() * 4, vy: (Math.random() - 0.5) * 1.5, vz: 7 + Math.random() * 5, life: 2.2 + Math.random() * 1.8, kind: "smoke", col: Math.random() < 0.5 ? "#6e6a70" : "#585460", g: -1, size: 2, emit: false });
     }
     // ambient dust motes
-    if (Math.random() < dt * 8 * this.zoom * this.zoom)
+    for (let n = this.rolls(8 * this.zoom * this.zoom); n > 0; n--)
       this.spawn({ x: this.cam.x + Math.random() * VW, y: this.cam.y + Math.random() * VH, z: 4 + Math.random() * 30, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2, life: 5, kind: "mote", col: "#b8b0a0", emit: false, g: 0 });
     // moonbeam motes
     const moon = this.view.byId("moon");
-    if (moon && Math.random() < dt * 5)
+    if (moon) for (let n = this.rolls(5); n > 0; n--)
       this.spawn({ x: moon.x - 14 + Math.random() * 30, y: moon.y + 2, z: 10 + Math.random() * 70, vx: (Math.random() - 0.5) * 2, vz: -3 - Math.random() * 3, life: 6, kind: "mote", col: sun > 0.5 ? "#ffe8b0" : "#a8c0ff", emit: true, g: 0 });
     // item glints
-    if (Math.random() < dt * 2) {
+    if (this.rolls(2) > 0) {
       const cands: [number, number][] = [];
       for (const it of interactables(area)) if (it.kind === "item" || it.kind === "propItem" || (it.kind === "container" && it.hasItem)) cands.push([it.x, it.y - (it.itemZ ?? 6) - 2]);
       const near = cands.filter(([x, y]) => Math.abs(x - this.cam.x - VW / 2) < VW / 2 + 10 && Math.abs(y - this.cam.y - VH / 2) < VH / 2 + 10);
@@ -1075,13 +1101,13 @@ export class Game {
     // vision mode: follows the sim's mode; the lock-on reticle sits on whatever E would act on
     const focus = this.screens.is("play") && this.target ? visionId(this.target) : null;
     for (const c of this.vision.update(dt, this.world, pl, gl, focus, this.visionArt())) this.onVisionCue(c);
-    this.updateParticles(dt);
+    this.updateParticles(edt);
   }
 
   visionArtCache: VisionArt | null = null;
   visionArt(): VisionArt {
     const a = (this.visionArtCache ??= { t: 0, npcLook: (x) => this.npcLook(x), circle: { lines: [this.circle.glow, this.circle.glowGap], r: CR }, self: () => (this.hideGolem ? null : this.selfPose) });
-    a.t = this.t;
+    a.t = this.envT;
     return a;
   }
 
@@ -1265,7 +1291,7 @@ export class Game {
     const inp = { powered: powered(a), active: actorActive(a), moving: a.moving, hasCore: !!a.powerCore };
     if (!L.worker || this.t - L.seen > 0.5) { L.worker = initWorkerAnim(inp); if (!L.arrived) L.lift = 0; }
     L.seen = this.t; L.arrived = false;
-    stepWorkerAnim(L.worker, dt, inp);
+    stepWorkerAnim(L.worker, dt * this.envScale, inp);
     for (const cue of drainCues(L.worker)) this.reactions.workerCue(a, cue);
     L.flare = Math.max(0, L.flare - dt * 0.8);
     const task = a.task;
@@ -1312,7 +1338,7 @@ export class Game {
       const x = Math.round(a.x - camX), y = Math.round(a.y - camY);
       if (x < -60 || y < -60 || x > this.vw + 60 || y > this.vh + 60) continue;
       if (a.life?.pose === "lie") {
-        const k = (this.t * 0.5 + hash01(a.id, 4)) % 1;
+        const k = (this.envT * 0.5 + hash01(a.id, 4)) % 1;
         ctx.globalAlpha = Math.sin(k * Math.PI) * 0.8;
         drawTextS(ctx, k < 0.5 ? "z" : "Z", x + 4 + k * 6, y - 26 - k * 10, "#d8e0f0", 1, "left", "#1a1418");
         ctx.globalAlpha = 1;
