@@ -39,6 +39,11 @@ export interface UiHost {
   /** Printable characters typed this frame (raw case), plus "\b" for Backspace. */
   readonly typed: readonly string[];
   hit(...k: string[]): boolean;
+  /**
+   * Like `hit`, and also true each time a held key auto-repeats (ui/keyRepeat.ts). For moving a cursor, never for an
+   * action. Optional: a host without key repeat (the tests' headless ones) just sees presses; screens go through `nav`.
+   */
+  navHit?(...k: string[]): boolean;
   say(text: string): void;
   renderNote(y?: number): void;
   drainEvents(): void;
@@ -50,6 +55,22 @@ export interface UiHost {
   boostEye(level: number): void;
   /** Advance world presentation one frame (camera, lights, particles, NPC poses) without simulating. */
   animate(dt: number): void;
+}
+
+/** A key pressed, or a held one repeating: for moving a cursor through a menu, so holding Down keeps going down. */
+export const nav = (g: UiHost, ...k: string[]): boolean => (g.navHit ? g.navHit(...k) : g.hit(...k));
+
+/**
+ * The tab a Q / R (or `prev` / `next`) press moves to among `n` tabs. A fresh press wraps round the ends; a held key
+ * stops at the first and last tab instead of spinning, so holding Q or R is a quick way to the end.
+ */
+export function tabStep(g: UiHost, tab: number, n: number, prev = "q", next = "r"): number {
+  if (n < 1) return tab;
+  if (g.hit(prev)) return (tab + n - 1) % n;
+  if (g.hit(next)) return (tab + 1) % n;
+  if (nav(g, prev)) return Math.max(0, tab - 1);
+  if (nav(g, next)) return Math.min(n - 1, tab + 1);
+  return tab;
 }
 
 export const UI = {

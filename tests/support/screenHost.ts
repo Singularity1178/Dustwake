@@ -81,6 +81,8 @@ export interface ScreenHost {
   seen: SimEvent[];
   /** Press keys for one update of the top screen. */
   press(...keys: string[]): void;
+  /** One update of the top screen in which a held key repeats (as Game.navHit sees it): not a press, so `hit` stays false. */
+  repeat(...keys: string[]): void;
   /** Render the top screens, capturing their text. */
   draw(): TextBox[];
   /** Both canvases, stacked as the browser stacks them. */
@@ -92,12 +94,13 @@ export interface ScreenHost {
 export function screenHost(w: World, scale: UiScale = "large"): ScreenHost {
   (globalThis as any).document = { createElement: () => new RCanvas() };
   let sc = UI_SCALES[scale];
-  const ui = new RCanvas(sc.uw, sc.uh), hi = new RCanvas(HI_W, HI_H), keys = new Set<string>(), notes: string[] = [], seen: SimEvent[] = [];
+  const ui = new RCanvas(sc.uw, sc.uh), hi = new RCanvas(HI_W, HI_H), keys = new Set<string>(), repeating = new Set<string>(), notes: string[] = [], seen: SimEvent[] = [];
   const host: any = {
     ctx: ui.getContext(), fctx: new RCanvas(320, 180).getContext(), fromFixedY: (y: number) => (y * sc.uh) / 180, wctx: new RCanvas(320, 180).getContext(), world: w, get pl() { return player(w); }, get area() { return currentArea(w); },
     t: 0.1, cam: { x: 0, y: 0 }, vw: 320, vh: 180, screens: new ScreenStack(), typed: [],
     sfx: new Proxy({}, { get: () => () => {} }),
     hit: (...k: string[]) => k.some((x) => keys.has(x)),
+    navHit: (...k: string[]) => k.some((x) => keys.has(x) || repeating.has(x)),
     say: (s: string) => { notes.push(s); },
     renderNote: () => {}, renderToast: () => {}, animate: () => {}, boostEye: () => {}, read: () => {},
     drainEvents: () => {
@@ -122,6 +125,7 @@ export function screenHost(w: World, scale: UiScale = "large"): ScreenHost {
   return {
     host, ui, hi, notes, seen, draw,
     press(...k) { bind(); for (const x of k) keys.add(x); host.screens.update(1 / 60); keys.clear(); },
+    repeat(...k) { bind(); for (const x of k) repeating.add(x); host.screens.update(1 / 60); repeating.clear(); },
     save(path) { require("node:fs").mkdirSync(require("node:path").dirname(path), { recursive: true }); require("node:fs").writeFileSync(path, png(composite(ui, hi), 1)); },
     setScale(next) { sc = UI_SCALES[next]; ui.width = sc.uw; ui.height = sc.uh; ui.getContext(); bind(); },
   };

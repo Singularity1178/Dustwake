@@ -12,7 +12,7 @@
 // scrolling list on the left (with a search field on the tabs that have many
 // rows), a detail panel on the right, then a key line and a status line.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, clipText, TextField, nav, tabStep } from "../ui/kit";
 import { ITEMS, ITEM_IDS, effectLines, maxStack, type ItemId } from "../content/items";
 import { FLAGS } from "../content/flags";
 import { itemIcon } from "../art/items";
@@ -236,23 +236,24 @@ export class DebugUi {
     if (g.hit("tab")) { g.screens.popToBase(); return; }
     if (g.hit("escape")) { if (this.search.value) { this.search.clear(); this.refresh(); } else g.screens.popToBase(); return; }
     // Tabs: Q / R step, 1-5 jump.
-    if (g.hit("q")) return this.setTab(this.tab - 1);
-    if (g.hit("r")) return this.setTab(this.tab + 1);
+    const to = tabStep(g, this.tab, TABS.length);
+    if (to !== this.tab) return this.setTab(to);
     for (let i = 0; i < TABS.length; i++) if (g.hit(String(i + 1))) return this.setTab(i);
     if (TABS[this.tab].search && g.hit("/")) { this.search.active = true; return; }
     this.refresh();
-    if (g.hit("arrowup", "w")) this.move(-1);
-    if (g.hit("arrowdown", "s")) this.move(1);
-    if (g.hit("pageup")) this.move(-this.visible());
-    if (g.hit("pagedown")) this.move(this.visible());
+    // Held keys keep moving the cursor; everything below that does something still needs a fresh press.
+    if (nav(g, "arrowup", "w")) this.move(-1);
+    if (nav(g, "arrowdown", "s")) this.move(1);
+    if (nav(g, "pageup")) this.move(-this.visible());
+    if (nav(g, "pagedown")) this.move(this.visible());
     if (g.hit("home")) this.move(-9999);
     if (g.hit("end")) this.move(9999);
     const row = this.cur();
     if (!row) return;
     const step = g.has("shift") ? 10 : 1;
     if (row.key === "item") {
-      if (g.hit("arrowleft", "a")) this.qty = clamp(this.qty - step, 1, 99);
-      if (g.hit("arrowright", "d")) this.qty = clamp(this.qty + step, 1, 99);
+      if (nav(g, "arrowleft", "a")) this.qty = clamp(this.qty - step, 1, 99);
+      if (nav(g, "arrowright", "d")) this.qty = clamp(this.qty + step, 1, 99);
       if (g.hit("m")) this.qty = Math.min(99, maxStack(row.item!));
       if (g.hit("e", "enter")) this.act(row, 0);
       if (g.hit("g")) this.act(row, 2);

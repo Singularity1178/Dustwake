@@ -19,7 +19,7 @@
 // and testable headless. As much as fits moves; a full destination, an empty
 // source and the tutorial's undroppable items are refused with a message.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, describe, TextField } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe, TextField, nav } from "../ui/kit";
 import { ITEMS, effectLines, isDroppable } from "../content/items";
 import { propDef } from "../content/props";
 import { capacity } from "../sim/inventory";
@@ -151,10 +151,10 @@ export class StorageUi {
     if (g.hit("r")) { this.startRename(); return; }
     this.clampCursors();
     const before = `${this.pane}:${this.cursor}`;
-    if (g.hit("arrowleft", "a")) this.move("left");
-    if (g.hit("arrowright", "d")) this.move("right");
-    if (g.hit("arrowup", "w")) this.move("up");
-    if (g.hit("arrowdown", "s")) this.move("down");
+    if (nav(g, "arrowleft", "a")) this.move("left");
+    if (nav(g, "arrowright", "d")) this.move("right");
+    if (nav(g, "arrowup", "w")) this.move("up");
+    if (nav(g, "arrowdown", "s")) this.move("down");
     if (`${this.pane}:${this.cursor}` !== before) g.sfx.tone(500, 0.04, "square", 0.02);
     if (g.hit("e", "enter", " ")) this.act(Infinity);
     else if (g.hit("q")) this.act(1);

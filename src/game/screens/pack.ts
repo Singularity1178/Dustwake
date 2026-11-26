@@ -22,7 +22,7 @@
 //            doll is dimmed and out of reach.
 // Presentation only: dropping, placing and wearing go through sim commands.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, describe } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe, nav } from "../ui/kit";
 import { ITEMS, effectLines, isGlyph, type GearSlot } from "../content/items";
 import { GEAR_SLOT_DEFS, slotDef, type GearSlotDef } from "../content/gear";
 import { FLAGS } from "../content/flags";
@@ -168,10 +168,10 @@ export class PackUi {
     const g = this.g;
     if (g.hit("escape", "i", "tab")) { g.screens.popToBase(); return; }
     const before = `${this.slot}:${this.cursor}`;
-    if (g.hit("arrowleft", "a")) this.move("left");
-    if (g.hit("arrowright", "d")) this.move("right");
-    if (g.hit("arrowup", "w")) this.move("up");
-    if (g.hit("arrowdown", "s")) this.move("down");
+    if (nav(g, "arrowleft", "a")) this.move("left");
+    if (nav(g, "arrowright", "d")) this.move("right");
+    if (nav(g, "arrowup", "w")) this.move("up");
+    if (nav(g, "arrowdown", "s")) this.move("down");
     if (`${this.slot}:${this.cursor}` !== before) g.sfx.tone(500, 0.04, "square", 0.02);
     if (this.slot) { if (g.hit("e", "enter", " ")) this.useSlot(this.slot); return; }
     const slot = g.pl.inventory[this.cursor];

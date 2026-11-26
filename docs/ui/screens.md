@@ -5,6 +5,9 @@
 ## Text on these screens
 Every screen below is laid out on the 320x180 grid and draws its frames and sprites there, but its text is interface text: it goes through `ui/text.ts` to the hi-res layer in the mixed-case v2 face (names as titles, everything else as sentences, keys on key caps). Strings quoted in this document in capitals (`WORKING`, `BLOCKED: STORAGE FULL`, `BUILD A CRAFTING BENCH FIRST`) are the content as the sim writes it; on screen they read "Working", "Blocked: storage full". Dialogue is the exception: what is spoken stays in the capital font. See [framework.md](framework.md#two-faces-one-rule).
 
+## Holding keys in menus
+Every screen that moves a cursor with the keys keeps moving it while the key is held, through `nav(g, ...)` (a press or a repeat); the actions on the same screens still need a press each. The timing, what is covered, and the widget kit's side of it are in [framework.md](framework.md#key-repeat). `tests/keyRepeat.test.ts` covers the timing, the real `Game` (the debug menu's travel list, quantity, tabs; held actions firing once; a key held across a screen change), the widget kit and each screen.
+
 ## Worker management and storage screens
 Two overlays behind `UiHost`, registered in `Game.makeScreens` and opened from the host's `onEvent`, only for the player's own event and only from the play screen (so a worker's events, or a player event arriving under another screen, never open or replace anything; `view/audience.ts` already filters the first). The world pauses under them; they hold no saved state (cursor memory aside), so **there is no schema change and no migration**.
 

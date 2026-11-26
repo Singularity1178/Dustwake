@@ -1,7 +1,7 @@
 // Reading screen for book items (ITEMS[id].book). Reading is a sim command
 // (readItem: e.g. learning to build); this screen only turns pages.
 import type { Screen } from "../ui/screens";
-import type { UiHost } from "../ui/kit";
+import { type UiHost, nav } from "../ui/kit";
 import { ITEMS, type ItemId } from "../content/items";
 import { readItem } from "../sim/commands";
 import { label, hints, sentence, shade, occlude } from "../ui/text";
@@ -28,8 +28,10 @@ export class BookUi {
     const g = this.g, b = this.book, pages = b ? ITEMS[b.id].book?.pages ?? [] : [];
     if (!b || g.hit("escape", "i", "tab")) { g.screens.popToBase(); g.drainEvents(); return; }
     if (this.screen.t < 0.3) return;
-    if (g.hit("arrowleft", "a") && b.page > 0) { b.page--; g.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
-    if (g.hit("arrowright", "d", "e", "enter", " ")) {
+    // Left / right turn the pages and keep turning while held (to the first or last page). Only E / Enter / Space
+    // close the book, from the last page, and only on a press: a held right never shuts it.
+    if (nav(g, "arrowleft", "a") && b.page > 0) { b.page--; g.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
+    if (g.hit("e", "enter", " ") || nav(g, "arrowright", "d")) {
       if (b.page < pages.length - 1) { b.page++; g.sfx.noise(0.15, 0.06, "bandpass", 2200, 1, 0, 600); }
       else if (g.hit("e", "enter", " ")) { g.screens.popToBase(); g.drainEvents(); }
     }

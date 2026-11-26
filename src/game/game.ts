@@ -75,6 +75,7 @@ import { SimClock, TICK, GAME_SPEEDS, stepSpeed, type GameSpeed } from "./core/c
 import { enableLod } from "./sim/lod";
 import type { PlayerInput, PlayerStepResult } from "./sim/step";
 import { Gui, type GuiInput } from "./ui/gui";
+import { KeyRepeat } from "./ui/keyRepeat";
 import { NotificationFeed, noteForEvent, type Note } from "./ui/notify";
 import { Settings, applyPalette, browserStorage, type Action } from "./ui/settings";
 import { SaveStore, MemoryBackend, slotName, type LoadResult } from "./world/saveStore";
@@ -258,6 +259,10 @@ export class Game {
   mouse = { x: NaN, y: NaN, down: false, rdown: false, pressed: false, released: false, rpressed: false, wheel: 0 };
   /** Keys pressed this frame, kept for the UI layer (it reads them while drawing, after update has cleared `pressed`). */
   uiPressed = new Set<string>();
+  /** Menu key auto-repeat (ui/keyRepeat.ts): the held key that repeats, and the key that repeated this frame (the UI layer keeps its copy, as with `uiPressed`). */
+  readonly repeat = new KeyRepeat();
+  uiRepeat: string | null = null;
+  private repeatScreen: Screen | undefined;
   /** Frame and simulation timing (the performance readout and graphs). */
   perf = { fps: 60, ticks: 0, simMs: 0, history: [] as number[], tickHistory: [] as number[], dropped: 0 };
 
@@ -439,12 +444,16 @@ export class Game {
   keyDown(k: string) {
     const raw = k;
     k = k.toLowerCase();
-    if (!this.keys.has(k)) this.pressed.add(k);
+    if (!this.keys.has(k)) {
+      this.pressed.add(k);
+      this.repeat.press(k);
+      if (this.repeat.key === k) this.repeatScreen = this.screens.top; // it repeats on the screen it was pressed on
+    }
     this.keys.add(k);
     if (raw.length === 1) this.typed.push(raw);
     else if (k === "backspace") this.typed.push("\b");
   }
-  keyUp(k: string) { this.keys.delete(k.toLowerCase()); }
+  keyUp(k: string) { k = k.toLowerCase(); this.keys.delete(k); this.repeat.release(k); }
   pointer() { this.pressed.add("click"); }
 
   /** Debug keybinds (Ctrl+0..6), wired up in App.tsx. Ctrl+0 opens (or closes) the debug menu. */
@@ -486,6 +495,13 @@ export class Game {
   }
   has(...k: string[]) { return k.some((x) => this.keys.has(x)); }
   hit(...k: string[]) { return k.some((x) => this.pressed.has(x)); }
+  /**
+   * Pressed this frame, or a held key repeating (ui/keyRepeat.ts): for moving a cursor through a menu. Actions keep
+   * `hit`, so holding a key never uses, crafts or travels twice.
+   */
+  navHit(...k: string[]) { return this.hit(...k) || (this.repeat.fired !== null && k.includes(this.repeat.fired)); }
+  /** Nothing repeats until the next key press (the key was spent on something else, as a remap). */
+  stopRepeat() { this.repeat.stop(); this.uiRepeat = null; }
 
   // ---------------------------------------------------------------- debug menu host (screens/debug.ts)
   /** Set or clear a flag from the debug menu. The mended eye also moves the zoom, as Ctrl+5 does. */
@@ -609,7 +625,11 @@ export class Game {
     this.stepZoom(dt);
     this.notes.update(dt);
     if (dt > 0) this.perf.fps += (1 / dt - this.perf.fps) * 0.1;
+    // A key held across a change of screen does not carry on repeating into the new one.
+    if (this.screens.top !== this.repeatScreen) this.repeat.stop();
+    this.repeat.tick(dt, this.keys);
     this.uiPressed = new Set(this.pressed);
+    this.uiRepeat = this.repeat.fired;
     this.screens.update(dt);
     this.pressed.clear();
     this.typed.length = 0;
@@ -1472,9 +1492,14 @@ export class Game {
   /** The widget kit's input this frame, in the hi-res layer's logical px. */
   guiInput(lw: number, lh: number): GuiInput {
     const k = this.uiPressed, has = (...ks: string[]) => ks.some((x) => k.has(x));
+    // Held keys repeat for the widgets' cursor moves (up / down / left / right / tabs), never for activate or back, and
+    // not on the play screen, where W A S D walk and the HUD's few widgets must not take the focus along.
+    const rk = this.screens.is("play") ? null : this.uiRepeat, step = (...ks: string[]) => has(...ks) || (rk !== null && ks.includes(rk));
+    const fresh = { up: has("arrowup", "w"), down: has("arrowdown", "s"), left: has("arrowleft", "a"), right: has("arrowright", "d"), activate: has("enter", "e", " "), back: has("escape"), prevTab: has("q"), nextTab: has("r") };
     return {
       mx: (this.mouse.x * lw) / W, my: (this.mouse.y * lh) / H, down: this.mouse.down, pressed: this.mouse.pressed, released: this.mouse.released, rpressed: this.mouse.rpressed, wheel: this.mouse.wheel,
-      keys: { up: has("arrowup", "w"), down: has("arrowdown", "s"), left: has("arrowleft", "a"), right: has("arrowright", "d"), activate: has("enter", "e", " "), back: has("escape"), prevTab: has("q"), nextTab: has("r") },
+      keys: { ...fresh, up: step("arrowup", "w"), down: step("arrowdown", "s"), left: step("arrowleft", "a"), right: step("arrowright", "d"), prevTab: step("q"), nextTab: step("r") },
+      fresh,
       t: this.t, dt: this.frameDt,
     };
   }

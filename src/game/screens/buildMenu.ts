@@ -7,7 +7,7 @@
 // Presentation only: every rule comes from sim/build.ts and sim/catalog.ts, and
 // confirming issues orderBuild / orderDeconstruct (normal task + effect path).
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, drawFitted, clipText, TextField } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, drawFitted, clipText, TextField, nav, tabStep } from "../ui/kit";
 import { RECIPES, BUILD_CATEGORIES, BUILD_REACH, AUTHORED_SALVAGE, categoryName, placeRule, type Recipe, type Cost } from "../content/build";
 import { ITEM_NAMES } from "../content/items";
 import { propDef } from "../content/props";
@@ -166,10 +166,10 @@ export class BuildUi {
     const L = letters ? ["arrowleft", "a"] : ["arrowleft"], R = letters ? ["arrowright", "d"] : ["arrowright"];
     const U = letters ? ["arrowup", "w"] : ["arrowup"], D = letters ? ["arrowdown", "s"] : ["arrowdown"];
     const c = this.cursor;
-    if (g.hit(...L)) this.cursor = Math.max(0, c - 1);
-    if (g.hit(...R)) this.cursor = Math.min(n - 1, c + 1);
-    if (g.hit(...U) && c - COLS >= 0) this.cursor = c - COLS;
-    if (g.hit(...D)) this.cursor = Math.min(n - 1, c + COLS);
+    if (nav(g, ...L)) this.cursor = Math.max(0, c - 1);
+    if (nav(g, ...R)) this.cursor = Math.min(n - 1, c + 1);
+    if (nav(g, ...U) && c - COLS >= 0) this.cursor = c - COLS;
+    if (nav(g, ...D)) this.cursor = Math.min(n - 1, c + COLS);
     if (this.cursor !== c) { g.sfx.tone(500, 0.04, "square", 0.02); this.scrollTo(); }
   }
 
@@ -186,9 +186,7 @@ export class BuildUi {
     }
     if (g.hit("escape", "b", "i", "tab")) { this.close(); return; }
     if (g.hit("/", "t")) { s.active = true; g.sfx.tone(520, 0.05, "triangle", 0.04); return; }
-    let tab = this.tab;
-    if (g.hit("q")) tab = (tab + TABS.length - 1) % TABS.length;
-    if (g.hit("r")) tab = (tab + 1) % TABS.length;
+    let tab = tabStep(g, this.tab, TABS.length);
     for (let i = 0; i < TABS.length; i++) if (g.hit(String(i + 1))) tab = i;
     if (tab !== this.tab) { this.tab = tab; this.cursor = 0; this.scroll = 0; this.refresh(); g.sfx.tone(380, 0.05, "triangle", 0.04); }
     if (g.hit("o")) { this.sort = SORT_KEYS[(SORT_KEYS.indexOf(this.sort) + 1) % SORT_KEYS.length]; this.refresh(); g.sfx.tone(450, 0.04, "triangle", 0.04); }
@@ -215,10 +213,10 @@ export class BuildUi {
   }
   private moveTile() {
     const g = this.g, c = this.cur, ox = c.tx, oy = c.ty;
-    if (g.hit("arrowleft", "a")) c.tx--;
-    if (g.hit("arrowright", "d")) c.tx++;
-    if (g.hit("arrowup", "w")) c.ty--;
-    if (g.hit("arrowdown", "s")) c.ty++;
+    if (nav(g, "arrowleft", "a")) c.tx--;
+    if (nav(g, "arrowright", "d")) c.tx++;
+    if (nav(g, "arrowup", "w")) c.ty--;
+    if (nav(g, "arrowdown", "s")) c.ty++;
     this.clampCursor();
     if (c.tx !== ox || c.ty !== oy) g.sfx.tone(500, 0.03, "square", 0.02);
   }

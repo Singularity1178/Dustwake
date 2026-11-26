@@ -22,7 +22,7 @@
 // Until the golem knows the craft (StationDef.requires) the same layout opens
 // greyed out: no plans are listed or readable and the button is dead.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, clipText, nav, tabStep } from "../ui/kit";
 import { ITEM_NAMES } from "../content/items";
 import { STATIONS, isStation, type StationDef, type StationTab } from "../content/crafting";
 import { craftList, craftLocked, craftReason, orderCraft, type CraftEntry } from "../sim/crafting";
@@ -120,13 +120,12 @@ export class CraftingUi {
       return;
     }
     if (this.tabs.length) {
-      if (g.hit("q")) this.setTab(this.tab - 1);
-      if (g.hit("r")) this.setTab(this.tab + 1);
+      this.setTab(tabStep(g, this.tab, this.tabs.length));
       this.tabs.forEach((_, i) => { if (g.hit(String(i + 1))) this.setTab(i); });
     }
     const c = this.cursor;
-    if (g.hit("arrowup", "w")) this.cursor = Math.max(0, c - 1);
-    if (g.hit("arrowdown", "s")) this.cursor = Math.max(0, Math.min(this.list.length - 1, c + 1));
+    if (nav(g, "arrowup", "w")) this.cursor = Math.max(0, c - 1);
+    if (nav(g, "arrowdown", "s")) this.cursor = Math.max(0, Math.min(this.list.length - 1, c + 1));
     if (g.hit("arrowright", "d") && this.list.length) this.focus = "button";
     if (g.hit("arrowleft", "a")) this.focus = "list";
     if (this.cursor !== c) { g.sfx.tone(500, 0.04, "square", 0.02); this.refresh(); }

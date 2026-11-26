@@ -10,6 +10,9 @@
 // Up / Down move the focus, Left / Right change a focused slider, choice or tab
 // bar, Enter / E / Space activate, Esc is "back" (the screen decides what that
 // closes). A list keeps Up / Down for its own rows until its first or last row.
+// A held key repeats (ui/keyRepeat.ts): `keys` is then true on every repeat as well as the press, `fresh` only on the
+// press. A fresh Up / Down wraps round the focus order and a tab bar, a held one stops at the end (so holding Down in
+// a list never carries on out of it), and a toggle only flips on the press, so holding Left never makes it flicker.
 import { drawText2, textWidth2, wrapText2, clipText2, CELL_H2, LINE_H2, type Align } from "./font2";
 
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -24,6 +27,8 @@ export interface GuiInput {
   /** Wheel this frame (+ is down / toward the user). */
   wheel: number;
   keys: GuiKeys;
+  /** The keys going down this frame, without the repeats of a held one (absent: `keys` is all fresh presses). */
+  fresh?: GuiKeys;
   t: number; dt: number;
 }
 export const noKeys = (): GuiKeys => ({ up: false, down: false, left: false, right: false, activate: false, back: false, prevTab: false, nextTab: false });
@@ -68,6 +73,9 @@ export class Gui {
   private sorts = new Map<string, { col: number; dir: 1 | -1 }>();
   private lastClick = { id: "", t: -9 };
 
+  /** The keys pressed this frame, as against held keys repeating. */
+  private get fresh(): GuiKeys { return this.input.fresh ?? this.input.keys; }
+
   begin(ctx: CanvasRenderingContext2D, w: number, h: number, input: GuiInput) {
     this.ctx = ctx; this.w = w; this.h = h; this.input = input;
     this.overPrev = this.over; this.over = false; this.wantsWheel = false;
@@ -75,10 +83,13 @@ export class Gui {
   }
 
   end() {
-    const k = this.input.keys;
+    const k = this.input.keys, f = this.fresh;
     if (!this.navTaken && (k.up || k.down) && this.order.length) {
+      const n = this.order.length, d = k.down ? 1 : -1, held = !(k.down ? f.down : f.up);
       let i = this.focus ? this.order.indexOf(this.focus) : -1;
-      i = i < 0 ? (k.down ? 0 : this.order.length - 1) : (i + (k.down ? 1 : -1) + this.order.length) % this.order.length;
+      if (i < 0) i = k.down ? 0 : n - 1;
+      else if (!held) i = (i + d + n) % n;
+      else i = Math.max(0, Math.min(n - 1, i + d));
       this.focus = this.order[i];
     }
     if (this.focus && !this.order.includes(this.focus)) this.focus = null;
@@ -161,7 +172,7 @@ export class Gui {
     this.fill(b, THEME.track); this.stroke(b, s.hover ? THEME.hi : THEME.edge);
     if (value) this.fill({ x: b.x + 2, y: b.y + 2, w: 5, h: 5 }, THEME.ok);
     this.textIn(label, r.x + 17, r.y + Math.round((r.h - CELL_H2) / 2) + 1, r.w - 20);
-    const k = this.input.keys;
+    const k = this.fresh;
     if (s.clicked || (s.focused && (k.activate || k.left || k.right))) return !value;
     return value;
   }
@@ -225,9 +236,10 @@ export class Gui {
       if (hov && s.clicked) out = i;
     });
     if (s.focused) this.stroke(r, THEME.focus);
-    const k = this.input.keys, n = labels.length;
-    if ((hotkeys && k.prevTab) || (s.focused && k.left)) out = (index - 1 + n) % n;
-    if ((hotkeys && k.nextTab) || (s.focused && k.right)) out = (index + 1) % n;
+    const k = this.input.keys, f = this.fresh, n = labels.length;
+    const back = (hotkeys && k.prevTab) || (s.focused && k.left), forward = (hotkeys && k.nextTab) || (s.focused && k.right);
+    if (back) out = (hotkeys && f.prevTab) || (s.focused && f.left) ? (index - 1 + n) % n : Math.max(0, index - 1);
+    if (forward) out = (hotkeys && f.nextTab) || (s.focused && f.right) ? (index + 1) % n : Math.min(n - 1, index + 1);
     return out;
   }
 
@@ -260,10 +272,11 @@ export class Gui {
       this.fill({ x: tr.x, y: ty, w: tr.w, h: th }, s.held && inp.mx >= tr.x ? THEME.accent : THEME.hi);
       if (s.held && inp.mx >= tr.x - 2) scroll = Math.round(Math.max(0, Math.min(1, (inp.my - tr.y - th / 2) / Math.max(1, tr.h - th))) * maxScroll);
     }
-    const k = inp.keys;
+    const k = inp.keys, f = this.fresh;
     if (s.focused && count) {
       if (k.down && sel < count - 1) { out = sel < 0 ? 0 : sel + 1; this.navTaken = true; }
       else if (k.up && sel > 0) { out = sel - 1; this.navTaken = true; }
+      else if ((k.down && !f.down) || (k.up && !f.up)) this.navTaken = true; // held at the first or last row: stay in the list
       if (k.activate && sel >= 0) activated = sel;
       if (out < scroll) scroll = out;
       if (out >= scroll + visible) scroll = out - visible + 1;

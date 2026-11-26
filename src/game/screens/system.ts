@@ -58,6 +58,7 @@ export class SystemMenu {
         if (k !== "escape") { g.settings.bind(this.capturing, k); this.status = `${ACTIONS.find((a) => a.id === this.capturing)?.label}: ${keyLabel(k)}`; }
         this.capturing = null;
         g.uiPressed.clear();
+        g.stopRepeat(); // the key just bound must not go on to repeat into the widgets
         break;
       }
       return;

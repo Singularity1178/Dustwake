@@ -7,6 +7,7 @@
 | Key | Action |
 | --- | --- |
 | `W` `A` `S` `D` / arrow keys | Move |
+| Hold a movement key (any menu) | Keeps the cursor going: pack, storage, transfer, management, crafting, smithing, the build menu and its placement ghost, the debug menu (items, flags, travel places), book pages, and the system menu. After a short pause it repeats steadily and quickens the longer it is held; it stops at the ends of a list (a fresh press wraps). `Q` / `R` tab switching, `PgUp` / `PgDn` and the debug menu's `A` / `D` quantity repeat too. Actions never do: holding `E`, `Q`, `G`, `X` or `F` crafts, drops, summons or travels once |
 | `E` / `Enter` | Interact / use |
 | `Space` | Attack: a heavy two-arm ground slam. Works anywhere, facing anything, with or without the iron arm, even right next to something you could interact with (that stays on `E`) |
 | `I` / `Tab` | Open pack (inventory) |

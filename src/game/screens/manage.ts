@@ -23,7 +23,7 @@
 // world running, like the crafting bench: the screen closes, the work happens,
 // and the host reopens it (`pending` / `resume`) when the reach is done.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, clipText, TextField } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, clipText, TextField, nav } from "../ui/kit";
 import { actorDef } from "../content/actors";
 import { ITEM_NAMES } from "../content/items";
 import { slotDef } from "../content/gear";
@@ -292,14 +292,14 @@ export class ManageUi {
     if (g.hit("escape")) { if (this.view === "main") g.screens.popToBase(); else { this.go("main"); g.sfx.tone(400, 0.04, "square", 0.02); } return; }
     this.refresh();
     const before = `${this.view}:${this.row}`;
-    if (g.hit("arrowup", "w")) this.rows[this.view] = Math.max(0, this.row - 1);
-    if (g.hit("arrowdown", "s")) this.rows[this.view] = Math.min(this.list.length - 1, this.row + 1);
+    if (nav(g, "arrowup", "w")) this.rows[this.view] = Math.max(0, this.row - 1);
+    if (nav(g, "arrowdown", "s")) this.rows[this.view] = Math.min(this.list.length - 1, this.row + 1);
     if (`${this.view}:${this.row}` !== before) g.sfx.tone(500, 0.04, "square", 0.02);
     const r = this.current;
     if (g.hit("c")) { this.swapCore(); return; }
     if (this.view === "main" && g.hit("r")) { this.startRename(); return; }
     if (!r) return;
-    const d = g.hit("arrowleft", "a") ? -1 : g.hit("arrowright", "d") ? 1 : 0;
+    const d = nav(g, "arrowleft", "a") ? -1 : nav(g, "arrowright", "d") ? 1 : 0;
     if (d && r.step) { r.step(d); g.sfx.tone(480, 0.04, "square", 0.02); this.refresh(); return; }
     if (g.hit("e", "enter", " ")) {
       if (r.act && r.ok) r.act();

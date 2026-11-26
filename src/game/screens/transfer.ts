@@ -19,7 +19,7 @@
 // headless. As much as fits moves; a full side, an empty slot, a body that can't
 // wear the item and the tutorial's undroppable items are refused with a message.
 import type { Screen } from "../ui/screens";
-import { type UiHost, UI, frame, panel, selEdge, describe } from "../ui/kit";
+import { type UiHost, UI, frame, panel, selEdge, describe, nav } from "../ui/kit";
 import { ITEMS, effectLines, isDroppable, type ItemId } from "../content/items";
 import { actorDef } from "../content/actors";
 import { slotDef } from "../content/gear";
@@ -159,10 +159,10 @@ export class TransferUi {
     if (gone) { g.say(gone); g.screens.popToBase(); return; }
     this.clampCursors();
     const before = `${this.pane}:${this.cursor}`;
-    if (g.hit("arrowleft", "a")) this.move("left");
-    if (g.hit("arrowright", "d")) this.move("right");
-    if (g.hit("arrowup", "w")) this.move("up");
-    if (g.hit("arrowdown", "s")) this.move("down");
+    if (nav(g, "arrowleft", "a")) this.move("left");
+    if (nav(g, "arrowright", "d")) this.move("right");
+    if (nav(g, "arrowup", "w")) this.move("up");
+    if (nav(g, "arrowdown", "s")) this.move("down");
     if (`${this.pane}:${this.cursor}` !== before) g.sfx.tone(500, 0.04, "square", 0.02);
     if (g.hit("e", "enter", " ")) this.act(Infinity);
     else if (g.hit("q")) this.act(1);
