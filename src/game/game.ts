@@ -69,6 +69,7 @@ import { ParticleSystem, type Particle } from "./view/particles";
 import { WorldRenderer } from "./view/worldRenderer";
 import { EventReactions } from "./view/reactions";
 import { Interpolator } from "./view/interp";
+import { TimeFx } from "./view/timeFx";
 import { HiHud } from "./view/hudHi";
 import { downloadText, pickTextFile } from "./view/files";
 import { SimClock, TICK, GAME_SPEEDS, stepSpeed, type GameSpeed } from "./core/clock";
@@ -237,6 +238,8 @@ export class Game {
   speed: GameSpeed = 1;
   lastSpeed: GameSpeed = 1;
   interp = new Interpolator();
+  /** The look of the game speed (view/timeFx.ts: a hush when paused, warm streaks and a vignette as time speeds up). Presentation only. */
+  timeFx = new TimeFx();
   /** Edge actions waiting for the next tick: a press on a frame that runs no tick is not lost. */
   latch = { use: false, attack: false, core: false, toggleScan: false };
   /** A click on what E would use (view/hudHi.ts) uses it on the next tick. */
@@ -623,6 +626,8 @@ export class Game {
       for (const u of due) u.fn();
     }
     this.stepZoom(dt);
+    // The speed's look shows over the play screen only (a menu or cutscene over the world puts it away), and only if the setting is on.
+    this.timeFx.update(dt, this.speed, this.screens.is("play") && this.settings.bool("timeFx"));
     this.notes.update(dt);
     if (dt > 0) this.perf.fps += (1 / dt - this.perf.fps) * 0.1;
     // A key held across a change of screen does not carry on repeating into the new one.
@@ -1175,6 +1180,10 @@ export class Game {
       // interface text asked for on the base grid (ui/text.ts) is drawn on this layer, in the v2 face
       bindUiText({ base: this.ctx, fixed: this.fctx, hi: hx, s: L.s, k: L.k, uw: L.uw, uh: L.uh });
       this.learnNames();
+      // the game speed's look: a grade on the world canvas and an overlay on the fixed layer, under the interface
+      this.timeFx.applyFilter(this.canvas);
+      this.timeFx.render(this.fctx);
+      this.renderPauseLabel();
       this.gui.begin(hx, L.lw, L.lh, this.guiInput(L.lw, L.lh));
       this.screens.render();
       this.hud.render();
@@ -1182,6 +1191,18 @@ export class Game {
     } finally { restore(); }
     const m = this.mouse;
     m.pressed = false; m.released = false; m.rpressed = false; m.wheel = 0;
+  }
+
+  /** "PAUSED" in the middle of the screen while the pause look is showing (it fades in and out with the look). */
+  private renderPauseLabel() {
+    const a = this.timeFx.cur.pauseA;
+    if (a < 0.02) return;
+    const f = this.fctx, was = f.globalAlpha;
+    f.globalAlpha = Math.min(1, a);
+    labelS(f, "Paused", W / 2, H / 2 - 34, "#ffffff", "center", "#000", { case: "raw", bold: true });
+    f.globalAlpha = Math.min(1, a) * 0.8;
+    labelS(f, "Press P to resume", W / 2, H / 2 - 22, "#d8d8d8", "center", "#000", { case: "raw" });
+    f.globalAlpha = was;
   }
 
   renderWorldScene() {

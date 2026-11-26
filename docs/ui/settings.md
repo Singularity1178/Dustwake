@@ -7,7 +7,7 @@ One registry: `registerSetting({ id, label, category, kind: "slider" | "toggle" 
 | Category | Settings |
 | --- | --- |
 | Audio | master, effects, ambience volume (the synth now mixes through separate effect and ambience buses) |
-| Display | UI scale (compact / normal / large), smooth motion (interpolation), performance readout |
+| Display | UI scale (compact / normal / large), smooth motion (interpolation), time speed effects (the look of each game speed, on by default: see [view/rendering.md](../view/rendering.md)), performance readout |
 | Accessibility | screen shake on / off and strength, bright flashes (off: white flashes dim to a soft fade), overlay colours: default, deuteranopia, protanopia, tritanopia (Okabe-Ito based) and high contrast; they recolour the vision overlay's categories and the UI's alert, warning, info and selection colours |
 | Game | autosave interval, pause on alert, simulation LOD |
 

@@ -43,6 +43,7 @@ export const settingDef = (id: string) => REGISTRY.find((d) => d.id === id);
   { id: "volAmbient", label: "Ambience", category: "audio", kind: "slider", def: 100, min: 0, max: 100, step: 5 },
   { id: "uiScale", label: "UI scale", category: "display", kind: "choice", def: "large", options: [{ value: "compact", label: "Compact" }, { value: "normal", label: "Normal" }, { value: "large", label: "Large" }], help: "Size of the whole interface: the HUD and every menu, panel, slot and line of text together. Large is the full size and the default; Normal is three quarters of it, Compact half." },
   { id: "interp", label: "Smooth motion", category: "display", kind: "toggle", def: true, help: "Draw moving things between simulation ticks." },
+  { id: "timeFx", label: "Time speed effects", category: "display", kind: "toggle", def: true, help: "A look for each game speed so you can tell at a glance: a hush and a Paused label when paused, and a vignette with streaks at the screen edges as time speeds up (subtle at 2x, stronger at 4x and 8x)." },
   { id: "perf", label: "Show performance", category: "display", kind: "toggle", def: false, help: "Frame rate, ticks per frame, simulation time and LOD tiers." },
   { id: "shake", label: "Screen shake", category: "access", kind: "toggle", def: true },
   { id: "shakeAmt", label: "Shake strength", category: "access", kind: "slider", def: 100, min: 0, max: 100, step: 10 },
