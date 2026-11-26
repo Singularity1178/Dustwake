@@ -1,17 +1,18 @@
-// Gear: the basket is picked up like any item, worn in the golem's back slot
-// from the pack (capacity 48), and taken off only if everything, the basket
-// included, still fits. Headless, through the sim commands the pack screen uses.
+// Gear: the foraging basket is crafted (never found lying about), carried like
+// any item, worn in the golem's back slot from the pack (capacity 48), and taken
+// off only if everything, the basket included, still fits. Headless, through the
+// sim commands the pack screen uses. (Crafting it: tests/crafting.test.ts.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hasFlag, player, currentArea, enterArea, setFlag, makeActor, type World } from "../src/game/world/world";
+import { hasFlag, player, getArea, setFlag, makeActor, type World } from "../src/game/world/world";
 import { serialize, deserialize } from "../src/game/world/save";
 import { capacity, addItems, countItem, hasItem } from "../src/game/sim/inventory";
 import { wearFromSlot, takeOffGear, dropFromSlot } from "../src/game/sim/commands";
 import { ensureWorn, wornIn, takeOffCheck } from "../src/game/sim/gear";
 import { enqueueTask } from "../src/game/sim/tasks";
 import { FLAGS } from "../src/game/content/flags";
-import type { ItemId } from "../src/game/content/items";
-import { events, find, frames, newWorld, propItem, useOn } from "./helpers";
+import { ITEMS, type ItemId } from "../src/game/content/items";
+import { events, frames, newWorld, propItem, useOn } from "./helpers";
 
 const slotOf = (w: World, id: ItemId) => player(w).inventory.findIndex((s) => s?.item === id);
 const onGround = (w: World) => [...w.areas.values()].flatMap((a) => a.loose.filter((l) => l.dyn && !l.taken));
@@ -22,27 +23,22 @@ function owned(w: World) {
   for (const id of Object.values(pl.gear)) if (id) m[id] = (m[id] ?? 0) + 1;
   return m;
 }
-/** A golem with the iron arm (16 slots) that has picked up the surface basket. */
+/** A golem with the iron arm (16 slots) that has a basket in its pack (made at a bench: tests/crafting.test.ts). */
 function withBasket() {
   const w = newWorld(), pl = player(w);
   setFlag(w, FLAGS.golemArm);
-  enterArea(w, pl, "surface", 100, 100);
-  useOn(w, find(w, (i) => i.looseId === "basket"));
+  addItems(w, pl, "basket", 1);
   events(w);
   return { w, pl };
 }
 
-test("picking up the basket stores it like any item: no attach animation, no equip ceremony", () => {
+test("the basket is not found anywhere in the world; carried, it is an ordinary item that grants nothing until worn", () => {
   const w = newWorld(), pl = player(w);
-  enterArea(w, pl, "surface", 100, 100);
+  for (const id of ["dungeon", "surface"]) assert.ok(!getArea(w, id).loose.some((l) => l.item === "basket"), `no loose basket in ${id}`);
   events(w);
-  useOn(w, find(w, (i) => i.looseId === "basket"));
-  const ev = events(w);
+  assert.equal(ITEMS.basket.name, "FORAGING BASKET");
+  addItems(w, pl, "basket", 1);
   assert.ok(hasItem(pl, "basket"), "in the pack");
-  assert.ok(currentArea(w).looseItem("basket")!.taken);
-  assert.ok(ev.some((e) => e.t === "itemGained" && e.item === "basket" && e.stored), "ordinary pickup feedback");
-  assert.ok(!ev.some((e) => e.t === "equipped" || e.t === "gearOn"), "nothing installed or worn");
-  assert.ok(!ev.some((e) => e.t === "taskTick" && e.task.kind === "attach"), "no attach task");
   assert.equal(wornIn(pl, "back"), undefined);
   assert.equal(capacity(w, pl), 8, "carrying it grants nothing");
 });
@@ -93,7 +89,7 @@ test("taking it off is refused when the basket itself would need a 17th slot; no
   assert.equal(JSON.stringify([pl.inventory, pl.gear]), before, "nothing changed");
   assert.equal(capacity(w, pl), 48);
   const msg = events(w).find((e) => e.t === "message");
-  assert.ok(msg?.t === "message" && /TOO MUCH TO CARRY WITHOUT THE WOVEN BASKET - FREE 1 SLOT$/.test(msg.text), "a clear refusal");
+  assert.ok(msg?.t === "message" && /TOO MUCH TO CARRY WITHOUT THE FORAGING BASKET - FREE 1 SLOT$/.test(msg.text), "a clear refusal");
   frames(w, 5);
   assert.equal(onGround(w).length, 0, "nothing dropped");
   // Drop one relic: 15 slots plus the basket fill the 16 exactly.

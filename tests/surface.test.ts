@@ -141,11 +141,11 @@ test("dropped items can't satisfy ritual sockets or the centre", () => {
   assert.ok(!events(w).some((e) => e.t === "runeActivated" || e.t === "runeFizzled" || e.t === "glyphPlaced"));
 });
 
-test("the surface basket is picked up into the pack; worn, it grants the 48-slot tier", () => {
+test("a basket in the pack is stored like any item; worn, it grants the 48-slot tier", () => {
   const w = newWorld(), pl = player(w);
   enterArea(w, pl, "surface", 100, 100);
-  const it = find(w, (i) => i.looseId === "basket");
-  useOn(w, it);
+  assert.ok(!currentArea(w).loose.some((l) => l.item === "basket"), "nothing to pick up on the surface: it is crafted (tests/crafting.test.ts)");
+  addItems(w, pl, "basket", 1);
   assert.ok(hasItem(pl, "basket"), "stored like any item");
   assert.equal(capacity(w, pl), 8);
   assert.equal(wearFromSlot(w, pl, pl.inventory.findIndex((s) => s?.item === "basket")), "ok");

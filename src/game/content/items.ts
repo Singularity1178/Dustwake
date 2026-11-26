@@ -150,7 +150,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   dirt: { name: "DIRT", tags: ["material"], stack: 20, desc: ["LOOSE EARTH. NO USE FOR IT", "YET."] },
   ...toolRows(),
   // Gear for the back slot: an ordinary pack item until it is worn (sim/gear.ts); worn, it grows the pack.
-  basket: { name: "WOVEN BASKET", tags: ["part"], wear: { kind: "back" }, desc: ["A WOVEN BASKET. STRAP IT TO", "YOUR BACK TO CARRY MORE."] },
+  // Crafted at a bench from planks (content/crafting.ts), never found lying about. The id stays `basket`: saves and gear name it.
+  basket: { name: "FORAGING BASKET", tags: ["part"], wear: { kind: "back" }, desc: ["A FORAGING BASKET. STRAP IT TO", "YOUR BACK TO CARRY MORE."] },
   // Runes: worn in a rune slot, their effects apply only while worn.
   rune_swift: {
     name: "RUNE OF SWIFT", tags: ["rune"], wear: { kind: "rune" }, desc: ["A STONE CARVED WITH THE SIGN", "OF SWIFTNESS."],

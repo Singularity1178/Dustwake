@@ -11,7 +11,7 @@ import { player, currentArea, setFlag, enterArea, makeActor, type World } from "
 import { serialize, deserialize, migrate, SAVE_VERSION } from "../src/game/world/save";
 import { addItems, countItem, capacity } from "../src/game/sim/inventory";
 import { enqueueTask } from "../src/game/sim/tasks";
-import { orderBuild } from "../src/game/sim/commands";
+import { orderBuild, wearFromSlot } from "../src/game/sim/commands";
 import { craftEntries, orderCraft, craftLocked, craftReason } from "../src/game/sim/crafting";
 import { catalogEntries, queryCatalog, sortEntries, matchesSearch, entryReason } from "../src/game/sim/catalog";
 import { CRAFT_RECIPES, STATION_REQUIRES, rawValue } from "../src/game/content/crafting";
@@ -44,9 +44,12 @@ test("crafting data: planks and cut stone from raw materials, two runes carved f
   // (plus the ruby chain and the inverse rows promoted from the foundation fixture: tests/rollout.test.ts)
   // (and the hafted tools; the smelter's and the anvil's rows are tests/smithing.test.ts)
   assert.deepEqual(Object.keys(by).filter((id) => by[id].station === "crafting").sort(),
-    ["axe", "axe_fine", "cut_stone", "pickaxe", "pickaxe_fine", "planks", "ruby_core", "rune_glow", "rune_swift", "shovel", "shovel_fine", "unmake_crown", "unmake_rune_glow", "unmake_rune_swift"]);
+    ["axe", "axe_fine", "basket", "cut_stone", "pickaxe", "pickaxe_fine", "planks", "ruby_core", "rune_glow", "rune_swift", "shovel", "shovel_fine", "unmake_crown", "unmake_rune_glow", "unmake_rune_swift"]);
   assert.deepEqual(by.planks.inputs.map((c) => c.item), ["wood"]); assert.equal(by.planks.output.item, "planks");
   assert.deepEqual(by.cut_stone.inputs.map((c) => c.item), ["stone"]); assert.equal(by.cut_stone.output.item, "cut_stone");
+  // the foraging basket is made of planks alone, with no tool
+  assert.deepEqual(by.basket.inputs, [{ item: "planks", n: 6 }]); assert.equal(by.basket.tools, undefined);
+  assert.deepEqual(by.basket.output, { item: "basket", n: 1 });
   for (const id of ["rune_swift", "rune_glow"]) {
     assert.deepEqual(by[id].inputs.map((c) => c.item), ["cut_stone"], id);
     assert.deepEqual(by[id].tools, ["chisel"], id);
@@ -82,6 +85,29 @@ test("the craft task consumes the inputs when it fires and gives the output; the
   assert.equal(orderCraft(w, pl, "crafting", "rune_swift", bench.id), true); finish(w);
   assert.equal(countItem(pl, "cut_stone"), 0); assert.equal(countItem(pl, "rune_swift"), 1);
   assert.equal(countItem(pl, "chisel"), 1, "the tool is not consumed");
+});
+
+test("the foraging basket is crafted from planks, then worn on the back for the 48-slot pack", () => {
+  const { w, pl, bench } = atBench();
+  setFlag(w, FLAGS.golemArm);
+  assert.equal(ITEMS.basket.name, "FORAGING BASKET");
+  addItems(w, pl, "planks", 5);
+  const entry = () => craftEntries(w, pl, "crafting").find((e) => e.recipe.id === "basket")!;
+  assert.ok(entry(), "listed at the bench");
+  assert.equal(entry().status, "cost", "5 planks are not enough");
+  events(w);
+  assert.equal(orderCraft(w, pl, "crafting", "basket", bench.id), false, "refused: short of planks");
+  assert.equal(countItem(pl, "planks"), 5, "a refusal changes nothing");
+  addItems(w, pl, "planks", 2);
+  assert.equal(entry().status, "ok");
+  assert.equal(orderCraft(w, pl, "crafting", "basket", bench.id), true);
+  assert.equal(countItem(pl, "planks"), 7, "nothing is taken until the task fires");
+  finish(w);
+  assert.equal(countItem(pl, "planks"), 1); assert.equal(countItem(pl, "basket"), 1);
+  assert.ok(events(w).some((e) => e.t === "crafted" && e.item === "basket" && e.n === 1));
+  assert.equal(capacity(w, pl), 16, "carrying it grants nothing");
+  assert.equal(wearFromSlot(w, pl, pl.inventory.findIndex((s) => s?.item === "basket")), "ok");
+  assert.equal(capacity(w, pl), 48, "worn on the back");
 });
 
 test("status and refusals: unknown craft, missing tool, missing materials; a refusal changes nothing and says why", () => {

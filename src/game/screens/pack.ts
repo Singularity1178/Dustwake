@@ -312,7 +312,7 @@ export class PackUi {
     } else {
       frame(ctx, r.x, r.y, r.w, r.h, sel ? "#221d26" : "#100e12", sel ? selEdge(g.t) : "#2a2630", sel ? "#e8d8a8" : "#3a3540");
       ctx.globalAlpha *= sel ? 0.5 : 0.28;
-      ctx.drawImage((d.kind === "back" ? itemIcon("basket") : slotIcon(d.kind)).a, r.x + (r.w - 16) / 2, r.y + (r.h - 16) / 2);
+      ctx.drawImage(slotIcon(d.kind).a, r.x + (r.w - 16) / 2, r.y + (r.h - 16) / 2);
       ctx.globalAlpha /= sel ? 0.5 : 0.28;
       if (d.kind === "rune") label(ctx, d.name.slice(-1), r.x + 3, r.y + 3, UI.dim);
     }
@@ -343,13 +343,13 @@ export class PackUi {
       const d = slotDef(this.slot), usable = slotUsable(w, pl, d.id), item = wornIn(pl, d.id);
       if (!usable) {
         name = d.name; sub = "LOCKED"; subCol = UI.bad; lines = lockedText(w, pl, d); linesCol = UI.mid; ghost = true;
-        icon = (d.kind === "back" ? itemIcon("basket") : slotIcon(d.kind)).a;
+        icon = slotIcon(d.kind).a;
       } else if (item) {
         const def = ITEMS[item];
         icon = itemIcon(item).a; name = def.name; sub = `WORN: ${d.name}`; subCol = UI.gold;
         lines = def.desc ?? []; facts = effectLines(item); keys = ["E TAKE OFF"];
       } else {
-        icon = (d.kind === "back" ? itemIcon("basket") : slotIcon(d.kind)).a; ghost = true;
+        icon = slotIcon(d.kind).a; ghost = true;
         name = d.name; sub = "EMPTY"; lines = d.hint ?? []; keys = this.mode === "view" ? ["WEAR FROM THE PACK"] : [];
       }
     } else {

@@ -227,9 +227,8 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
     if (canPlace(kind, a.x, a.y, false)) placedRemains.push(P(kind, a.x, a.y, { v }));
   }
 
-  // ---- the cart and the basket it spilled
+  // ---- the cart (scenery: the basket is no longer found here, it is crafted at a bench: content/crafting.ts)
   P("cart", CART_T.x * TS + 8, CART_T.y * TS + 16);
-  loose.push({ id: "basket", item: "basket", x: 75 * TS + 4, y: 37 * TS + 10 });
 
   // ---- vegetation: visit tiles in a shuffled order so nothing grows on a lattice
   const order = Array.from({ length: n }, (_, i) => i);

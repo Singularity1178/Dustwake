@@ -14,7 +14,7 @@ import { GEAR_SLOT_DEFS } from "../src/game/content/gear";
 import { ITEM_IDS, ITEMS, type ItemId } from "../src/game/content/items";
 import { Pen, makeCanvas } from "../src/game/util";
 
-const GOLDEN = { items: "650359c4", slots: "fef1ce6e", runes: "fea2d425" };
+const GOLDEN = { items: "650359c4", slots: "939d431e", runes: "fea2d425" };
 const NEW_ITEMS: ItemId[] = ["planks", "cut_stone", "rune_swift", "rune_glow"];
 
 test("every item has an icon and a description", () => {
@@ -32,6 +32,14 @@ test("slot silhouettes: one per slot kind, pixel-stable", () => {
   resetTrace();
   for (const k of Object.keys(SLOT_ART) as (keyof typeof SLOT_ART)[]) slotIcon(k);
   assert.equal(traceHash(), GOLDEN.slots);
+});
+
+test("the empty back slot is a generic silhouette of the body's back, not the basket's own icon", () => {
+  const trace = (draw: () => void) => { resetTrace(); draw(); return traceHash(); };
+  assert.notEqual(trace(() => SLOT_ART.back(new Pen(makeCanvas(16, 16).ctx, false))), trace(() => ITEM_ART.basket(new Pen(makeCanvas(16, 16).ctx, false))));
+  // every other slot kind keeps its own silhouette, distinct from the back's
+  const hashes = new Set((Object.keys(SLOT_ART) as (keyof typeof SLOT_ART)[]).map((k) => trace(() => SLOT_ART[k](new Pen(makeCanvas(16, 16).ctx, false)))));
+  assert.equal(hashes.size, Object.keys(SLOT_ART).length, "one distinct silhouette per kind");
 });
 
 test("runes show on the golem in every facing; no runes draws nothing extra", () => {

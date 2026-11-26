@@ -121,6 +121,12 @@ export const CRAFT_RECIPES: CraftRecipe[] = [
     inputs: [{ item: "stone", n: 3 }], output: { item: "cut_stone", n: 2 },
   },
   {
+    // Back gear that widens the pack to 48 slots (content/inventory.ts). Not found in the world: it is made here.
+    id: "basket", name: "FORAGING BASKET", station: "crafting", dur: 1.8,
+    desc: ["WEAVE THIN SLATS OF PLANK INTO", "A BASKET. WORN ON THE BACK, IT", "LETS YOU CARRY MUCH MORE."],
+    inputs: [{ item: "planks", n: 6 }], output: { item: "basket", n: 1 },
+  },
+  {
     id: "rune_swift", name: "RUNE OF SWIFT", station: "crafting", dur: 2.4,
     desc: ["CARVE THE SIGN OF SWIFTNESS", "INTO CUT STONE. NEEDS THE", "RUNE CHISEL IN YOUR PACK."],
     inputs: [{ item: "cut_stone", n: 2 }], tools: ["chisel"], output: { item: "rune_swift", n: 1 },

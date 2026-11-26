@@ -43,7 +43,7 @@ const SEALED = ["THIS RUNE SLOT IS SEALED.", "SOMETHING WILL OPEN IT", "LATER."]
  */
 export const GEAR_SLOT_DEFS: readonly GearSlotDef[] = [
   { id: "head", kind: "head", name: "HELM", hint: ["A BARE HEAD.", "A HELM WOULD FIT HERE."] },
-  { id: "back", kind: "back", name: "BACK", hint: ["NOTHING ON YOUR BACK.", "WEAR A BASKET FROM THE PACK."] },
+  { id: "back", kind: "back", name: "BACK", hint: ["NOTHING ON YOUR BACK.", "WEAR BACK GEAR FROM THE PACK."] },
   { id: "armR", kind: "arm", name: "R ARM", hint: ["THE SOUND STONE ARM.", "A TOOL HEAD FITS HERE."] },
   {
     id: "armL", kind: "arm", name: "L ARM", hint: ["THE IRON ARM.", "FITTINGS FOR AN ARM GO HERE."],

@@ -37,7 +37,7 @@ export interface GolemPose {
 
 const C = { o: "#1c1a18", d: "#3a3733", m: "#5a5650", l: "#7a756c", h: "#958f84", moss: "#4a5a32", moss2: "#5e7040" };
 
-// ---- gear on the back (GolemPose.back). The woven basket, strapped on. Facing
+// ---- gear on the back (GolemPose.back). The foraging basket, strapped on. Facing
 // down it sits behind the body: its rim rises over the shoulders round the
 // head and the straps cross the pauldrons. Facing up it covers the back below
 // the head's crown. Sideways it hangs off the back behind the torso. Every

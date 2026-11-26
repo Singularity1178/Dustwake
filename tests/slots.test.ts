@@ -147,7 +147,7 @@ test("take-off fit rules: refused with nothing changed when the pack is full, an
   for (let i = 0; i < 9; i++) addItems(w2, p2, "coin", 1);
   const off = takeOffCheck(w2, p2, "back");
   assert.ok(!off.ok && off.reason === "noRoom" && off.shrinks);
-  assert.match(gearRefusal(off), /TOO MUCH TO CARRY WITHOUT THE WOVEN BASKET/);
+  assert.match(gearRefusal(off), /TOO MUCH TO CARRY WITHOUT THE FORAGING BASKET/);
 });
 
 test("worn gear in every slot round-trips through save/load, with the unlock flags", () => {

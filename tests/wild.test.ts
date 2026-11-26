@@ -41,7 +41,7 @@ test("surface keeps its size, rune, start, ids and closing thicket edge", () => 
   const rune = s.props.find((p) => p.id === "rune.surface")!;
   assert.deepEqual([rune.x, rune.y], [RUNE_T.x * TS + 8, RUNE_T.y * TS + 8]);
   assert.ok(Math.hypot(s.start.x - rune.x, s.start.y - rune.y) < 12, "start beside the rune");
-  assert.ok(s.loose.some((l) => l.id === "basket" && l.item === "basket"));
+  assert.ok(!s.loose.some((l) => l.item === "basket"), "the basket is crafted, never lying on the surface");
   assert.ok(s.props.some((p) => p.kind === "cart"));
   assert.ok(s.props.filter((p) => p.kind === "tree").length > 60 && s.props.some((p) => p.kind === "rock"), "harvestable trees and rocks");
   for (let x = 0; x < s.w; x++) { assert.equal(s.grid[x], T.THICKET); assert.equal(s.grid[(s.h - 1) * s.w + x], T.THICKET); }
@@ -84,8 +84,6 @@ test("everything meaningful is reachable on foot, with no sealed pockets", () =>
   const a = surfaceOf(), r = reachOf(a);
   const rp = a.prop("rune.surface")!;
   assert.ok(nearReached(a, r, rp.x, rp.y + 4, 0), "rune");
-  const basket = a.loose.find((l) => l.id === "basket")!;
-  assert.ok(nearReached(a, r, basket.x, basket.y), "basket");
   const cart = a.props.find((p) => p.kind === "cart")!;
   assert.ok(nearReached(a, r, cart.x, cart.y + 8), "cart");
   for (let y = SURFACE_GATE_ZONE.y0; y <= SURFACE_GATE_ZONE.y1; y++) for (let x = SURFACE_GATE_ZONE.x0; x <= SURFACE_GATE_ZONE.x1; x++)
@@ -248,7 +246,7 @@ test("a v3 save's stale surface diff is discarded; the player's things survive",
   const w2 = deserialize(v3), a = getArea(w2, "surface"), p2 = player(w2);
   assert.deepEqual([...a.grid], [...a.base.grid], "old tile edits dropped");
   assert.equal(a.decals.length, a.base.decals.length);
-  assert.ok(a.looseItem("basket")!.taken, "basket stays picked up");
+  assert.equal(a.looseItem("basket"), undefined, "the old pickup id is simply ignored: there is no basket on the ground, taken or not");
   const onGround = a.loose.filter((l) => !l.taken && l.dyn).map((l) => `${l.item}x${l.n ?? 1}`).sort();
   assert.deepEqual(onGround, ["coinx1", "stonex1", "woodx2"], "dropped coin kept, torch refunded");
   const rp = a.prop("rune.surface")!;
