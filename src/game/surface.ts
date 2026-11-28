@@ -434,11 +434,11 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
       if (h < 0.3) D("mosspatch", px, y === y0 ? y * TS + 3 : (y + 1) * TS - 3, 1, 10 + Math.floor(h * 30));
       if (h > 0.5) D("leaves", px + 4, y === y0 ? y * TS + 5 : (y + 1) * TS - 6, 0);
     }
-    // the waymark stands on ground that was thicket a moment ago, so it can never sit on a tree
-    const wx = Math.max(2, mouth - 1);
+    // the waymark stands at the road's corner by the mouth: on the grass just north of the track, never on the dirt
+    const wx = Math.max(2, mouth), wy = y0 * TS - 4;
     ids.add("waymark.west");
-    props.push({ id: "waymark.west", kind: "waymark", x: wx * TS + 9, y: y0 * TS + 12, v: 0 });
-    D("mosspatch", wx * TS + 8, y0 * TS + 12, 1, 12);
+    props.push({ id: "waymark.west", kind: "waymark", x: wx * TS + 9, y: wy, v: 0 });
+    D("mosspatch", wx * TS + 8, wy, 1, 12);
     portals.push({
       id: WEST_ROAD.portal, x: TS, y: y0 * TS, w: TS + 4, h: (y1 - y0 + 1) * TS, dir: "left",
       to: { area: "town", portal: "east_road" }, arrive: { x: 2 * TS + 10, y: mid * TS + 12 }, label: "THE OLD ROAD",

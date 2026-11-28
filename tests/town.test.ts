@@ -71,7 +71,12 @@ test("the Guardian's village is where it said: a road leaves the surface westwar
   assert.equal(road.dir, "left");
   assert.ok(s.exits.some((e) => e.dir === "w" && e.label === "WESTWAKE"));
   for (let y = WEST_ROAD.surface.y0; y <= WEST_ROAD.surface.y1; y++) { assert.equal(s.grid[y * s.w], T.THICKET, "the edge column stays closed"); assert.equal(s.grid[y * s.w + 1], T.FLOOR, "the road reaches it"); }
-  assert.ok(s.props.some((p) => p.kind === "waymark"), "a waymark stands at its mouth");
+  const mark = s.props.find((p) => p.kind === "waymark")!;
+  assert.ok(mark, "a waymark stands at its mouth");
+  const mx = Math.floor(mark.x / TS), my = Math.floor((mark.y - 1) / TS);
+  assert.equal(my, WEST_ROAD.surface.y0 - 1, "beside the road, not on it");
+  assert.equal(s.grid[my * s.w + mx], T.FLOOR, "on open ground");
+  assert.ok(s.style[my * s.w + mx] !== FS.EARTH && s.style[my * s.w + mx] !== FS.DIRT, "not on the dirt");
   const wild = buildSurface({ westRoad: false });
   assert.ok(!wild.portals!.some((p) => p.id === WEST_ROAD.portal), "(the stair head's own portal is not a road: tests/entrance.test.ts)"); assert.equal(wild.exits.length, 0);
   assert.equal(wild.grid[WEST_ROAD.surface.y0 * wild.w + 1], T.THICKET, "without the road the wild is as it was");
