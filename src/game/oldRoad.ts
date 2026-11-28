@@ -23,6 +23,10 @@ import type { AreaData, DecalDef, PropDef } from "./map";
 export const ROAD_W = 48, ROAD_H = 72;
 const ROAD_SEED = 9203;
 
+export const roadFbm = (x: number, y: number, s: number) => 0.6 * vnoise(x, y, 11, s) + 0.4 * vnoise(x, y, 5, s + 1);
+/** How deep the thicket closing the north and south reaches at tile (x, y): it thins out toward the town (whose own land simply runs to the edge of the map). */
+export const roadRim = (x: number, y: number) => Math.floor((2 + roadFbm(x, y, 520) * 5 - 0.4) * Math.min(1, x / 12));
+
 export function buildOldRoad(): AreaData {
   const W = ROAD_W, H = ROAD_H, n = W * H, rng = mulberry(ROAD_SEED);
   const grid = new Uint8Array(n).fill(T.FLOOR), style = new Uint8Array(n).fill(FS.GRASS), tvar = new Uint8Array(n);
@@ -30,16 +34,14 @@ export function buildOldRoad(): AreaData {
   const inb = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H;
   const { y0, y1 } = WEST_ROAD.surface, mid = (y0 + y1) >> 1;
   const onRoad = (y: number) => y >= y0 && y <= y1;
-  const fbm = (x: number, y: number, s: number) => 0.6 * vnoise(x, y, 11, s) + 0.4 * vnoise(x, y, 5, s + 1);
 
   // ---- land: thicket closing the north and south, woods and meadow by noise, the track through the middle
   const wood = new Uint8Array(n);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = I(x, y), edge = Math.min(y, H - 1 - y);
-    // the thicket closing the north and south thins out toward the town (whose own land simply runs to the edge of the map)...
-    if (edge < Math.floor((2 + fbm(x, y, 520) * 5 - 0.4) * Math.min(1, x / 12))) { grid[i] = T.THICKET; continue; }
-    // ...and the wood round the ruins reaches out raggedly into the east of this land, so its edge is not a ruled line
-    if (!onRoad(y) && W - 1 - x < Math.floor(fbm(x, y, 524) * 6 - 1 + vnoise(y, 7, 3, 525) * 2)) { grid[i] = T.THICKET; continue; }
+    if (edge < roadRim(x, y)) { grid[i] = T.THICKET; continue; }
+    // the wood round the ruins reaches out raggedly into the east of this land, so its edge is not a ruled line
+    if (!onRoad(y) && W - 1 - x < Math.floor(roadFbm(x, y, 524) * 6 - 1 + vnoise(y, 7, 3, 525) * 2)) { grid[i] = T.THICKET; continue; }
     if (onRoad(y)) {
       // a desire path, not a built road: trodden earth down the middle, and the outer rows only where feet and cart wheels
       // have really worn it (patchy: grass comes and goes along both edges). Where it leaves the Throne Road it is full width.
@@ -47,7 +49,7 @@ export function buildOldRoad(): AreaData {
       style[i] = !worn ? FS.GRASS : y === mid || hash2(x, y, 521) < 0.55 ? FS.EARTH : FS.DIRT;
       continue;
     }
-    const wd = fbm(x, y, 501), pn = vnoise(x, y, 4, 506);
+    const wd = roadFbm(x, y, 501), pn = vnoise(x, y, 4, 506);
     if (wd > 0.58) { wood[i] = 1; style[i] = pn < 0.14 ? FS.GRASS : pn > 0.8 ? FS.MOSS : FS.LEAF; }
     else style[i] = vnoise(x, y, 5, 507) > 0.8 ? FS.DIRT : pn > 0.86 ? FS.MOSS : FS.GRASS;
   }

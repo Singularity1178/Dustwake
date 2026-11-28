@@ -24,6 +24,8 @@ Ids. Prop, loose item, light and portal ids must be unique in an area, and two s
 
 A site's build is pure data that the compositor copies, so it is built once and kept (`overworld.ts: once`). Composing the overworld again (a load, a route query, a test) costs a copy.
 
+**The ground between the old road and the ruins** (`woodGap.ts`). Each of those two sites closes its own side with thicket, and set side by side they made a solid band from north to south with the road the only way past. `buildOverworld` opens that band after composing: thicket in the columns of `WOOD_GAP`, inside the rim that closes the north and south, becomes open country grown by each side's land rules. It is a step over the composed area, not a change to either builder, so their rng streams, prop ids and the sites built alone are as before, and no save needs migrating (new ground simply appears under the old diffs). New props are named `oldroad/gap.<kind>@x,y` or `gap.<kind>@x,y`. Tests: `tests/overworld.test.ts`.
+
 ## Zones: what "a place" means inside a big area
 
 Every site becomes a **zone** (`map.ts: Zone`, `world/zones.ts`): a named rect of the area that remembers the site's origin. Any area may also declare zones of its own. A zone is the game's unit for a place on a continuous map:

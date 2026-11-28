@@ -3,11 +3,13 @@
 // near sleeps, and a worker far away walks and works abstractly. Docs: docs/world/overworld.md.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TS, isSolidT } from "../src/game/content/tiles";
+import { T, TS, isSolidT } from "../src/game/content/tiles";
 import { OVERWORLD_H, OVERWORLD_ID, OVERWORLD_W, SITE_AT, ZONE } from "../src/game/content/places";
 import { WEST_ROAD } from "../src/game/content/geography";
 import { HARVEST } from "../src/game/content/harvest";
-import { buildOverworld, SITES } from "../src/game/overworld";
+import { buildOverworld, OVERWORLD, SITES } from "../src/game/overworld";
+import { composeArea } from "../src/game/world/compose";
+import { WOOD_GAP } from "../src/game/woodGap";
 import { buildTown } from "../src/game/town";
 import { buildSurface } from "../src/game/surface";
 import { buildOldRoad } from "../src/game/oldRoad";
@@ -44,7 +46,8 @@ const roadY = (WEST_ROAD.surface.y0 + 1) * TS + 12;
 
 // ------------------------------------------------------------------ the compositor
 test("the overworld is one area made of sites: each set down whole at its place, a zone each, nothing overlapping", () => {
-  const o = buildOverworld(), town = buildTown(), wild = buildSurface(), road = buildOldRoad(), west = buildWestRoad(), cross = buildThroneRoad();
+  // the compositor on its own: the finished overworld also opens the band between the old road and the ruins (below)
+  const o = composeArea(OVERWORLD), town = buildTown(), wild = buildSurface(), road = buildOldRoad(), west = buildWestRoad(), cross = buildThroneRoad();
   assert.deepEqual([o.id, o.w, o.h], [OVERWORLD_ID, OVERWORLD_W, OVERWORLD_H]);
   assert.equal(AREAS.town, undefined, "Westwake is not an area");
   assert.deepEqual(zonesOf(o).map((z) => [z.id, z.kind, z.x, z.y, z.w, z.h]), [
@@ -72,8 +75,42 @@ test("the overworld is one area made of sites: each set down whole at its place,
   // the ruins keep the ids every save and rune names; Westwake's carry its zone
   assert.ok(o.props.some((p) => p.id === "rune.surface") && o.props.some((p) => p.kind === "marketcross" && p.id.startsWith("westwake/marketcross@")) && o.lights.some((l) => l.id === "runeglow"));
   // the same builders give the same overworld
-  const again = buildOverworld();
+  const again = composeArea(OVERWORLD);
   assert.deepEqual(again.props, o.props); assert.deepEqual(Array.from(again.grid), Array.from(o.grid)); assert.deepEqual(again.zones, o.zones);
+});
+
+test("the old road and the ruins are one country: no band of thicket between them, and nothing else is changed", () => {
+  const base = composeArea(OVERWORLD), o = buildOverworld(), a = new Area(o);
+  // only thicket in the band's columns became ground; every other tile is as the sites laid it
+  let opened = 0;
+  for (let i = 0; i < o.grid.length; i++) {
+    const x = i % o.w;
+    if (o.grid[i] === base.grid[i]) { assert.equal(o.style[i], base.style[i]); continue; }
+    assert.ok(x >= WOOD_GAP.x0 && x < WOOD_GAP.x1 && isSolidT(base.grid[i]) && !isSolidT(o.grid[i]), `tile ${x},${(i / o.w) | 0}`);
+    opened++;
+  }
+  assert.ok(opened > 300, `${opened} tiles opened`);
+  // what stood before still stands, in the same order; what is new is added after it, all in the band
+  assert.deepEqual(o.props.slice(0, base.props.length), base.props);
+  assert.deepEqual(o.decals.slice(0, base.decals.length), base.decals);
+  const added = o.props.slice(base.props.length);
+  assert.ok(added.some((p) => p.kind === "tree"), "it has trees of its own");
+  assert.ok(added.every((p) => p.x >= (WOOD_GAP.x0 - 1) * TS && p.x < (WOOD_GAP.x1 + 1) * TS));
+  assert.equal(new Set(o.props.map((p) => p.id)).size, o.props.length);
+  // one can cross well north and well south of the road, without using it
+  const boxes: Box[] = a.props.filter(propBlocks).map((p) => p.box as Box);
+  const { y0, y1 } = WEST_ROAD.surface;
+  for (const [from, to] of [[0, y0 - 2], [y1 + 3, o.h]]) {
+    const half = { w: o.w, h: o.h, grid: o.grid.map((t, i) => { const y = (i / o.w) | 0; return y >= from && y < to ? t : T.THICKET; }) };
+    let y = (from + to) >> 1;
+    while (!nearReached(a, flood(half, boxes, { x: (WOOD_GAP.x0 - 2) * TS + 8, y: y * TS + 12 }), (WOOD_GAP.x0 - 2) * TS + 8, y * TS + 12, 0)) y++;
+    const r = flood(half, boxes, { x: (WOOD_GAP.x0 - 2) * TS + 8, y: y * TS + 12 });
+    assert.ok(nearReached(a, r, (WOOD_GAP.x1 + 2) * TS + 8, y * TS + 12, 4), `crossing in rows ${from}..${to}`);
+  }
+  // no pocket in the opened ground: everywhere a body fits there can be walked to
+  const r = flood(a, boxes, o.start);
+  for (let y = 0; y < o.h; y++) for (let x = WOOD_GAP.x0; x < WOOD_GAP.x1; x++)
+    if (boxFree(a, x * TS + 8, y * TS + 12)) assert.ok(r[y * o.w + x], `${x},${y}`);
 });
 
 test("nothing is crossed between the ruins and Westwake: no portal, one road, every door and place on foot from the rune", () => {
