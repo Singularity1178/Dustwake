@@ -16,6 +16,7 @@ import { Area } from "../src/game/world/area";
 import { buildTown } from "../src/game/town";
 import { buildInterior } from "../src/game/townInteriors";
 import { buildSurface } from "../src/game/surface";
+import { buildThroneRoad } from "../src/game/throneRoad";
 import { BUILDINGS, ESTABLISHMENTS, HIGH_END, SIGNS, TOWN_H, TOWN_ID, TOWN_W, building, doorPx, interiorId } from "../src/game/content/town";
 import { propDef, propReach } from "../src/game/content/props";
 import { HARVEST } from "../src/game/content/harvest";
@@ -71,7 +72,14 @@ test("the Guardian's village is where it said: a road leaves the surface westwar
   assert.equal(road.dir, "left");
   assert.ok(s.exits.some((e) => e.dir === "w" && e.label === "WESTWAKE"));
   for (let y = WEST_ROAD.surface.y0; y <= WEST_ROAD.surface.y1; y++) { assert.equal(s.grid[y * s.w], T.THICKET, "the edge column stays closed"); assert.equal(s.grid[y * s.w + 1], T.FLOOR, "the road reaches it"); }
-  assert.ok(s.props.some((p) => p.kind === "waymark"), "a waymark stands at its mouth");
+  // the waymark stands on the stone road's north-west corner, not out on the dirt track
+  const cross = buildThroneRoad(), mark = cross.props.find((p) => p.kind === "waymark")!;
+  assert.ok(mark, "a waymark stands at the crossing");
+  assert.ok(!s.props.some((p) => p.kind === "waymark"), "and none on the track");
+  const mx = Math.floor(mark.x / TS), my = Math.floor((mark.y - 1) / TS), at = (x: number, y: number) => cross.style[y * cross.w + x];
+  assert.notEqual(at(mx, my), FS.ROAD, "beside the paving, not on it");
+  assert.equal(at(mx + 1, my), FS.ROAD, "the north road is on one side");
+  assert.equal(at(mx, my + 1), FS.ROAD, "the west road is on the other");
   const wild = buildSurface({ westRoad: false });
   assert.ok(!wild.portals!.some((p) => p.id === WEST_ROAD.portal), "(the stair head's own portal is not a road: tests/entrance.test.ts)"); assert.equal(wild.exits.length, 0);
   assert.equal(wild.grid[WEST_ROAD.surface.y0 * wild.w + 1], T.THICKET, "without the road the wild is as it was");

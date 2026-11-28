@@ -120,7 +120,7 @@ This opts into the chest, inverse recipes and Ruby core recipe fixtures. They ar
 
 ## Westwake (the market town)
 
-The Treasury Guardian remembers "a village west of here". Follow the overgrown track that leaves the surface through the thicket on its west side (a leaning waymark stands at its mouth) and it ends at the east gate of **Westwake**: the same village, a long time later, grown into a provincial market town of the Aligarch Empire. To jump straight there while testing: `Ctrl+0`, TELEPORT, any `WESTWAKE` row.
+The Treasury Guardian remembers "a village west of here". Follow the overgrown track that leaves the surface through the thicket on its west side and it crosses the Throne Road (a leaning waymark stands on the corner) just before the east gate of **Westwake**: the same village, a long time later, grown into a provincial market town of the Aligarch Empire. To jump straight there while testing: `Ctrl+0`, TELEPORT, any `WESTWAKE` row.
 
 The town is lived in (see "Townsfolk" below), but there are still no shopkeepers or labour golems, and nothing can be bought, stored or crafted there. A worker golem of your own can be sent there, though: once you have reached the surface its GO TO list has WESTWAKE START (and each shop once someone has walked into the town), and it walks there by the stair or the rune and then the old road. The shops are laid out for keepers (see `docs/ARCHITECTURE.md`, "The market town").
 
