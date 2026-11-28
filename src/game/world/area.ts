@@ -49,8 +49,12 @@ const DIRTY_PAD = 2;
 export const SECTOR = 16;
 /** Side of a collision bucket (px). A collision query looks only at the props whose boxes reach the buckets it touches. */
 const BUCKET = 64;
+/** Side of a cell of the index of every prop by where it stands (px): what a view, or anything else that looks at one part of an area, asks. */
+const NEAR = 128;
 /** A layout change can alter where a body may stand this far beyond what changed (px): a body's size and a step. */
 const LAYOUT_PAD = 2 * TS;
+
+const NO_PROPS: readonly PropInst[] = [];
 
 export class Area {
   readonly id: string;
@@ -87,6 +91,12 @@ export class Area {
   private buckets = new Map<number, PropInst[]>();
   private bw: number;
   private bh: number;
+  /** Every prop, by the NEAR cell its (x, y) is in; and the order each was added in (the order of `props`). */
+  private near = new Map<number, PropInst[]>();
+  private order = new Map<PropInst, number>();
+  private orderSeq = 0;
+  private kinds = new Map<string, PropInst[]>();
+  private nw: number;
 
   constructor(base: AreaData) {
     this.base = base;
@@ -96,6 +106,7 @@ export class Area {
     this.sw = Math.ceil(base.w / SECTOR); this.sh = Math.ceil(base.h / SECTOR);
     this.sectorRev = new Uint32Array(this.sw * this.sh);
     this.bw = Math.max(1, Math.ceil(base.w * TS / BUCKET)); this.bh = Math.max(1, Math.ceil(base.h * TS / BUCKET));
+    this.nw = Math.max(1, Math.ceil(base.w * TS / NEAR)) + 2;
     this.grid = base.grid.slice();
     this.plan = base.plan;
     this.style = base.style;
@@ -118,8 +129,45 @@ export class Area {
     if (dyn) inst.dyn = true;
     this.propIndex.set(p.id, inst);
     this.bucket(inst, true);
+    this.index(inst, true);
     return inst;
   }
+
+  // ---- props by place and by kind
+  private nearKey(x: number, y: number) { return (Math.floor(y / NEAR) + 1) * this.nw + Math.min(this.nw - 1, Math.max(0, Math.floor(x / NEAR) + 1)); }
+  private index(p: PropInst, add: boolean) {
+    const k = this.nearKey(p.x, p.y), cell = this.near.get(k), kind = this.kinds.get(p.kind);
+    if (add) {
+      this.order.set(p, this.orderSeq++);
+      if (cell) cell.push(p); else this.near.set(k, [p]);
+      if (kind) kind.push(p); else this.kinds.set(p.kind, [p]);
+      return;
+    }
+    this.order.delete(p);
+    if (cell) { const i = cell.indexOf(p); if (i >= 0) cell.splice(i, 1); if (!cell.length) this.near.delete(k); }
+    if (kind) { const i = kind.indexOf(p); if (i >= 0) kind.splice(i, 1); if (!kind.length) this.kinds.delete(p.kind); }
+  }
+  /**
+   * The props standing in the px rect [x0, y0, x1, y1] (by their own point (x, y); pass the margin a sprite needs), in
+   * the order `props` holds them. Looks at the cells the rect touches, not at every prop of the area: what a view
+   * draws each frame, what a click picks, costs the neighbourhood, however much land there is. (A prop never moves.)
+   */
+  propsIn(x0: number, y0: number, x1: number, y1: number): PropInst[] {
+    const out: PropInst[] = [];
+    const cx0 = Math.max(-1, Math.floor(x0 / NEAR)), cx1 = Math.min(this.nw - 2, Math.floor(x1 / NEAR));
+    const cy0 = Math.floor(y0 / NEAR), cy1 = Math.floor(y1 / NEAR);
+    let cells = 0;
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      const cell = this.near.get((cy + 1) * this.nw + cx + 1);
+      if (!cell) continue;
+      cells++;
+      for (const p of cell) if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) out.push(p);
+    }
+    if (cells > 1) { const o = this.order; out.sort((a, b) => o.get(a)! - o.get(b)!); }
+    return out;
+  }
+  /** The props of one kind, in the order `props` holds them (kept as props come and go; never a walk of the area). */
+  propsOfKind(kind: string): readonly PropInst[] { return this.kinds.get(kind) ?? NO_PROPS; }
 
   // ---- collision buckets and navigation sectors
   private bucketRange(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
@@ -239,6 +287,7 @@ export class Area {
     this.propIndex.delete(id);
     this.props = this.props.filter((q) => q !== p);
     this.bucket(p, false);
+    this.index(p, false);
     this.bumpBox(p);
     this.touch("layout");
     return p;

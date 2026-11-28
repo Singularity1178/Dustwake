@@ -24,6 +24,7 @@ import { tickFolk, folkCatchUp } from "./folk";
 import { focusTick, lodDue, lodTier, stepIn, wakeZones, type CatchUp } from "./lod";
 import { zoneAt, zoneById, zoneGap, inZone } from "../world/zones";
 import { tickKeepers } from "./shops";
+import { discover } from "../world/discovery";
 
 export interface PlayerInput {
   ix: number; iy: number; use: boolean;
@@ -132,10 +133,15 @@ export function stepWorld(w: World, dt: number) {
 /** How far inside a zone's edge (px) the player must be before it counts as entered: walking along a border names nothing twice. */
 const ZONE_EDGE = 20;
 
-/** Follow the player from zone to zone (world/zones.ts) and say so: `zoneEntered`. The first tick of a world only notes where they are. */
+/**
+ * Follow the player from zone to zone (world/zones.ts) and say so: `zoneEntered`. The first tick of a world only notes
+ * where they are. Wherever the player is found to be is also put on record (world/discovery.ts): this is the one
+ * place a zone is discovered by walking, and it uses the same edge rule as the name on the screen, so a place is
+ * known from the moment it is announced, never from brushing its border.
+ */
 function trackZone(w: World, pl: Actor, area: Area) {
   const z = zoneAt(area, pl.x, pl.y), prev = w.focus;
-  if (!prev) { w.focus = { area: area.id, zone: z?.id ?? null }; return; }
+  if (!prev) { w.focus = { area: area.id, zone: z?.id ?? null }; discover(w, area.id, z?.id); return; }
   const same = prev.area === area.id;
   if (same && prev.zone === (z?.id ?? null)) return;
   if (same) {
@@ -146,6 +152,7 @@ function trackZone(w: World, pl: Actor, area: Area) {
     if (!z && old) { const g = zoneGap(old, pl.x, pl.y); if (g.dx < b && g.dy < b) return; }
   }
   w.focus = { area: area.id, zone: z?.id ?? null };
+  discover(w, area.id, z?.id);
   if (z) emit(w, { t: "zoneEntered", actor: pl.id, area: area.id, zone: z.id, from: same ? prev.zone : null, walked: same });
 }
 

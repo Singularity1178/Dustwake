@@ -85,5 +85,9 @@ export function preOverworld(s: any): any {
     if (t.tiles.length || Object.keys(t.props).length || t.looseTaken.length || t.looseAdded.length || t.propsAdded.length || t.propsRemoved.length || t.decalsAdded.length) areas[TOWN.area] = { ...t, ...extra };
   }
   const FLAGS: Record<string, string> = { "census.westwake": "census.town", "census.ruins": "census.surface" };
-  return { ...s, version: 20, actors, areas, flags: (s.flags ?? []).map((f: string) => FLAGS[f] ?? f) };
+  // (v22's record of where the golem has been goes too: no save before v22 had one, so migrating the result has to
+  // work it out again, and the tests that compare against the save this was made from hold that it comes out the same)
+  const out = { ...s, version: 20, actors, areas, flags: (s.flags ?? []).map((f: string) => FLAGS[f] ?? f) };
+  delete out.discovered;
+  return out;
 }

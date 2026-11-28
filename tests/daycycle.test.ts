@@ -164,7 +164,7 @@ test("the town puts its lights out in the morning and lights them at dusk, each 
 
 // ------------------------------------------------------------------ saving
 test("save v13: the clock is saved; an older save resumes at night in the halls, at its first morning on the surface", () => {
-  assert.equal(SAVE_VERSION, 21);
+  assert.equal(SAVE_VERSION, 22);
   const w = newWorld();
   advanceDayTo(w, 15.25);
   const s = serialize(w);
@@ -177,7 +177,7 @@ test("save v13: the clock is saved; an older save resumes at night in the halls,
     return o;
   };
   const halls = migrate(old(false)) as { version: number; day: number }, up = migrate(old(true)) as { version: number; day: number };
-  assert.equal(halls.version, 21); assert.ok(near(hourOf(halls.day), START_HOUR));
+  assert.equal(halls.version, 22); assert.ok(near(hourOf(halls.day), START_HOUR));
   assert.ok(near(hourOf(up.day), FIRST_MORNING_HOUR));
   const loaded = deserialize(old(true));
   for (let i = 0; i < 30; i++) stepWorld(loaded, 1 / 60);
@@ -351,7 +351,13 @@ test("host: the town's lamps follow the hour, the charter stone never sleeps, an
   enterArea(w, player(w), OVER, s.x, s.y);
   g.resume(w);
   const lamps = () => [...g.view.lights.values()].filter((L) => L.habit);
-  const lit = (habit: string) => lamps().filter((L) => L.habit === habit && (L.day ?? 1) > 0.5).length;
+  // Each lamp's level is its habit's by the hour (content/daycycle.ts). The host brings the lights that can reach the
+  // view up to the hour each frame, not every light of the land (view/areaView.ts: lightsNear), so: every lamp by
+  // the rule, and the ones in view by what the host has set on them.
+  const level = (L: { habit?: string; owner?: string }) => litLevel(L.habit as "rune", L.owner!, worldHour(w));
+  const inView = () => g.view.lightsNear(g.cam.x, g.cam.y, g.cam.x + g.vw, g.cam.y + g.vh).filter((L) => L.habit);
+  const hostAgrees = () => { const v = inView(); assert.ok(v.length > 0, "lamps in view"); for (const L of v) assert.ok(Math.abs((L.day ?? 1) - level(L)) < 1e-9, `${L.owner}: the host set ${L.day}, the hour says ${level(L)}`); };
+  const lit = (habit: string) => { hostAgrees(); return lamps().filter((L) => L.habit === habit && level(L) > 0.5).length; };
   const count = (habit: string) => lamps().filter((L) => L.habit === habit).length;
   assert.ok(count("rune") > 20 && count("fire") > 15 && count("window") > 20, "the town's lights carry their habits");
   advanceDayTo(w, 1); tick(g, 2);
@@ -365,7 +371,9 @@ test("host: the town's lamps follow the hour, the charter stone never sleeps, an
   advanceDayTo(w, 20.9); tick(g, 2);
   assert.equal(lit("rune"), count("rune"), "dusk: the runes are awake again");
   // the halls: the same shaft through the broken roof, moonlight then sunlight; the dark itself does not change
-  const h = new Game(canvas(), canvas()), hw = newWorld();
+  // (the golem stands under the broken roof: the host keeps the lights that can reach the view to the hour, not every light of the area)
+  const h = new Game(canvas(), canvas()), hw = newWorld(), shaft = hw.areas.get("dungeon")!.lights.find((l) => l.id === "moon")!;
+  player(hw).x = shaft.x; player(hw).y = shaft.y + 24;
   h.resume(hw); tick(h, 2);
   const moon = h.view.byId("moon")!;
   assert.ok(moon.b > moon.r, "moonlight");

@@ -265,7 +265,7 @@ test("a save from before townsfolk (v17) gets the people of every area it had vi
   const s = serialize(w) as unknown as { version: number; flags: string[]; actors: Actor[] };
   const v17 = { ...s, version: 17, flags: s.flags.filter((f) => !f.startsWith("census.")), actors: s.actors.filter((a) => a.kind !== "folk") };
   assert.deepEqual(MIGRATIONS[17](v17), { ...v17, version: 18 }, "nothing older is rewritten: the people are made on load");
-  assert.equal((migrate(v17) as { version: number }).version, 21);
+  assert.equal((migrate(v17) as { version: number }).version, 22);
   const loaded = deserialize(v17);
   const who = (x: World) => folkOf(x).map((a) => `${a.id} ${JSON.stringify(a.person)}`).sort();
   assert.deepEqual(who(loaded), who(w), "the same people as the world that saved it");

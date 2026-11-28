@@ -24,6 +24,7 @@ import { areaBase, meansOf, routeExists } from "./routes";
 import { portalOpen, portalsOf } from "./portals";
 import { AREAS } from "../world/areas";
 import { zoneAt, zoneById, zonesOf } from "../world/zones";
+import { knownAt, zoneDiscovered } from "../world/discovery";
 
 export const areaName = (id: string) => AREA_NAMES[id] ?? id.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 
@@ -33,14 +34,26 @@ export const canTake = (a: Actor, kind: string) => !!JOB_KINDS[kind] && JOB_KIND
 /** Can this actor get to `area`: it is there, or a route leads there for its body, by rune or on foot (sim/routes.ts). */
 export const canReach = (w: World, a: Actor, area: string) => routeExists(w, meansOf(a), a.area, area);
 
+/** Is there an area called `id`: authored, or made at runtime? */
+const exists = (w: World, id: string) => !!AREAS[id] || !!w.specs?.has(id);
+
 /**
- * The areas an order may name: those visited, and those an open road or door out of a visited area leads to. The
- * far end of a way one has stood at can be named (the waymark at the old road's mouth, the signs over the shops'
+ * The areas an order may name: those the golem has been in (world/discovery.ts), and those an open road or door
+ * leads to from a place it has been. The far end of a way one has stood at can be named (the signs over the shops'
  * doors); the far end of a rune cannot until it has been used, so the surface stays unknown until the first crossing.
+ *
+ * "A place it has been" is the zone the door stands in, not the area: the overworld is one area, and Westwake's
+ * shop doors are on it, but they are Westwake's, and nobody who has not walked into Westwake has read their signs.
+ * (That an area is loaded says nothing: a worker walking into a room, or a route planned through it, loads it.)
  */
 export function knownAreas(w: World): string[] {
-  const out = new Set(w.areas.keys());
-  for (const area of w.areas.values()) for (const p of portalsOf(area)) if (AREAS[p.to.area] && portalOpen(w, p)) out.add(p.to.area);
+  const out = new Set<string>();
+  for (const id of w.discovered.keys()) {
+    out.add(id);
+    const area = w.areas.get(id);
+    if (!area) continue;
+    for (const p of portalsOf(area)) if (exists(w, p.to.area) && portalOpen(w, p) && knownAt(w, area, p.x + p.w / 2, p.y + p.h / 2)) out.add(p.to.area);
+  }
   return [...out].sort();
 }
 
@@ -76,12 +89,17 @@ export function defaultPropName(area: Area, p: PropInst): string {
 /** A prop's name: the one the player gave it, else its default. The one name the storage screen and the orders both use. */
 export const propName = (area: Area, p: PropInst) => p.name || defaultPropName(area, p);
 
-/** Props in the areas the worker can get to (areas already visited), in stable area then id order, with labels like "SURFACE CHEST 2". */
+/**
+ * Props the worker can get to in the places the golem has been (world/discovery.ts: `knownAt`), in stable area then
+ * id order, with labels like "SURFACE CHEST 2". A chest in a town the golem has never walked into is not offered,
+ * though it stands in the same area as one that is.
+ */
 function propOptions(w: World, a: Actor, want: (p: PropInst) => boolean): PropOption[] {
   const out: PropOption[] = [];
-  for (const id of [...w.areas.keys()].sort()) {
-    if (!canReach(w, a, id)) continue;
-    const area = w.areas.get(id)!, props = area.props.filter(want).sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
+  for (const id of [...w.discovered.keys()].sort()) {
+    const area = w.areas.get(id);
+    if (!area || !canReach(w, a, id)) continue;
+    const props = area.props.filter((p) => want(p) && knownAt(w, area, p.x, p.y)).sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
     for (const p of props) {
       out.push({ ref: { area: id, prop: p.id }, kind: p.kind, area: id, label: propName(area, p) });
     }
@@ -116,12 +134,13 @@ export const sourceCount = (area: Area, item: ItemId) => area.props.filter((p) =
 /** Areas the worker can get to that still hold something yielding `item`. */
 export interface GatherSource { area: string; /** The zone of `area` to gather in (world/zones.ts), where it has zones. */ zone?: string; label: string; count: number }
 /**
- * Where a worker can be sent to gather `item`: the places it can get to that still hold some. An area made of zones
- * (the overworld) is offered zone by zone ("THE OLD ROAD", "THE RUINS"): somewhere to be sent is a place, and the
- * surface as a whole is too big to be one.
+ * Where a worker can be sent to gather `item`: the places the golem has been that the worker can get to and that
+ * still hold some. An area made of zones (the overworld) is offered zone by zone ("THE OLD ROAD", "THE RUINS"):
+ * somewhere to be sent is a place, and the surface as a whole is too big to be one. Only the zones the golem has
+ * walked into are offered (world/discovery.ts); ground no zone covers goes by the area's name.
  */
 export function gatherSources(w: World, a: Actor, item: ItemId): GatherSource[] {
-  return [...w.areas.keys()].sort().filter((id) => canReach(w, a, id)).flatMap((id): GatherSource[] => {
+  return [...w.discovered.keys()].sort().filter((id) => w.areas.has(id) && canReach(w, a, id)).flatMap((id): GatherSource[] => {
     const area = w.areas.get(id)!, zones = zonesOf(area);
     if (!zones.length) { const count = sourceCount(area, item); return count ? [{ area: id, label: areaName(id), count }] : []; }
     const counts = new Map<string, number>();
@@ -131,7 +150,7 @@ export function gatherSources(w: World, a: Actor, item: ItemId): GatherSource[] 
       const z = zoneAt(area, p.x, p.y);
       if (z) counts.set(z.id, (counts.get(z.id) ?? 0) + 1); else rest++;
     }
-    const out: GatherSource[] = zones.filter((z) => counts.get(z.id)).map((z) => ({ area: id, zone: z.id, label: z.name, count: counts.get(z.id)! }));
+    const out: GatherSource[] = zones.filter((z) => counts.get(z.id) && zoneDiscovered(w, id, z.id)).map((z) => ({ area: id, zone: z.id, label: z.name, count: counts.get(z.id)! }));
     if (rest) out.push({ area: id, label: areaName(id), count: rest });
     return out;
   });
@@ -155,31 +174,44 @@ export function craftChoices(w: World, a: Actor, station: PropOption | undefined
 }
 
 export interface WalkOption { label: string; area: string; x: number; y: number }
-/** Places to send it: the start of each area, beside each storage prop and station, and by each rune. */
+/**
+ * Places to send it: where one comes into each area, each place of an area made of zones, beside each storage prop
+ * and station, and by each rune. All of it from the discovery record (world/discovery.ts): an area the golem has
+ * been in offers what stands in the parts of it the golem has seen; an area it only knows the door of (`knownAreas`)
+ * offers where one comes in, and nothing of what is inside.
+ */
 export function walkOptions(w: World, a: Actor): WalkOption[] {
   const size = actorDef(a).body.box, out: WalkOption[] = [];
   const spot = (area: Area, x: number, y: number) => nearestFree(area, x, y, actorBoxes(w, area.id, a.id), size);
   const add = (label: string, area: Area, x: number, y: number) => { const s = spot(area, x, y); if (s) out.push({ label, area: area.id, x: s.x, y: s.y }); };
+  // (listed once, not once per area: both walk every prop of every place the golem has been)
+  const props = [...storageOptions(w, a), ...stationOptions(w, a)];
   for (const id of knownAreas(w)) {
     if (!canReach(w, a, id)) continue;
     const area = w.areas.get(id);
     if (!area) {
-      // Known but not yet visited (the far end of a road): only where one comes in, read from its builder. Listing
-      // it instantiates nothing; the area comes into being when someone walks in.
+      // Known but not loaded (the far end of a door nobody has been through): only where one comes in, read from
+      // its builder. Listing it instantiates nothing; the area comes into being when someone walks in.
       const s = areaBase(id)?.start;
       if (s) out.push({ label: `${areaName(id)} START`, area: id, x: s.x, y: s.y });
       continue;
     }
-    add(`${areaName(id)} START`, area, area.start.x, area.start.y);
-    // each place of an area made of zones (world/zones.ts): where one arrives in it (the East Gate, the middle of the road)
-    for (const z of zonesOf(area)) if (Math.hypot(z.anchor.x - area.start.x, z.anchor.y - area.start.y) > 1) add(`${z.name} START`, area, z.anchor.x, z.anchor.y);
-    for (const o of [...storageOptions(w, a), ...stationOptions(w, a)].filter((o) => o.area === id)) {
+    if (!w.discovered.has(id)) {
+      // Known by its door, and loaded only because someone else has been in: still only where one comes in.
+      add(`${areaName(id)} START`, area, area.start.x, area.start.y);
+      continue;
+    }
+    if (knownAt(w, area, area.start.x, area.start.y)) add(`${areaName(id)} START`, area, area.start.x, area.start.y);
+    // each place of an area made of zones (world/zones.ts) the golem has walked into: where one arrives in it (the East Gate, the middle of the road)
+    for (const z of zonesOf(area)) if (zoneDiscovered(w, id, z.id) && Math.hypot(z.anchor.x - area.start.x, z.anchor.y - area.start.y) > 1) add(`${z.name} START`, area, z.anchor.x, z.anchor.y);
+    for (const o of props) {
+      if (o.area !== id) continue;
       const p = area.prop(o.ref.prop)!;
       add(o.label, area, p.x, p.y + 12);
     }
     for (const n of Object.values(RUNE_NODES).filter((n) => n.area === id).sort((p, q) => (p.id < q.id ? -1 : 1))) {
       const p = area.prop(n.prop);
-      if (p) add(`${areaName(id)} RUNE`, area, p.x + n.arrive.dx, p.y + n.arrive.dy);
+      if (p && knownAt(w, area, p.x, p.y)) add(`${areaName(id)} RUNE`, area, p.x + n.arrive.dx, p.y + n.arrive.dy);
     }
   }
   return out;

@@ -94,7 +94,8 @@ export class HiHud {
       if (a.area !== area.id || (a.kind === "folk" && a.life?.state === "indoors")) continue;
       if (wx >= a.x - 7 && wx <= a.x + 7 && wy >= a.y - 26 && wy <= a.y + 3 && a.y > by) { best = { kind: "actor", a }; by = a.y; }
     }
-    for (const p of area.props) {
+    // (a prop's box reaches at most a few tiles from its point: only those standing near the click are asked)
+    for (const p of area.propsIn(wx - 128, wy - 32, wx + 128, wy + 256)) {
       if (p.taken && !p.container) continue;
       const b = p.box ?? [p.x - 7, p.y - 14, p.x + 7, p.y];
       if (wx >= b[0] && wx <= b[2] && wy >= Math.min(b[1], p.y - 14) && wy <= b[3] && p.y > by) { best = { kind: "prop", p }; by = p.y; }

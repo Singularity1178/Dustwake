@@ -26,6 +26,7 @@ import { gatherSources, jobView, walkOptions } from "../src/game/sim/orders";
 import { countItem } from "../src/game/sim/inventory";
 import { isFolk, planAt, STALE } from "../src/game/sim/folk";
 import { preOverworld } from "./support/preOverworld";
+import { discover } from "../src/game/world/discovery";
 
 const DT = 0.05, WORKER = "npc.worker.artificery";
 const over = (w: World) => getArea(w, OVERWORLD_ID);
@@ -229,6 +230,10 @@ test("a worker far away still does the job: it walks abstractly and works by the
     if (lod) enableLod(w);
     // the golem stays down in the halls; the worker is on the old road, a whole area away
     const wk = workerAt(w, road.anchor.x, road.anchor.y);
+    // (orders name the places the golem has been, world/discovery.ts: it has never been up, so nothing up here is on
+    // offer; then it has been to the ruins and along the road, and gone back down)
+    assert.deepEqual(gatherSources(w, wk, "wood"), []);
+    discover(w, OVERWORLD_ID, "ruins"); discover(w, OVERWORLD_ID, "oldroad");
     const src = gatherSources(w, wk, "wood");
     assert.deepEqual(src.map((s) => [s.area, s.zone, s.label]), [[OVERWORLD_ID, "oldroad", "THE OLD ROAD"], [OVERWORLD_ID, "ruins", "THE RUINS"]], "the surface is offered place by place");
     assert.ok(assignJob(w, wk, gatherOrder("wood", OVERWORLD_ID, null, 6, false, "oldroad")));
@@ -254,6 +259,8 @@ test("sent across the overworld with nobody watching, a worker gets there; when 
   const w = createWorld(11), a = over(w), pl = player(w), town = zoneById(a, "westwake")!;
   enableLod(w);
   const wk = workerAt(w, a.start.x + 24, a.start.y + 30);
+  // the golem has walked the road to Westwake before, and is back down in the halls (tests/discovery.test.ts holds what is offered before that)
+  for (const z of ["ruins", "oldroad", "westwake"]) discover(w, OVERWORLD_ID, z);
   const opts = walkOptions(w, wk).filter((o) => o.area === OVERWORLD_ID).map((o) => o.label);
   for (const l of ["SURFACE START", "WESTWAKE START", "THE OLD ROAD START"]) assert.ok(opts.includes(l), `${l} in ${opts}`);
   const spot = walkOptions(w, wk).find((o) => o.label === "WESTWAKE START")!;
@@ -284,9 +291,11 @@ test("sent across the overworld with nobody watching, a worker gets there; when 
 
 // ------------------------------------------------------------------ saves
 test("save v21: a save from before the overworld loads with Westwake folded into the surface, everything where that ground now lies", () => {
-  assert.equal(SAVE_VERSION, 21);
+  assert.equal(SAVE_VERSION, 22);
   const w = createWorld(21), a = over(w), pl = player(w), town = zoneById(a, "westwake")!, ruins = zoneById(a, "ruins")!;
   enterArea(w, pl, OVERWORLD_ID, town.anchor.x, town.anchor.y);
+  // (it came up at the ruins and walked the road, as anyone standing in Westwake has: what a save from before v22 is taken to know)
+  discover(w, OVERWORLD_ID, "ruins"); discover(w, OVERWORLD_ID, "oldroad");
   // things only play makes, on both old maps: a stack dropped and a torch built in the ruins, a stack dropped in the square
   // (with the id a town-made stack carries after the migration), a worker sent to gather in the ruins and store in the halls
   a.addLoose("wood", 3, ruins.ox + 600, ruins.oy + 500);
@@ -322,5 +331,5 @@ test("save v21: a save from before the overworld loads with Westwake folded into
   assert.equal(wk2.job?.status, "done", JSON.stringify(wk2.job));
   assert.ok(countItem(wk2, "wood") >= 3);
   // an older save runs the whole chain
-  assert.equal((migrate({ ...old, version: 19 }) as { version: number }).version, 21);
+  assert.equal((migrate({ ...old, version: 19 }) as { version: number }).version, 22);
 });

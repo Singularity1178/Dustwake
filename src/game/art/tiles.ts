@@ -7,7 +7,7 @@ import { TS, T, FS, WS, isWallMassT, isGroundFS } from "../content/tiles";
 import { hash2, makeSprite, Sprite, Pen, clamp } from "../util";
 import { S, WD, IR, GD } from "./palette";
 import { cached, stoneBlob } from "./common";
-import { decalBounds, drawDecal } from "./decals";
+import { decalsNear, drawDecal } from "./decals";
 import { townFloorPix, townWallFacePix, rampartTopPix } from "./tilesTown";
 import { flightPix } from "./stairs";
 
@@ -244,7 +244,11 @@ function wallTopPix(m: BakeSource, tx: number, ty: number, lx: number, ly: numbe
   return [16 + n, 13 + n, 19 + n];
 }
 
-export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: number, y0: number, x1: number, y1: number) {
+// (`ox`, `oy`: where the destination canvas's own (0, 0) lies in the area, px. The view bakes into chunk canvases
+// (view/areaView.ts), each a small window on a large area; with the origin at 0 this is the bake it always was,
+// and with any other the same pixels land `ox`, `oy` up and left. Tiles go down with putImageData, which takes no
+// transform, so the origin is subtracted there; decals draw through the context, so it is translated for them.)
+export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: number, y0: number, x1: number, y1: number, ox = 0, oy = 0) {
   const MW = m.w; x0 = clamp(x0, 0, m.w - 1); y0 = clamp(y0, 0, m.h - 1); x1 = clamp(x1, 0, m.w - 1); y1 = clamp(y1, 0, m.h - 1);
   const w = (x1 - x0 + 1) * TS, h = (y1 - y0 + 1) * TS;
   const img = ctx.createImageData(w, h);
@@ -280,18 +284,16 @@ export function bakeRegion(ctx: CanvasRenderingContext2D, m: BakeSource, x0: num
           d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
         }
     }
-  ctx.putImageData(img, x0 * TS, y0 * TS);
+  ctx.putImageData(img, x0 * TS - ox, y0 * TS - oy);
   ctx.save();
+  if (ox || oy) ctx.translate(-ox, -oy);
   ctx.beginPath();
   ctx.rect(x0 * TS, y0 * TS, w, h);
   ctx.clip();
   const p = new Pen(ctx, false);
   const X0 = x0 * TS - 1, X1 = (x1 + 1) * TS + 1, Y0 = y0 * TS - 1, Y1 = (y1 + 1) * TS + 1;
-  const b = decalBounds(m.decals);
-  for (let i = 0, k = 0; i < m.decals.length; i++, k += 4) {
-    if (b[k + 2] < X0 || b[k] > X1 || b[k + 3] < Y0 || b[k + 1] > Y1) continue;
-    drawDecal(p, m.decals[i]);
-  }
+  // the decals that reach this region, in the order they were laid (art/decals.ts: a grid index, not a walk of every decal in the area)
+  for (const i of decalsNear(m.decals, X0, Y0, X1, Y1)) drawDecal(p, m.decals[i]);
   ctx.restore();
 }
 

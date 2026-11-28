@@ -989,7 +989,9 @@ export class Game {
     this.updateNpcLooks(dt);
     // light flicker, and the hour: tended lamps are lit and put out with the day, sky light takes the sky's colour
     const hour = worldHour(this.world), sun = sunLevel(hour);
-    for (const L of this.view.lights.values()) {
+    // (only the lights that can reach the view, and a little beyond it: the rest are not drawn this frame, and are
+    // brought up to the moment the frame they come near)
+    for (const L of this.view.lightsNear(this.cam.x - 96, this.cam.y - 96, this.cam.x + VW + 96, this.cam.y + VH + 96)) {
       const n = Math.sin(et * 9 + L.seed) * 0.5 + Math.sin(et * 23.7 + L.seed * 2) * 0.3 + Math.sin(et * 3.3 + L.seed) * 0.2;
       L.cur = L.int * (1 - L.flick * (0.5 + 0.5 * n));
       if (L.habit) L.day = litLevel(L.habit, L.owner!, hour);
@@ -1002,7 +1004,7 @@ export class Game {
       this.sfx.setHum(Math.min(1, r.actT / 2));
       if (cl) {
         const target = 120;
-        if (cl.rad < target) { cl.rad = Math.min(target, cl.rad + edt * 30); if (Math.abs(cl.rad - cl.vx) > 0) computeVis(cl, area); }
+        if (cl.rad < target) { cl.rad = Math.min(target, cl.rad + edt * 30); this.view.resized(); if (Math.abs(cl.rad - cl.vx) > 0) computeVis(cl, area); }
         cl.int = 0.6 + Math.min(1, r.actT / 3) * 0.6;
         cl.cur = cl.int * (0.85 + 0.15 * Math.sin(et * 3));
       }
@@ -1064,7 +1066,7 @@ export class Game {
       }
     });
     // torch embers
-    for (const p of area.props) {
+    for (const p of area.propsIn(this.cam.x - 40, this.cam.y - 50, this.cam.x + VW + 40, this.cam.y + VH + 50)) {
       if (!p.lit) continue;
       const fire = propDef(p.kind).fire;
       if (!fire || this.tendedLevel(p, hour) <= 0.05) continue;
@@ -1073,7 +1075,7 @@ export class Game {
         this.spawn({ x: p.x + (Math.random() - 0.5) * 4, y: p.y + fire.emberDy, z: 14, vx: (Math.random() - 0.5) * 6, vz: 10 + Math.random() * 10, life: 1 + Math.random(), kind: "ember", col: Math.random() < 0.5 ? "#ffb040" : "#ff6a1a", emit: true, g: -4 });
     }
     // chimney smoke over the town's roofs (props with a `smoke` row), leaning on the same night wind as the leaves
-    for (const p of area.props) {
+    for (const p of area.propsIn(this.cam.x - 40, this.cam.y - 70, this.cam.x + VW + 40, this.cam.y + VH + 70)) {
       const sm = propDef(p.kind).smoke;
       if (!sm || Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 70) continue;
       for (let n = this.rolls(sm.rate * (tendedAt(area, p.x, p.y) ? hearthSmoke(hour) : 1)); n > 0; n--) // thick at breakfast and supper

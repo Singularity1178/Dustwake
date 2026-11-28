@@ -19,6 +19,7 @@ import { populateKeepers, type KeeperState } from "../sim/shops";
 import { buildFromSpec, attachLinks, nextSpecId, type AreaSpec } from "./areaSpec";
 import type { LodState } from "../sim/lod";
 import { presenceChanged } from "./presence";
+import { discover, discoverAt, type Discovered } from "./discovery";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -172,6 +173,11 @@ export interface World {
   specs: Map<string, AreaSpec>;
   /** Simulation level of detail (sim/lod.ts). Null: everything is stepped every tick. A host policy, never saved. */
   lod: LodState | null;
+  /**
+   * Where the golem has been: areas, and the zones of them it has walked into (world/discovery.ts). Saved (v22). What
+   * an order screen may name is read from this, never from which areas happen to be loaded.
+   */
+  discovered: Discovered;
   /** Where the player was last tick: the area and the zone of it (sim/step.ts emits `zoneEntered` on a change). Transient, never saved. */
   focus?: { area: string; zone: string | null };
 }
@@ -180,9 +186,11 @@ export function createWorld(seed: number): World {
   const w: World = {
     seed, rng: new SeededRng(seed), time: 0, playTime: 0, day: START_HOUR / 24, flags: new Set(),
     areas: new Map(), actors: [], playerId: "golem", scheduled: [], monologue: { said: [], ready: {} }, events: [],
-    specs: new Map(), lod: null,
+    specs: new Map(), lod: null, discovered: new Map(),
   };
   const dungeon = getArea(w, "dungeon");
+  // the golem wakes here: the one place it knows
+  discover(w, dungeon.id);
   // The player first; the dungeon's NPCs were spawned by getArea.
   w.actors.unshift(makeActor("golem", "golem", dungeon.id, dungeon.start.x, dungeon.start.y));
   return w;
@@ -257,10 +265,12 @@ export const currentArea = (w: World) => areaOf(w, player(w));
  * Inventory travels with the actor untouched.
  */
 export function enterArea(w: World, a: Actor, areaId: string, x: number, y: number) {
-  getArea(w, areaId);
+  const area = getArea(w, areaId);
   a.area = areaId;
   presenceChanged();
   a.x = x; a.y = y; a.vx = 0; a.vy = 0;
+  // the golem arriving somewhere is how it comes to know the place (world/discovery.ts); anyone else's travels tell it nothing
+  if (a.id === w.playerId) discoverAt(w, area, x, y);
   a.task = null;
   a.queue = a.queue.filter((t) => !t.area || t.area === areaId);
   if (a.job) a.job.nav = null;

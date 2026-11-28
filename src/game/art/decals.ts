@@ -41,17 +41,61 @@ function decalExtent(dc: DecalDef): [number, number, number, number] | null {
 }
 
 /** Absolute bounds of every decal, cached per decal list (recomputed when decals are appended). */
-const boundsCache = new WeakMap<DecalDef[], { n: number; b: Float32Array }>();
+const boundsCache = new WeakMap<DecalDef[], { n: number; b: Float32Array; cells: Map<number, number[]> }>();
 export function decalBounds(decals: DecalDef[]): Float32Array {
-  let c = boundsCache.get(decals);
-  if (c && c.n === decals.length) return c.b;
+  return indexOf(decals).b;
+}
+
+/** Side of a decal index cell (px). */
+const DCELL = 128;
+interface DecalIndex { n: number; b: Float32Array; cells: Map<number, number[]> }
+const cellKey = (cx: number, cy: number) => (cy + 0x8000) * 0x10000 + (cx + 0x8000);
+
+/**
+ * Bounds and a coarse grid over a decal list, kept per list and extended as decals are appended (an area's list only
+ * ever grows: world/area.ts). A list that has shrunk or been swapped for another is indexed afresh.
+ */
+function indexOf(decals: DecalDef[]): DecalIndex {
+  let c: DecalIndex | undefined = boundsCache.get(decals);
+  if (c && c.n === decals.length) return c;
+  if (!c || c.n > decals.length) c = { n: 0, b: new Float32Array(0), cells: new Map() };
   const b = new Float32Array(decals.length * 4);
-  decals.forEach((dc, i) => {
-    const e = decalExtent(dc) ?? [-40, -40, 120, 200];
-    b[i * 4] = dc.x + e[0]; b[i * 4 + 1] = dc.y + e[1]; b[i * 4 + 2] = dc.x + e[2]; b[i * 4 + 3] = dc.y + e[3];
-  });
-  boundsCache.set(decals, (c = { n: decals.length, b }));
-  return b;
+  b.set(c.b.subarray(0, c.n * 4));
+  for (let i = c.n; i < decals.length; i++) {
+    const dc = decals[i], e = decalExtent(dc) ?? [-40, -40, 120, 200];
+    const x0 = (b[i * 4] = dc.x + e[0]), y0 = (b[i * 4 + 1] = dc.y + e[1]), x1 = (b[i * 4 + 2] = dc.x + e[2]), y1 = (b[i * 4 + 3] = dc.y + e[3]);
+    for (let cy = Math.floor(y0 / DCELL); cy <= Math.floor(y1 / DCELL); cy++)
+      for (let cx = Math.floor(x0 / DCELL); cx <= Math.floor(x1 / DCELL); cx++) {
+        const k = cellKey(cx, cy), list = c.cells.get(k);
+        if (list) list.push(i); else c.cells.set(k, [i]);
+      }
+  }
+  c = { n: decals.length, b, cells: c.cells };
+  boundsCache.set(decals, c);
+  return c;
+}
+
+/**
+ * The indices of the decals whose bounds reach the px rect, ascending (so drawn in the order they were laid, as a walk
+ * of the whole list would). Looks only at the index cells the rect touches: a bake costs the decals near it, however
+ * many the area holds.
+ */
+export function decalsNear(decals: DecalDef[], X0: number, Y0: number, X1: number, Y1: number): number[] {
+  if (!decals.length) return [];
+  const ix = indexOf(decals), b = ix.b, out: number[] = [];
+  const cx0 = Math.floor(X0 / DCELL), cx1 = Math.floor(X1 / DCELL), cy0 = Math.floor(Y0 / DCELL), cy1 = Math.floor(Y1 / DCELL);
+  const one = cx0 === cx1 && cy0 === cy1;
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+    const list = ix.cells.get(cellKey(cx, cy));
+    if (!list) continue;
+    for (const i of list) { const k = i * 4; if (!(b[k + 2] < X0 || b[k] > X1 || b[k + 3] < Y0 || b[k + 1] > Y1)) out.push(i); }
+  }
+  if (one) return out; // one cell: already ascending, nothing twice
+  out.sort((p, q) => p - q);
+  let n = 0;
+  for (let i = 0; i < out.length; i++) if (i === 0 || out[i] !== out[i - 1]) out[n++] = out[i];
+  out.length = n;
+  return out;
 }
 
 function ellipseFill(p: Pen, cx: number, cy: number, rx: number, ry: number, fn: (x: number, y: number, edge: boolean) => string | null) {

@@ -38,6 +38,7 @@ class FakeCtx {
   beginPath() { mix(`${this.id}bp`); }
   rect(x: number, y: number, w: number, h: number) { mix(`${this.id}rc${x},${y},${w},${h}`); }
   clip() { mix(`${this.id}cl`); }
+  translate(x: number, y: number) { mix(`${this.id}tr${x},${y}`); }
 }
 
 class FakeCanvas {

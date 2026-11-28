@@ -8,6 +8,7 @@
 // Diffs keep saves small and let authored areas evolve between versions as
 // long as stable ids are kept. Each schema change bumps SAVE_VERSION and adds a
 // migration from the previous version.
+import { discoveredFromJson, discoveredToJson } from "./discovery";
 import { populateFolk } from "../sim/folk";
 import { populateKeepers } from "../sim/shops";
 import { SeededRng } from "../core/rng";
@@ -116,8 +117,12 @@ import { rleEncode, rleDecode } from "./rle";
   *      tile edits), references to the town area become references to the surface, a gather order's source gains
   *      its zone, townsfolk gain their zone (and carry on mid-stride), and the census flags
   *      are renamed for zones. Positions are frozen in the migration (V21_AT), never read from the live table.
+  * v22: discovery. `discovered` records where the golem has been: areas, and the zones of the overworld it has walked
+  *      into (world/discovery.ts). Order screens name only those places. Before v22 "visited" meant "the area is in
+  *      the save", which stopped meaning anything for the surface once it became one area holding every town. A v21
+  *      save has no such record, so MIGRATIONS[21] (toDiscovery) works it out from what the save does show: see there.
   */
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -143,7 +148,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 21;
+  version: 22;
   seed: number;
   rng: number;
   time: number;
@@ -158,6 +163,8 @@ export interface SaveData {
   areas: Record<string, AreaSave>;
   /** v20: areas made at runtime (world/areaSpec.ts). */
   specs: AreaSpec[];
+  /** v22: where the golem has been (world/discovery.ts): area id -> the zones of it entered. Keys and lists sorted. */
+  discovered: Record<string, string[]>;
 }
 
 type Migration = (s: any) => any;
@@ -387,7 +394,86 @@ export const MIGRATIONS: Record<number, Migration> = {
   19: (s) => ({ ...s, version: 20, specs: Array.isArray(s.specs) ? s.specs : [] }),
   // v21: the overworld (see toOverworld below).
   20: (s) => toOverworld(s),
+  // v22: discovery (see toDiscovery below).
+  21: (s) => toDiscovery(s),
 };
+
+/**
+ * v22: what a save from before discovery counts as already discovered.
+ *
+ * The rule: a place is discovered if the save shows the golem was there, or shows the player already acting on it.
+ * Not "everything the old menus offered": v21 offered every place on the surface from the first crossing, which is
+ * the fault being mended, and a save made at the ruins with Westwake unseen should stop offering Westwake. And not
+ * "only where the golem stands": nobody should lose the wood they were already sending a worker for.
+ *
+ *   1. Areas. The halls and the surface, if the save holds them: the golem woke in one, and nobody reaches the other
+ *      before the golem's own first crossing. So too any area made at runtime (a floor dug down to). A shop's room is
+ *      different: townsfolk and keepers load rooms going about their day, so a room being in the save says nothing.
+ *      A room counts only with the golem standing in it, something built in it, or an order naming it.
+ *   2. On the surface, which zones:
+ *      a. the ruins, if the surface is in the save at all (the rune and the stair both come up there);
+ *      b. the zone the golem stands in;
+ *      c. a zone whose arrival thought has been thought (`town.arrive`: it fires on walking into Westwake);
+ *      d. the zone of a shop's room that counts by rule 1 (its door is there);
+ *      e. a zone the golem has built in (a prop made in play stands there);
+ *      f. a zone an order in the save names (its source, its chest or bench, where it walks to): the player chose
+ *         it from a menu, and must be able to give that order again.
+ *   3. The way there: Westwake could only be reached along the old road (in v20, through the road's portal).
+ *
+ * Everything about the land is frozen here as v21 had it (a migration must not read tables that keep changing): the
+ * three zones' rects in tiles and their id prefixes, where one arrives, whose the shop rooms are.
+ */
+const V22_SURFACE = "surface", V22_ARRIVE = "ruins";
+const V22_ZONES: readonly { id: string; x: number; y: number; w: number; h: number; prefix: string }[] = [
+  { id: "westwake", x: 0, y: 3, w: 96, h: 68, prefix: "westwake/" },
+  { id: "oldroad", x: 96, y: 0, w: 48, h: 72, prefix: "oldroad/" },
+  { id: "ruins", x: 144, y: 0, w: 96, h: 72, prefix: "" },
+];
+const V22_THOUGHTS: Record<string, string> = { "town.arrive": "westwake" };
+const V22_ROOMS: readonly { prefix: string; zone: string }[] = [{ prefix: "town_", zone: "westwake" }];
+const V22_VIA: Record<string, string[]> = { westwake: ["oldroad"] };
+
+function toDiscovery(s: any): any {
+  const found = new Map<string, Set<string>>();
+  const area = (id: unknown) => { if (typeof id === "string" && id && !found.has(id)) found.set(id, new Set()); };
+  const zone = (id: unknown) => { if (typeof id === "string" && V22_ZONES.some((z) => z.id === id)) { area(V22_SURFACE); found.get(V22_SURFACE)!.add(id); } };
+  const at = (x: unknown, y: unknown) => (typeof x === "number" && typeof y === "number" ? V22_ZONES.find((z) => x >= z.x * TS && y >= z.y * TS && x < (z.x + z.w) * TS && y < (z.y + z.h) * TS)?.id : undefined);
+  const areas: Record<string, any> = s.areas ?? {}, actors: any[] = Array.isArray(s.actors) ? s.actors : [];
+  const roomOf = (id: unknown) => (typeof id === "string" ? V22_ROOMS.find((r) => id.startsWith(r.prefix)) : undefined);
+  /** A place the save shows the golem in, or the player acting on: any area; and for a shop's room, the zone its door is in. */
+  const seen = (id: unknown) => { if (typeof id !== "string" || !(id in areas)) return; area(id); const r = roomOf(id); if (r) zone(r.zone); };
+  for (const id of Object.keys(areas)) if (!roomOf(id)) area(id);
+  for (const [id, d] of Object.entries(areas)) if (roomOf(id) && Array.isArray(d?.propsAdded) && d.propsAdded.length) seen(id);
+  const pl = actors.find((a) => a && a.id === s.playerId);
+  seen(pl?.area);
+  const jobs = actors.map((a) => a?.job?.args).filter((x) => x && typeof x === "object");
+  for (const args of jobs) for (const id of [args.fromArea, args.area, args.storage?.area, args.station?.area]) if (id !== V22_SURFACE) seen(id);
+  const surface = areas[V22_SURFACE];
+  if (surface) {
+    zone(V22_ARRIVE);
+    if (pl?.area === V22_SURFACE) zone(at(pl.x, pl.y));
+    for (const [line, z] of Object.entries(V22_THOUGHTS)) if (Array.isArray(s.monologue?.said) && s.monologue.said.includes(line)) zone(z);
+    const built: any[] = Array.isArray(surface.propsAdded) ? surface.propsAdded : [];
+    for (const p of built) zone(at(p?.x, p?.y));
+    /** The zone a prop of the surface stands in: a built one by where it was put, an authored one by its id's prefix. */
+    const ofProp = (ref: any) => {
+      if (!ref || typeof ref !== "object" || ref.area !== V22_SURFACE || typeof ref.prop !== "string") return undefined;
+      const b = built.find((p) => p?.id === ref.prop);
+      if (b) return at(b.x, b.y);
+      return (V22_ZONES.find((z) => z.prefix && ref.prop.startsWith(z.prefix)) ?? V22_ZONES.find((z) => !z.prefix))?.id;
+    };
+    for (const args of jobs) {
+      if (args.fromArea === V22_SURFACE) zone(args.fromZone);
+      zone(ofProp(args.storage)); zone(ofProp(args.station));
+      if (args.area === V22_SURFACE) zone(at(args.x, args.y));
+    }
+    const zones = found.get(V22_SURFACE)!;
+    for (const [z, via] of Object.entries(V22_VIA)) if (zones.has(z)) for (const v of via) zones.add(v);
+  }
+  const discovered: Record<string, string[]> = {};
+  for (const id of [...found.keys()].sort()) discovered[id] = [...found.get(id)!].sort();
+  return { ...s, version: 22, discovered };
+}
 
 /**
  * Where v21 set the two old maps down on the overworld, frozen (a migration must not read a table that keeps
@@ -570,7 +656,7 @@ export function serialize(w: World): SaveData {
   return clone({
     version: SAVE_VERSION, seed: w.seed, rng: w.rng.state, time: w.time, playTime: w.playTime, day: w.day,
     flags: [...w.flags], playerId: w.playerId, actors: w.actors, scheduled: w.scheduled, monologue: w.monologue, areas,
-    specs: [...(w.specs?.values() ?? [])],
+    specs: [...(w.specs?.values() ?? [])], discovered: discoveredToJson(w.discovered),
   } as SaveData);
 }
 
@@ -582,7 +668,7 @@ export function deserialize(raw: unknown, migrations = MIGRATIONS, version = SAV
     seed: s.seed, rng, time: s.time, playTime: s.playTime, day: s.day, flags: new Set(s.flags),
     areas: new Map(), actors: clone(s.actors), playerId: s.playerId, scheduled: clone(s.scheduled),
     monologue: { said: [...(s.monologue?.said ?? [])], ready: { ...(s.monologue?.ready ?? {}) } }, events: [],
-    specs: new Map((s.specs ?? []).map((sp) => [sp.id, clone(sp)])), lod: null,
+    specs: new Map((s.specs ?? []).map((sp) => [sp.id, clone(sp)])), lod: null, discovered: discoveredFromJson(s.discovered),
   };
   for (const [id, d] of Object.entries(s.areas)) w.areas.set(id, restoreArea(id, d, w.specs.get(id), s.time));
   // the ways down to runtime areas, in every parent that is loaded (world/areaSpec.ts)

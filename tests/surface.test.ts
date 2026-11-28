@@ -178,7 +178,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 21); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
+  assert.equal(SAVE_VERSION, 22); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");
@@ -397,7 +397,8 @@ test("perf report: surface bake and light tracing, full vs view-window", () => {
   const idleTotal = performance.now() - t0;
   console.log(`# PERF surface ${s.w}x${s.h}: full bake ${fullBake.toFixed(1)}ms, all ${lights.length} lights traced ${fullVis.toFixed(1)}ms | ` +
     `chunked first frame ${firstFrame.toFixed(1)}ms (${v.stats.chunksBaked - n} chunks, ${v.stats.visTraced} lights), then ${n} chunks in background (${(idleTotal / Math.max(1, n)).toFixed(1)}ms/frame)`);
-  assert.ok(v.fullyBaked);
+  // the background work stops at the margin around the view (view/areaView.ts): it never goes on to bake the whole area
+  assert.ok(!v.idle() && v.chunkCount <= v.capacity && v.chunkCount < (Math.ceil(s.w / 8) * Math.ceil(s.h / 8)) / 2, `${v.chunkCount} chunks held`);
   assert.ok(v.stats.visTraced < lights.length);
 });
 

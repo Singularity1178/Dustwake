@@ -472,7 +472,7 @@ test("the guild board is looked at, not used: a duty sends someone to read it (t
 
 // ------------------------------------------------------------------ saves, determinism, timing
 test("saves: v18 loads with a keeper for every shop room it had visited; a save mid-visit carries on exactly; the same seed gives the same afternoon", () => {
-  assert.equal(SAVE_VERSION, 21);
+  assert.equal(SAVE_VERSION, 22);
   const w = at(12.4, "town_tavern", 6); run(w, 6);
   assert.ok(folkOf(w).some((a) => a.area === "town_tavern" && a.life!.act === "shop"), "customers in the middle of a visit");
   // an older save: no keepers, version 18
@@ -480,7 +480,7 @@ test("saves: v18 loads with a keeper for every shop room it had visited; a save 
   old.actors = old.actors.filter((x: any) => x.kind !== "keeper");
   for (const x of old.actors) if (x.life) { delete x.life.step; delete x.life.beat; delete x.life.dealt; delete x.life.lastEx; delete x.life.lastSay; }
   assert.deepEqual(MIGRATIONS[18](old), { ...old, version: 19 }, "nothing older is rewritten");
-  assert.equal((migrate(old) as { version: number }).version, 21);
+  assert.equal((migrate(old) as { version: number }).version, 22);
   const up = deserialize(old);
   for (const id of up.areas.keys()) if (id.startsWith("town_")) assert.equal(up.actors.filter((x) => isKeeper(x) && x.area === id).length, 1, `${id}: its keeper, once`);
   assert.ok(keeperOf(up, "town_tavern"), "the tavern's keeper is made on load");

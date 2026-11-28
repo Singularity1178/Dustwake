@@ -66,7 +66,7 @@ test("perf report: the 96x72 surface at 2x zoom (640x360 view)", () => {
     for (let i = 0; i < 10; i++) { L.accumulate(lights, rp.x - w / 2, rp.y - h / 2); L.compose(sc, em, o, [0.2, 0.2, 0.3]); }
     const light = (performance.now() - t0) / 10;
     let n = 0; while (v.idle()) n++;
-    assert.ok(v.fullyBaked);
+    assert.ok(!v.idle() && v.chunkCount <= v.capacity && v.chunkCount < (Math.ceil(s.w / 8) * Math.ceil(s.h / 8)) / 2, `${v.chunkCount} chunks held at ${z}x`);
     out.push(`${z}x ${w}x${h}: first frame ${first.toFixed(1)}ms (${chunks} chunks), lighting ${light.toFixed(1)}ms/frame, ${n} chunks left for idle`);
   }
   console.log(`# PERF zoom (surface ${s.w}x${s.h}) | ${out.join(" | ")}`);

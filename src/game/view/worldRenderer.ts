@@ -37,9 +37,10 @@ export class WorldRenderer {
     const hour = worldHour(this.g.world);
     sc.fillStyle = "#000"; sc.fillRect(0, 0, W, H);
     ec.fillStyle = "#000"; ec.fillRect(0, 0, W, H);
+    // the ground: the chunks under the camera (baked by now), then one more of the margin around it (view/areaView.ts)
     this.g.view.prepare(camX, camY, W, H);
+    this.g.view.draw(sc, camX, camY, W, H);
     this.g.view.idle();
-    sc.drawImage(this.g.view.bg.c, camX, camY, W, H, 0, 0, W, H);
     const spr = (s: Sprite, x: number, y: number) => {
       const dx = Math.round(x - s.ax - camX), dy = Math.round(y - s.ay - camY);
       if (dx > W || dy > H || dx + s.w < 0 || dy + s.h < 0) return;
@@ -80,13 +81,14 @@ export class WorldRenderer {
       }
     }
     // ---- rune circles that are props (surface)
-    for (const p of area.props) if (p.kind === "runecircle") this.drawSurfaceRune(p, camX, camY);
+    for (const p of area.propsOfKind("runecircle")) this.drawSurfaceRune(p, camX, camY);
     // ---- sortables
     type D = { y: number; f: () => void };
     const list: D[] = [];
     const vx0 = camX - 48, vx1 = camX + W + 48, vy0 = camY - 16, vy1 = camY + H + 60;
-    for (const p of area.props) {
-      if (p.x < vx0 || p.x > vx1 || p.y < vy0 || p.y > vy1) continue;
+    // (the props standing in the box, in the area's own order: world/area.ts keeps them by place, so a frame costs
+    // what is near the camera, not every prop of the land)
+    for (const p of area.propsIn(vx0, vy0, vx1, vy1)) {
       if (p.kind === "pedestal") {
         const i = Number(p.id.slice(3));
         list.push({ y: p.y, f: () => this.drawPedestal(p, i, spr, camX, camY) });
@@ -190,7 +192,8 @@ export class WorldRenderer {
     const sImg = sc.getImageData(0, 0, W, H);
     const eImg = ec.getImageData(0, 0, W, H);
     const active: Light[] = this.g.hideGolem ? [] : [this.g.glight];
-    for (const L of this.g.view.lights.values()) if (L.on) active.push(L);
+    // the lights that can reach the view, in the registry's order (the rest would add nothing to the sum)
+    for (const L of this.g.view.lightsNear(camX, camY, camX + W, camY + H)) if (L.on) active.push(L);
     this.g.lighting.accumulate(active, camX, camY);
     // the hour: the sky's share of the ambient by how much of it this area sees, and lamps counting for less in daylight
     const exposure = exposureOf(area);

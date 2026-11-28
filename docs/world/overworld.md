@@ -1,6 +1,6 @@
-# The overworld: one surface, sites, zones, and simulation by distance (v21)
+# The overworld: one surface, sites, zones, discovery, and simulation by distance (v21, v22)
 
-> Index: [docs/index.md](../index.md). Code: `content/places.ts`, `overworld.ts`, `oldRoad.ts`, `world/compose.ts`, `world/zones.ts`, `world/presence.ts`, `world/area.ts` (buckets, sectors), `sim/navigation.ts`, `sim/lod.ts`, `sim/folk.ts`, `sim/jobs.ts`, `sim/orders.ts`, `world/save.ts` (v21). Tests: `tests/overworld.test.ts`, and the town, folk, shops, routes, timestep and soak suites, which now run on the overworld.
+> Index: [docs/index.md](../index.md). Code: `content/places.ts`, `overworld.ts`, `oldRoad.ts`, `world/compose.ts`, `world/zones.ts`, `world/presence.ts`, `world/area.ts` (buckets, sectors), `sim/navigation.ts`, `sim/lod.ts`, `sim/folk.ts`, `sim/jobs.ts`, `sim/orders.ts`, `world/save.ts` (v21), `world/discovery.ts` (v22), `view/areaView.ts` (the chunk cache). Tests: `tests/overworld.test.ts`, `tests/discovery.test.ts`, `tests/chunkView.test.ts`, and the town, folk, shops, routes, timestep and soak suites, which now run on the overworld.
 
 ## What changed, and why
 
@@ -30,13 +30,44 @@ Every site becomes a **zone** (`map.ts: Zone`, `world/zones.ts`): a named rect o
 
 | Who | How it uses zones |
 | --- | --- |
-| Orders | A gather order names a zone (`fromZone`): "GATHER WOOD FROM THE OLD ROAD". The surface as a whole is too big to be somewhere. `gatherSources` offers an area with zones place by place; `walkOptions` offers each zone by where one arrives in it ("WESTWAKE START"); a walk into a settlement reads "GO TO WESTWAKE". |
+| Orders | A gather order names a zone (`fromZone`): "GATHER WOOD FROM THE OLD ROAD". The surface as a whole is too big to be somewhere. `gatherSources` offers an area with zones place by place; `walkOptions` offers each zone by where one arrives in it ("WESTWAKE START"); a walk into a settlement reads "GO TO WESTWAKE". Only zones the golem has been in are offered (Discovery, below). |
+| Discovery | A zone is the unit of what the golem knows of the land: walked into, it is on record, with everything that stands in it. |
 | People | A census row has a `zone`; a person's home, places, claims and rounds are their zone's (`sim/folk.ts: zoneFor`, `spotsIn`). Census flags are per place (`census.westwake`). |
 | Simulation | A zone says how it wakes (below). |
 | Presentation | `zoneEntered` (emitted by `stepWorld` when the player walks across a zone's edge, 20 px inside it so a border is never named twice) shows the place's name and, for a settlement, autosaves, as arriving in an area does. Lamps are tended by zone (`tendedAt`), so Westwake's lights keep hours and the camp's fire does not. The golem's "ON RECORD: A VILLAGE. OBSERVED: A TOWN." fires on entering the zone. |
 | Debug | The travel menu lists each zone and its named parts under the zone's name. |
 
 Lookups do not walk lists. `zoneAt(area, x, y)` reads a coarse cell index built once per area definition; spots are bucketed per zone.
+
+## Discovery: what the golem knows (v22)
+
+`world/discovery.ts`, `World.discovered` (saved). Tests: `tests/discovery.test.ts`.
+
+**The fault.** Up to v21, "a place the player may name in an order" meant "an area that is loaded". That was already loose (a worker walking into a room loaded it; so did a townsperson going indoors), and it stopped meaning anything once the surface became one area: from the first crossing the surface was "visited", so walk orders offered WESTWAKE START and THE OLD ROAD START, gather orders offered the old road's trees, and (because the shops' doors are portals of the surface now) all six shop interiors, before the golem had taken a step west.
+
+**The rule.** The game keeps a record of where the golem has been, at two levels, like the world itself:
+
+- an **area** is discovered when the golem comes into it (`enterArea`);
+- a **zone** of an area made of zones is discovered when the golem walks into it (`sim/step.ts: trackZone`, the moment `zoneEntered` fires: 20 px inside, so a place is known exactly when its name comes up on the screen) or arrives in it.
+
+Only the golem discovers. A worker's travels, townsfolk, a planned route and a test calling `getArea` load areas and reveal nothing. `discover(w, area, zone)` is the only writer, so content can tell the golem of a place without a visit (a signpost, a map sold in a shop, something a townsperson says): one call.
+
+Everything an order screen lists is read from the record, in `sim/orders.ts`, which is the only place the screens get their lists from:
+
+| List | Gate |
+| --- | --- |
+| `knownAreas` | areas the golem has been in, plus the far end of an open door or road that stands **in a zone the golem has been in** (the signs over Westwake's shop doors are read in Westwake) |
+| `walkOptions` | for an area the golem has been in: its start (if that ground is known), each discovered zone's arrival point, known chests, stations and runes. For an area known only by its door: where one comes in, nothing inside, even if a worker has loaded it |
+| `gatherSources` | discovered zones only (ground no zone covers goes by the area's name) |
+| `storageOptions`, `stationOptions`, `gatherTargets` | props at a known point (`knownAt`): a chest in an unseen town is not offered though it stands in the same area as one that is |
+
+Checked and left alone: the debug travel menu lists every place on purpose (it is a tool; going somewhere with it is arriving there, so it discovers); the high-resolution HUD only lists what is in the golem's own area and view; a worker's "At:" line names its area, never its zone. Orders are gated where they are offered, not where they are accepted: `assignJob` / `setWorkerOrder` still take any valid order, because the simulation, tests and saves give orders too, and an order already running must not stop being valid.
+
+**No "known from its neighbour".** A zone is not known because the one beside it is. Sites are set down by a table, so adjacency is an accident of layout; a wild zone a thousand tiles across would announce every kingdom along its far edge the moment it was stepped into; and "next to" is not "in sight". The old game's version of this rule was about a *thing* (the waymark at the mouth of the road, the sign over a door), and that is kept for things: portals. If a place should be heard of before it is seen, say so with `discover`.
+
+**Old saves** (`MIGRATIONS[21]`, `world/save.ts: toDiscovery`). A v21 save has no record, so one is worked out from what the save shows. Not "everything the old menus offered" (that is the fault: a save made at the ruins with Westwake unseen stops offering Westwake), and not "only where the golem stands" (nobody loses the wood they were already sending a worker for). A place counts if the save shows the golem was there or the player already acting on it: the halls and the surface if present, and on the surface the ruins (one arrives there), the zone the golem stands in, Westwake if its arrival thought has been thought, any zone the golem built in, any zone a saved order names, and the old road if Westwake counts (it was the only way). A shop's room being in the save is **not** evidence (townsfolk load rooms going about their day); it counts with the golem standing in it, something built in it, or an order naming it. The land is frozen in the migration as v21 had it.
+
+Cost: a set lookup per question; one comparison per tick for the player. Nothing walks a list of zones.
 
 ## Simulation by distance
 
@@ -72,6 +103,29 @@ Collision (`sim/collision.ts: boxFree`) asks the area's **collision buckets** (`
 
 Per-tick lists (`world/presence.ts`): the bodies that block and the actors of each area are derived once per tick instead of filtering `World.actors` for every question, and the id-ordered stepping list is sorted once and kept while the same actors are there.
 
+## The view at scale: a cache of chunk canvases
+
+`view/areaView.ts`, `world/area.ts` (`propsIn`, `propsOfKind`), `art/decals.ts` (`decalsNear`). Tests: `tests/chunkView.test.ts`.
+
+The background used to be one canvas covering the area. Browsers cap a canvas at somewhere between 8k and 32k px a side (and far less area on phones), so that design ended at roughly 500 to 2000 tiles; the surface is meant to go well past that. It is now a cache:
+
+- The ground is baked in 8 x 8 tile chunks (128 px), each into its own canvas. The bake is the same function, given the chunk's origin (`bakeRegion(..., ox, oy)`), so a chunk is pixel for pixel the ground the whole-area canvas held.
+- `prepare` bakes whatever the camera can see that is not held, before the frame is drawn: nothing is ever seen unbaked.
+- `idle` bakes one chunk a frame in a margin two chunks deep around the view (`AHEAD`), nearest first and the side the camera is heading toward before the others. It stops when the margin is ready. Nothing bakes the rest of the area. Two chunks is 256 px, which also covers zooming all the way out from the closest view.
+- Chunks are dropped, least recently in view first and never from the view or its margin, once the cache holds more than twice what the view and margin need. Their canvases are reused, so walking allocates nothing. At the widest zoom the cache tops out around 160 chunks, about 10 MB; the old canvas for today's surface was 17.7 MB and grew with the land.
+- A change to the world re-bakes only the part of each cached chunk it touches, and costs nothing where no chunk is held. Changes are no longer unioned into one rect: before, two changes a long way apart in the same frame re-baked all the land between them.
+- `draw` copies the chunks under the camera, whole pixels, unscaled: no seams.
+
+What else in a frame scaled with the area, and no longer does:
+
+| Was | Now |
+| --- | --- |
+| the renderer walked every prop of the area twice a frame, the host twice more (embers, smoke), a click once | `Area.propsIn(rect)`: props by 128 px cell, returned in the area's own order (so draw order, and ties in it, are unchanged); `propsOfKind` for the rune circles |
+| every light of the area was culled, flickered and handed to the accumulator each frame; `byId` searched them three times a frame | `AreaView.lightsNear(rect)`: a grid over the static lights, the moving ones apart, returned in registry order (the lit frame is the same sum); `byId` is a map |
+| each chunk bake walked every decal of the area; adding one decal re-measured all of them | `decalsNear`: a grid over decal bounds, extended as decals are appended |
+
+`tests/chunkView.test.ts` holds it on a canvas that really stores pixels (`tests/support/rasterCanvas.ts`): every frame equal to the old single canvas's, anywhere on the overworld, at every zoom, at and past the edges, after the world changes and after chunks have been dropped and re-baked; the cache within capacity across a walk of the whole land and back; `prepare` never baking while walking; and an area 8192 tiles a side (131072 px) costing what the surface costs.
+
 ## Saves (v21)
 
 `MIGRATIONS[20]` (`world/save.ts: toOverworld`) folds a v20 save's `town` area into `surface` and translates everything saved in either old map to where that ground now lies: actors, tasks, queued work, orders and their targets, walkers' paths, people's goals, dropped stacks, built props, decals, tile edits, runtime areas hung under them. Town ids gain `westwake/`. References to the town area become references to the surface; a gather order's source gains its zone; townsfolk gain their zone and carry on mid-stride; `census.town` / `census.surface` become `census.westwake` / `census.ruins`. Positions are frozen in the migration (`V21_AT`), never read from the live table.
@@ -100,6 +154,9 @@ Nothing else needs to know. Orders offer it by name, the simulation sleeps and w
 
 ## Limits to know about
 
-- The view bakes an area's background into one canvas (`view/areaView.ts`), in chunks on demand. At 240 x 72 tiles that is 3840 x 1152 px and fine. A much larger overworld needs that canvas replaced by a cache of chunk canvases; the baking is already chunked and tile-local, so only the storage has to change.
+- The view's lights are reconciled with the world by walking the area's lights and props (`AreaView.syncLights`) whenever a prop's state changes anywhere in the area. Per frame nothing walks them, but a lamp lit in a far town still costs one pass here. The fix is the same as for the background: derive lights per region near the camera. Loose items on the ground (`Area.loose`) are still one list walked per frame.
+- An `Area` still holds its tiles as flat arrays (four bytes a tile) and builds the whole of itself up front. That is fine for thousands of tiles a side (8192 x 8192 is 270 MB and is what the view test uses) and not for a continent: past that the area itself needs to be built and held by region, like its background now is.
+- Chest and station names number a kind across the whole area ("SURFACE CHEST 3"), so the number can hint at chests in places not yet seen. Naming them by zone would fix it and rename every existing chest; not done here.
+- `portalsOf(area)` is a list (`portalAt` and `knownAreas` walk it). Six doors today; a land of towns will want portals bucketed by zone.
 - Regions assume a route may pass through any connected ground. There are no costs for terrain yet (roads are not preferred over meadow).
 - `World.actors` is still one array walked once per tick (cheaply). Thousands of far residents are fine; tens of thousands will want per-zone storage.

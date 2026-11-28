@@ -5,6 +5,7 @@ import { buildFoundationArea } from "../world/foundationAreas";
 import { giveItem } from "./inventory";
 import { insertPowerCore } from "./power";
 import { assignJob, gatherOrder } from "./jobs";
+import { discover } from "../world/discovery";
 
 /**
  * Registers the two debug areas and their rune link (?debug and tests). The
@@ -26,6 +27,8 @@ export function foundationDemo(seed = 1178) {
   const w = createWorld(seed), pl = player(w);
   getArea(w, "debug_yard"); getArea(w, "debug_workshop");
   enterArea(w, pl, "debug_workshop", 136, 139);
+  // the demo starts mid-game: the yard its worker is sent to is somewhere the golem has been (world/discovery.ts)
+  discover(w, "debug_yard");
   const worker = makeActor("debug.worker", "worker_golem", "debug_workshop", 120, 123);
   w.actors.push(worker);
   for (const f of ["know.build", "tutorial.done", "rune.debug_yard.active", "rune.debug_workshop.active"]) setFlag(w, f);

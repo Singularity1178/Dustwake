@@ -3,6 +3,7 @@
 // Westwake, the shops' doors), gather orders that keep what they gather, and the v16 -> v17 migration. The host's
 // side (the rune's refusal as it is drawn) is tests/runeHost.test.ts.
 import { preOverworld } from "./support/preOverworld";
+import { discover } from "../src/game/world/discovery";
 import { zoneAt } from "../src/game/world/zones";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -117,7 +118,7 @@ test("a broken circle below severs the surface rune: it stays lit but carries no
 });
 
 test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, and an order stopped for want of a route keeps its reason", () => {
-  assert.equal(SAVE_VERSION, 21);
+  assert.equal(SAVE_VERSION, 22);
   const { w } = crossed();
   breakCircle(w);
   const wk = withWorker(w);
@@ -125,12 +126,14 @@ test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, a
   for (let i = 0; i < 5; i++) stepWorld(w, DT);
   assert.deepEqual([wk.job!.status, wk.job!.reason], ["blocked", "noRoute"], "rune dark, stair buried: no way out of the halls");
   assert.equal(blockText("noRoute"), "NO WAY THERE"); assert.ok(!("noRuneRoute" in BLOCK_TEXT));
+  // (the order names ground in Westwake: a save from before v22 takes the place an order names, and the road to it, as known)
+  discover(w, "surface", "westwake"); discover(w, "surface", "oldroad");
   const now = JSON.parse(JSON.stringify(serialize(w)));
   // that world as v16 saved it once the bug had bitten: the dark circle's flag set by a trip down, the old reason name
   const pre = preOverworld(now); // (as a save from before the overworld held it: tests/support/preOverworld.ts)
   const v16 = { ...pre, version: 16, flags: [...pre.flags, "rune.dungeon.active"], actors: pre.actors.map((a: { id: string; job: object }) => (a.id === WORKER ? { ...a, job: { ...a.job, reason: "noRuneRoute" } } : a)) };
   const up = migrate(v16) as typeof now;
-  assert.equal(up.version, 21);
+  assert.equal(up.version, 22);
   assert.ok(!up.flags.includes("rune.dungeon.active") && up.flags.includes("rune.surface.active"));
   assert.deepEqual(up, now, "and nothing else moved");
   const w2 = deserialize(v16);
@@ -156,7 +159,10 @@ test("a worker takes the dug-out stair when the rune will not carry it, and walk
   assert.deepEqual(firstHops(w, means, "surface", "dungeon"), [{ via: "portal", portal: STAIR.above.portal, area: "dungeon" }]);
   assert.ok(canReach(w, wk, "surface"));
   // Westwake is a zone of the surface (world/zones.ts): not an area to route to, a place on it to walk to, offered by where one arrives in it
-  assert.deepEqual(knownAreas(w).filter((id) => !id.startsWith("town_")), ["dungeon", "surface"]);
+  assert.deepEqual(knownAreas(w), ["dungeon", "surface"]);
+  // (a place is offered once the golem has been there, world/discovery.ts: not before, and then by where one arrives in it)
+  assert.ok(!walkOptions(w, wk).some((o) => /WESTWAKE|GUILD HALL/.test(o.label)) && !knownAreas(w).includes("town_guild"));
+  discover(w, "surface", "westwake");
   const spot = walkOptions(w, wk).find((o) => o.label === "WESTWAKE START")!;
   assert.ok(spot && spot.area === "surface");
   assert.equal(zoneAt(getArea(w, "surface"), spot.x, spot.y)?.id, "westwake");
