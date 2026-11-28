@@ -402,8 +402,8 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
   // ---- the old road west, to the village the Treasury Guardian remembers (now the
   // market town of Westwake: town.ts). Cut last, with no rng, so nothing else in
   // the wild moves: three rows of thicket open into a rutted earth track that runs
-  // off the west edge, the track's line fades a few tiles into the meadow, and a
-  // leaning waymark stands at its mouth. No light: only the rune glows up here.
+  // off the west edge, and the track's line fades a few tiles into the
+  // meadow. No light: only the rune glows up here.
   const portals: Portal[] = [], exits: Exit[] = [];
   if (opts.westRoad !== false) {
     const { y0, y1 } = WEST_ROAD.surface, mid = (y0 + y1) >> 1;
@@ -434,11 +434,6 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
       if (h < 0.3) D("mosspatch", px, y === y0 ? y * TS + 3 : (y + 1) * TS - 3, 1, 10 + Math.floor(h * 30));
       if (h > 0.5) D("leaves", px + 4, y === y0 ? y * TS + 5 : (y + 1) * TS - 6, 0);
     }
-    // the waymark stands at the road's corner by the mouth: on the grass just north of the track, never on the dirt
-    const wx = Math.max(2, mouth), wy = y0 * TS - 4;
-    ids.add("waymark.west");
-    props.push({ id: "waymark.west", kind: "waymark", x: wx * TS + 9, y: wy, v: 0 });
-    D("mosspatch", wx * TS + 8, wy, 1, 12);
     portals.push({
       id: WEST_ROAD.portal, x: TS, y: y0 * TS, w: TS + 4, h: (y1 - y0 + 1) * TS, dir: "left",
       to: { area: "town", portal: "east_road" }, arrive: { x: 2 * TS + 10, y: mid * TS + 12 }, label: "THE OLD ROAD",

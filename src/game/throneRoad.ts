@@ -39,10 +39,14 @@ export function buildThroneRoad(): AreaData {
   for (let y = y0; y <= y1; y++) for (let x = lx1 + 1; x < W; x++) style[I(x, y)] = y === mid || hash2(x, y, SEED + 30) < 0.4 ? FS.EARTH : FS.DIRT;
 
   // ---- furniture. Rune lamps stand on the verges, alternating sides, so the road is lit from the gate out into the dark;
-  // a new milestone stands at the crossing, on the north-east corner, where the track leaves.
+  // a new milestone stands at the crossing, on the north-east corner, where the track leaves. The old wooden waymark
+  // stands on the north-west corner, where the gate's spur meets the paving, to tell travellers which way is which.
   const lamps: [number, number][] = [[1, 12], [6, 21], [1, 30], [6, 38], [1, 47], [6, 56], [1, 65]];
   for (const [x, y] of lamps) Pt("rune_lamp", x, y);
   Pt("kingsmilestone", 6.4, y0 - 1.4);
+  const mx = (lx0 - 1) * TS + 8, my = y0 * TS - 3;
+  k.P("waymark", mx, my);
+  D("mosspatch", mx - 1, my, 1, 12);
 
   // ---- the meadow either side: grass, flowers, the odd bush or sapling on the outer columns, never near the lanes
   const wild = (x: number, y: number) => x !== lx0 - 1 && x !== lx1 + 1 && !isLane(x, y);
