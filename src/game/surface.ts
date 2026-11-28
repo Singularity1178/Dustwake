@@ -37,7 +37,10 @@ export function vnoise(x: number, y: number, k: number, s: number) {
   return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
 }
 /** Three octaves, roughly [0.1, 0.9], mean 0.5. */
-const fbm = (x: number, y: number, s: number) => 0.5 * vnoise(x, y, 13, s) + 0.3 * vnoise(x, y, 6, s + 1) + 0.2 * vnoise(x, y, 3, s + 2);
+export const fbm = (x: number, y: number, s: number) => 0.5 * vnoise(x, y, 13, s) + 0.3 * vnoise(x, y, 6, s + 1) + 0.2 * vnoise(x, y, 3, s + 2);
+
+/** How deep the closing thicket reaches in from an edge of the wild, at tile (x, y). */
+export const wildRim = (x: number, y: number) => 2 + Math.floor(fbm(x, y, 220) * 7 - 0.6);
 
 /**
  * `westRoad: false` leaves out the old road to Westwake (the wild exactly as it
@@ -85,7 +88,7 @@ export function buildSurface(opts: { westRoad?: boolean; iron?: boolean; camp?: 
   for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
     const i = y * SW + x;
     const edge = Math.min(x, y, SW - 1 - x, SH - 1 - y);
-    if (edge < 2 + Math.floor(fbm(x, y, 220) * 7 - 0.6)) { grid[i] = T.THICKET; continue; }
+    if (edge < wildRim(x, y)) { grid[i] = T.THICKET; continue; }
     const wood = fbm(x, y, 201), wet = fbm(x, y, 202), rock = fbm(x, y, 203), dr = dRune(x, y);
     let z: Zone;
     if (inGate(x, y)) z = Zone.GATE;

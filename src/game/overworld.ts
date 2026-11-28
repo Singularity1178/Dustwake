@@ -21,6 +21,7 @@ import { buildWestRoad } from "./westRoad";
 import { buildSurface } from "./surface";
 import { buildTown } from "./town";
 import { composeArea, type ComposeDef, type SiteDef } from "./world/compose";
+import { openWoodGap } from "./woodGap";
 
 /**
  * A site's own build is pure data that the compositor copies, so it is made once and kept: composing the overworld
@@ -71,4 +72,5 @@ export const OVERWORLD: ComposeDef = {
   seams: [{ x: SITE_AT.ruins.x, y: WEST_ROAD.surface.y0, w: 1, h: WEST_ROAD.surface.y1 - WEST_ROAD.surface.y0 + 1, style: FS.EARTH }],
 };
 
-export const buildOverworld = (): AreaData => composeArea(OVERWORLD);
+/** The sites set down side by side, then the band of thicket that stood between the old road and the ruins opened (woodGap.ts). */
+export const buildOverworld = (): AreaData => openWoodGap(composeArea(OVERWORLD));
