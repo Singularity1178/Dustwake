@@ -1,6 +1,7 @@
 // The wild surface: builder determinism and reachability, the buried entrance
 // (walkable, non-solid, readable), the dungeon's rock-choked SURFACE GATE, the
 // overgrown rune's erosion / awakening model, and the v3 -> v4 save migration.
+import { RUINS_AT } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
@@ -14,7 +15,7 @@ import { DUNGEON_TO_SURFACE, GATE_CORRIDOR, GATE_EXIT, SURFACE_GATE, SURFACE_GAT
 import { reachable, nearReached, cellFeet, type Box } from "../src/game/sim/reach";
 import { propBlocks, boxFree } from "../src/game/sim/collision";
 import { getArea, enterArea, player, currentArea, type World } from "../src/game/world/world";
-import type { Area } from "../src/game/world/area";
+import { Area } from "../src/game/world/area";
 import { serialize, deserialize } from "../src/game/world/save";
 import { circlePixels } from "../src/game/circle";
 import { runeModel, carvingVisible, plantVisible, clumpCleared, RUNE_SURVIVE } from "../src/game/runeReveal";
@@ -22,7 +23,8 @@ import { SurfaceRuneArt } from "../src/game/surfaceRune";
 import { propSprite } from "../src/game/art/props";
 import { events, find, frames, newWorld, useOn } from "./helpers";
 
-const surfaceOf = (w: World = newWorld()) => getArea(w, "surface");
+/** The ruins' own map, standalone (a site of the overworld, audited in its own tiles), or the live overworld of a world. */
+const surfaceOf = (w?: World) => (w ? getArea(w, "surface") : new Area(buildSurface()));
 const boxesOf = (a: Area): Box[] => a.props.filter(propBlocks).map((p) => p.box!);
 const reachOf = (a: Area) => reachable(a, boxesOf(a), a.base.start);
 
@@ -135,7 +137,7 @@ test("the buried entrance is plain floor with no solid prop on it", () => {
 
 test("the golem walks straight across the buried gate, and the ground sounds hollow", () => {
   const w = newWorld(), pl = player(w);
-  enterArea(w, pl, "surface", SURFACE_GATE.x * TS + 8, SURFACE_GATE_ZONE.y0 * TS - 6);
+  enterArea(w, pl, "surface", RUINS_AT.x + SURFACE_GATE.x * TS + 8, SURFACE_GATE_ZONE.y0 * TS - 6);
   pl.facing = "down";
   const y0 = pl.y;
   frames(w, 60 * 14, { ix: 0, iy: 1, use: false });

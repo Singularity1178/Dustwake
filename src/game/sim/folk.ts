@@ -33,16 +33,18 @@ import { hash01, hourOf, wrapHour, DAY_SECONDS } from "../content/daycycle";
 import { TS } from "../content/tiles";
 import { propDef } from "../content/props";
 import type { Spot } from "../map";
-import type { Area } from "../world/area";
+import type { Area, PropInst } from "../world/area";
 import { actorById, emit, getArea, makeActor, player, type Actor, type World } from "../world/world";
 import type { Facing } from "../golem";
-import { findPath, navGrid, sweptFree } from "./navigation";
+import { findPath, navGrid, planPath, sweptFree } from "./navigation";
 import { nearestFree } from "./collision";
 import { portalArrival } from "./portals";
 import { BOARD, TRIP } from "../content/shops";
 import { EXCHANGES, EXCHANGE_BY_ID, GRIPES, MUTTERS, NEWS, REACTIONS, hail, peerLines, type ExchangeDef, type TalkContext, type Who } from "../content/talk";
 import { keeperOf, keeperReady, keeperServe, shopStepAt, tripsOf, type Trip } from "./shops";
-import { lodDue, lodTier, stepIn } from "./lod";
+import { lodDue, lodTier, stepIn, zoneAwake } from "./lod";
+import { inZone, spotIn, spotsIn, zoneById, type Zone } from "../world/zones";
+import { actorsIn, presenceChanged } from "../world/presence";
 
 // ---------------------------------------------------------------- types (saved on the actor)
 export interface FolkLook { skin: number; hair: number; style: number; beard: number; build: number; tall: number; cloth: number; trim: number; hat: number; acc: number; fem: number }
@@ -52,6 +54,8 @@ export interface Person {
   home: string;
   /** The area the census row put them in (their habitat's main area). */
   origin: string;
+  /** Their zone of that area (world/zones.ts), where it is made of zones: home, places, claims and rounds are this zone's. */
+  zone?: string;
   /** Watch route (content/folk.ts: ROUTES). */
   route?: string;
   look: FolkLook;
@@ -155,11 +159,11 @@ export function makePerson(w: World, row: CensusRow, taken: Set<string> = new Se
     cloth: Math.floor(h(57) * 4), trim: Math.floor(h(58) * 4), hat: Math.floor(h(59) * 3), acc: Math.floor(h(60) * 4), fem,
   };
   const routine = row.routine ?? arch.routines[Math.floor(h(70) * arch.routines.length)];
-  return { name, archetype: arch.id, traits, routine, home: row.home, origin: row.area, route: row.route, look };
+  return { name, archetype: arch.id, traits, routine, home: row.home, origin: row.area, ...(row.zone ? { zone: row.zone } : {}), route: row.route, look };
 }
 
 export function makeFolk(w: World, row: CensusRow, taken?: Set<string>): Actor {
-  const area = getArea(w, row.area), home = spotById(area, row.home);
+  const area = getArea(w, row.area), home = spotById(area, row.home, row.zone);
   const a = makeActor(row.id, FOLK_DEF, row.area, home?.x ?? area.start.x, home?.y ?? area.start.y);
   a.kind = FOLK_KIND;
   a.person = makePerson(w, row, taken);
@@ -171,21 +175,26 @@ export function makeFolk(w: World, row: CensusRow, taken?: Set<string>): Actor {
   return a;
 }
 
-/** The census flag: an area's people have been made (once; whatever becomes of them after is theirs). */
-export const censusFlag = (area: string) => `census.${area}`;
+/** What a census row's people are counted under: their zone, where the area is made of zones, else the area. */
+export const censusKey = (r: { area: string; zone?: string }) => r.zone ?? r.area;
+/** The census flag: a place's people have been made (once; whatever becomes of them after is theirs). `place`: a censusKey. */
+export const censusFlag = (place: string) => `census.${place}`;
 
 /**
- * Make the people who live in `area`, once (world.getArea calls this on an area's first instantiation, and a save
- * from before townsfolk calls it for areas it had already visited). They are not placed yet: the first tick with
- * the player there settles them where the hour says.
+ * Make the people who live in `area`, once per place (world.getArea calls this on an area's first instantiation, and
+ * a save from before townsfolk calls it for areas it had already visited). They are not placed yet: the first tick
+ * with the player near settles them where the hour says.
  */
 export function populateFolk(w: World, area: string) {
-  if (w.flags.has(censusFlag(area))) return;
   const rows = CENSUS.filter((r) => r.area === area);
   if (!rows.length) return;
-  w.flags.add(censusFlag(area));
-  const taken = new Set(w.actors.filter(isFolk).map((a) => a.person!.name.split(" ")[0]));
-  for (const r of rows) if (!actorById(w, r.id)) w.actors.push(makeFolk(w, r, taken));
+  let taken: Set<string> | null = null;
+  for (const key of new Set(rows.map(censusKey))) {
+    if (w.flags.has(censusFlag(key))) continue;
+    w.flags.add(censusFlag(key));
+    taken ??= new Set(w.actors.filter(isFolk).map((a) => a.person!.name.split(" ")[0]));
+    for (const r of rows) if (censusKey(r) === key && !actorById(w, r.id)) w.actors.push(makeFolk(w, r, taken));
+  }
 }
 
 // ---------------------------------------------------------------- the plan: what the hour says
@@ -241,13 +250,16 @@ export function desiredArea(w: World, a: Actor, plan = planAt(w, a)): string {
 }
 
 // ---------------------------------------------------------------- places
-export const spotById = (area: Area, id: string) => area.base.spots?.find((s) => s.id === id);
-const homeSpot = (w: World, a: Actor) => spotById(getArea(w, a.person!.origin), a.person!.home);
+/** A standing place by id: within `zone` where the area is made of zones (two towns may each have a `door.tavern`). */
+export const spotById = (area: Area, id: string, zone?: string) => spotIn(area, id, zone);
+/** The zone whose places are this person's while they are in `area`: their own in the area they live in, none in a room. */
+const zoneFor = (a: Actor, area: { id: string }) => (area.id === a.person!.origin ? a.person!.zone : undefined);
+const homeSpot = (w: World, a: Actor) => spotById(getArea(w, a.person!.origin), a.person!.home, a.person!.zone);
 /** Home is a house (asleep indoors, out of sight) unless it is a bedroll under the sky: the camp sleeps where anyone can see it. */
 const indoorsAtHome = (w: World, a: Actor) => homeSpot(w, a)?.kind !== "bed";
 
 function candidates(w: World, a: Actor, area: Area, q: PlaceQuery): Spot[] {
-  let list = (area.base.spots ?? []).filter((s) => q.kinds.includes(s.kind) && (!q.prefix || q.prefix.some((p) => s.id.startsWith(p))));
+  let list = spotsIn(area, zoneFor(a, area)).filter((s) => q.kinds.includes(s.kind) && (!q.prefix || q.prefix.some((p) => s.id.startsWith(p))));
   const home = area.id === a.person!.origin ? homeSpot(w, a) : undefined;
   const roam = traitsOf(a.person!).find((t) => t.roam)?.roam;
   const near = q.nearHome || (roam === "near" && q.kinds.includes("wander") ? 6 : 0);
@@ -258,7 +270,9 @@ function candidates(w: World, a: Actor, area: Area, q: PlaceQuery): Spot[] {
 /** Spots others are standing at or heading for (in this area), so two people do not pick the same stool. */
 function claimed(w: World, a: Actor, area: string): Set<string> {
   const out = new Set<string>();
-  for (const b of w.actors) if (b !== a && b.area === area && isFolk(b) && b.life!.spot) out.add(b.life!.spot);
+  // (spot ids are a zone's own: only people of the same zone can hold the same place)
+  const zone = a.person!.zone;
+  for (const b of actorsIn(w, area)) if (b !== a && b.area === area && isFolk(b) && b.life!.spot && b.person!.zone === zone) out.add(b.life!.spot);
   return out;
 }
 
@@ -285,18 +299,31 @@ function jitter(w: World, a: Actor, s: Spot, r: number, salt: number) { return {
 
 /** Fire lights where people keep them (the lamplighter's round), with when each is lit (dusk) or doused (dawn). */
 function lampRound(a: Actor, area: Area, hour: number): { id: string; x: number; y: number; at: number }[] {
-  if (!area.base.tended) return [];
-  const dusk = hour > 12, route = a.person!.route;
+  const zone = zoneById(area, zoneFor(a, area));
+  if (!(zone ? zone.tended : area.base.tended)) return [];
+  const dusk = hour > 12, route = a.person!.route, ox = zone?.ox ?? 0;
   const out: { id: string; x: number; y: number; at: number }[] = [];
-  for (const p of area.props) {
-    if (propDef(p.kind).habit !== "fire" || p.dyn) continue;
-    if (route === "high" && p.x < 720) continue;
-    if (route === "west" && p.x >= 720) continue;
+  for (const p of fireLights(area, zone)) {
+    // (the two rounds split the town down the middle, in the town's own coordinates)
+    if (route === "high" && p.x - ox < 720) continue;
+    if (route === "west" && p.x - ox >= 720) continue;
     const at = dusk ? 19.5 + hash01(p.id, 1) * 1.2 : 6.3 + hash01(p.id, 2) * 0.9; // as content/daycycle.ts: litLevel("fire")
     const f = nearestFree(area, p.x, p.y + (propDef(p.kind).wallMounted ? 16 : 10), [], [8, 4]);
     if (f) out.push({ id: p.id, x: f.x, y: f.y, at });
   }
   return out.sort((x, y) => x.at - y.at || (x.id < y.id ? -1 : 1));
+}
+
+/** The fire lights of a zone (or of an area with none), kept until the area's layout changes: the round asks often. */
+const fires = new WeakMap<Area, Map<string, { rev: number; list: PropInst[] }>>();
+function fireLights(area: Area, zone: Zone | undefined): PropInst[] {
+  let m = fires.get(area);
+  if (!m) fires.set(area, (m = new Map()));
+  const key = zone?.id ?? "", c = m.get(key);
+  if (c && c.rev === area.layoutRevision) return c.list;
+  const list = area.props.filter((p) => propDef(p.kind).habit === "fire" && !p.dyn && (!zone || inZone(zone, p.x, p.y)));
+  m.set(key, { rev: area.layoutRevision, list });
+  return list;
 }
 
 const MOTION: Record<string, FolkPose> = { chop: "chop", hang: "hang", feed: "feed", draw: "draw", sweep: "sweep", hoe: "hoe", hammer: "hammer", dig: "dig", haul: "crouch" };
@@ -324,10 +351,10 @@ function nextGoal(w: World, a: Actor, area: Area, plan: Plan): Goal | null {
       return home ? { x: home.x, y: home.y, facing: "up", spot: home.id } : null;
     }
     case "patrol": {
-      const route = ROUTES[area.id]?.[a.person!.route ?? ""] ?? Object.values(ROUTES[area.id] ?? {})[0];
+      const routes = ROUTES[zoneFor(a, area) ?? area.id], route = routes?.[a.person!.route ?? ""] ?? Object.values(routes ?? {})[0];
       if (!route) return asGoal(pick(w, a, area, { kinds: ["wander"] }, salt, true));
       const n = route.length, k = L.visit % (2 * n - 2 || 1), i = k < n ? k : 2 * n - 2 - k;
-      return asGoal(spotById(area, route[i]), 3);
+      return asGoal(spotById(area, route[i], zoneFor(a, area)), 3);
     }
     case "lamps": {
       const hour = wrapHour((w.day - Math.floor(w.day)) * 24), round = lampRound(a, area, hour);
@@ -399,17 +426,24 @@ export function tickFolk(w: World, dt: number) {
     // An assigned task or order is the ordinary work system's (stepWorld ticks it): it outranks the routine.
     if (a.task || (a.job && a.job.status !== "done")) { L.state = "busy"; L.pose = a.moving ? "walk" : "stand"; L.seen = w.time; continue; }
     if (a.area === here) {
+      // LOD (sim/lod.ts): far from the player (a settlement nobody is near) a person is abstract. They are not stepped
+      // and hold nothing that needs advancing: the hour says where they are, and the STALE rule below sets them down
+      // there the first time they are stepped again.
+      const tier = w.lod ? lodTier(w, a, pl) : "active";
+      if (tier === "far") { w.lod!.counts.far++; continue; }
       if (w.time - L.seen > STALE) settle(w, a);
       L.seen = w.time;
       if (a.area === here) {
         if (!w.lod) tickPerson(w, a, dt);
         else {
-          // LOD (sim/lod.ts): in view every tick; off camera on the near beat, in pieces no coarser than maxStep
-          const due = lodDue(w, a, lodTier(w, a, pl), dt, true);
+          // in view every tick; near on the near beat, in pieces no coarser than maxStep
+          const due = lodDue(w, a, tier, dt, true);
           if (due > 0) stepIn(w, due, (s) => { if (a.area === here) tickPerson(w, a, s); });
         }
       }
     } else if (habitatAreas(a).includes(here)) {
+      // indoors while the golem is out in the open: they come out into the street only if their town is awake
+      if (here === a.person!.origin && !zoneAwake(w, a.person!.zone)) continue;
       const want = desiredArea(w, a);
       if (want === here) comeIn(w, a);
       else if (want !== a.area && here === a.person!.origin) stepOut(w, a);
@@ -424,8 +458,10 @@ export function tickFolk(w: World, dt: number) {
  * the hour says, as the first tick there would (the same STALE rule), before anything is drawn.
  */
 export function folkCatchUp(w: World, area: { id: string }) {
-  for (const a of w.actors) {
+  const pl = player(w);
+  for (const a of actorsIn(w, area.id)) {
     if (!isFolk(a) || a.area !== area.id || a.task || (a.job && a.job.status !== "done")) continue;
+    if (w.lod && pl && lodTier(w, a, pl) === "far") continue; // asleep: nobody is near their part of it
     if (w.time - a.life!.seen > STALE) { settle(w, a); a.life!.seen = w.time; }
   }
 }
@@ -463,6 +499,7 @@ function stepOut(w: World, a: Actor) {
 
 function moveTo(w: World, a: Actor, area: string, x: number, y: number) {
   getArea(w, area);
+  if (a.area !== area) presenceChanged();
   a.area = area; a.x = x; a.y = y; a.vx = 0; a.vy = 0; a.moving = false;
 }
 function resetLeg(L: Life) { L.path = []; L.goal = null; L.chat = null; L.attend = 0; L.wait = 0; L.dawdled = false; L.carry = false; }
@@ -480,7 +517,7 @@ export function settle(w: World, a: Actor) {
   if (plan.trip) {
     if ((w.day - plan.startDay) * DAY_SECONDS < tripLead(w, a, plan)) {
       // a shop trip only just begun: still in the street, a little short of the shop's door
-      const town = getArea(w, a.person!.origin), door = spotById(town, FOLK_INTERIORS[plan.trip.shop].door);
+      const town = getArea(w, a.person!.origin), door = spotById(town, FOLK_INTERIORS[plan.trip.shop].door, a.person!.zone);
       const f = door ? nearestFree(town, door.x + (H(w, a.id, 18) - 0.5) * 44, door.y + 16 + H(w, a.id, 19) * 14, [], [8, 4]) : null;
       moveTo(w, a, town.id, f?.x ?? a.x, f?.y ?? a.y);
       L.state = "idle"; L.spot = null; L.pose = "stand"; L.step = -1; L.beat = 0;
@@ -667,10 +704,12 @@ function walk(w: World, a: Actor, area: Area, dt: number): "arrived" | "moving" 
   if (Math.hypot(g.x - a.x, g.y - a.y) < 1.5) { a.x = g.x; a.y = g.y; return "arrived"; }
   const grid = navGrid(area, a);
   if (!L.path.length) {
-    let raw = findPath(w, a, { x: g.x, y: g.y, range: 2 }, false);
-    if (!raw) return "stuck";
-    if (L.act === "shop" || L.act === "tavern") raw = roundTheCounter(w, a, area, g, raw) ?? raw;
-    L.path = smooth({ x: a.x, y: a.y }, [...raw, { x: g.x, y: g.y }], grid.free);
+    const planned = planPath(w, a, { x: g.x, y: g.y, range: 2 }, false);
+    if (!planned) return "stuck";
+    let raw = planned.path;
+    if (!planned.partial && (L.act === "shop" || L.act === "tavern")) raw = roundTheCounter(w, a, area, g, raw) ?? raw;
+    // (a leg of a long walk ends at a waypoint on the way: only the last leg ends at the goal itself)
+    L.path = smooth({ x: a.x, y: a.y }, planned.partial ? raw : [...raw, { x: g.x, y: g.y }], grid.free);
   }
   let speed = speedOf(a);
   // a pause mid-walk now and then: stop, look about, carry on (idlers more, the brisk never)
@@ -757,7 +796,7 @@ function smooth(from: { x: number; y: number }, pts: { x: number; y: number }[],
 
 function obstacles(w: World, a: Actor) {
   const out: { x: number; y: number; r: number }[] = [];
-  for (const b of w.actors) {
+  for (const b of actorsIn(w, a.area)) {
     if (b === a || b.area !== a.area) continue;
     if (isFolk(b)) { if (b.life!.state !== "indoors" && Math.hypot(b.x - a.x, b.y - a.y) < 30) out.push({ x: b.x, y: b.y, r: 6 }); }
     else if (Math.hypot(b.x - a.x, b.y - a.y) < 50) out.push({ x: b.x, y: b.y - 2, r: 13 });
@@ -769,7 +808,7 @@ function obstacles(w: World, a: Actor) {
 function makeWay(w: World, a: Actor, area: Area, dt: number) {
   const L = a.life!;
   if (L.state === "walk" || L.state === "aside" || L.pose === "lie" || L.pose === "sit") return;
-  for (const b of w.actors) {
+  for (const b of actorsIn(w, a.area)) {
     if (b === a || b.area !== a.area || isFolk(b)) continue;
     const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy), v = Math.hypot(b.vx, b.vy);
     if (d > 16 || v < 6 || (dx * b.vx + dy * b.vy) <= 0) continue;
@@ -824,7 +863,7 @@ function noticeGolem(w: World, a: Actor, area: Area) {
 function seekChat(w: World, a: Actor, plan: Plan) {
   const L = a.life!;
   if (!SOCIAL[plan.act] || L.chatCool > 0 || L.chat || L.pose === "lie") return;
-  for (const b of w.actors) {
+  for (const b of actorsIn(w, a.area)) {
     if (b === a || b.area !== a.area || !isFolk(b)) continue;
     const M = b.life!;
     if (M.chat || M.state === "indoors" || M.chatCool > 0 || M.attend > 0 || M.pose === "lie" || !SOCIAL[M.act]) continue;

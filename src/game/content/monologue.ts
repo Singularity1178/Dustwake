@@ -73,7 +73,7 @@ export const THOUGHTS: Record<string, ThoughtLine> = {
 };
 
 // ---- the town. The Treasury Guardian spoke of a village west of the keep; the road ends at a town.
-THOUGHTS["town.arrive"] = { text: "ON RECORD: A VILLAGE. OBSERVED: A TOWN.", on: { event: "portal", match: { fromArea: "surface", toArea: "town" } } };
+THOUGHTS["town.arrive"] = { text: "ON RECORD: A VILLAGE. OBSERVED: A TOWN.", on: { event: "zoneEntered", match: { zone: "westwake" } } };
 
 export const thoughtTriggers = (l: ThoughtLine): ThoughtTrigger[] => (!l.on ? [] : Array.isArray(l.on) ? l.on : [l.on]);
 

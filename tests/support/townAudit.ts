@@ -16,10 +16,11 @@
 //   node scripts/townAudit.mjs map                  -> an ASCII plan of the town's tiles
 //   node scripts/townAudit.mjs shot name=area:x,y,w,h[,scale[,lit|flat[,grid]]] ...
 //                                                   -> .preview/audit/name.png (tiles; grid: a line per tile, bright every 5)
+import { SITE_BUILDERS } from "./places";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { RCanvas, png } from "./uiSnapshot";
 import { renderArea, crop, installDom } from "./townSnapshot";
-import { AREAS } from "../../src/game/world/areas";
+
 import { Area, type PropInst } from "../../src/game/world/area";
 import { propSprite } from "../../src/game/art/props";
 import { propDef } from "../../src/game/content/props";
@@ -50,7 +51,7 @@ function spriteRect(p: PropInst): [number, number, number, number] | null {
 }
 
 export function auditArea(id: string): Finding[] {
-  const data = AREAS[id](), a = new Area(data), W = a.w, H = a.h, out: Finding[] = [];
+  const data = SITE_BUILDERS[id](), a = new Area(data), W = a.w, H = a.h, out: Finding[] = [];
   const say = (check: string, msg: string) => out.push({ area: id, check, msg });
   const tile = (tx: number, ty: number) => (tx < 0 || ty < 0 || tx >= W || ty >= H ? -1 : a.grid[ty * W + tx]);
   const blockers = a.props.filter(propBlocks), boxes: Box[] = blockers.map((p) => p.box!);
@@ -166,7 +167,7 @@ export function auditArea(id: string): Finding[] {
 
 /** An ASCII plan of an area's tiles, with the street furniture marked. */
 export function asciiMap(id: string): string {
-  const a = new Area(AREAS[id]()), rows: string[][] = [];
+  const a = new Area(SITE_BUILDERS[id]()), rows: string[][] = [];
   const FL: Record<number, string> = { [FS.GRASS]: ".", [FS.MOSS]: ",", [FS.DIRT]: ":", [FS.EARTH]: "e", [FS.MUD]: "m", [FS.SETT]: "s", [FS.WEAVE]: "w", [FS.COBBLE]: "c" };
   for (let y = 0; y < a.h; y++) {
     const row: string[] = [];

@@ -2,6 +2,7 @@
 // anvil's four jobs, tool heads on the arm slots, hafted tools for workers,
 // and the rooms they stand in. Headless, through the same sim entry points the
 // play screen uses.
+import { SITE_BUILDERS } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { player, currentArea, setFlag, clearFlag, hasFlag, getArea, enterArea, actorById, type World } from "../src/game/world/world";
@@ -28,7 +29,7 @@ import { tickTask } from "../src/game/sim/tasks";
 import { buildDungeon, TS } from "../src/game/map";
 import { buildSurface, IRON_VEINS } from "../src/game/surface";
 import { TOWN_ID, ESTABLISHMENTS, interiorId } from "../src/game/content/town";
-import { AREAS } from "../src/game/world/areas";
+
 import { SURFACE_GATE_ZONE } from "../src/game/content/geography";
 import { newWorld, frame, frames, events, find, useOn, slamAt, propItem } from "./helpers";
 
@@ -341,7 +342,7 @@ test("the artificery and the armory: the smelter and the anvil where they were, 
   useOn(w, find(w, (i) => i.looseId === "rusted_shovel"));
   assert.equal(countItem(pl, "head_shovel_rusted"), 1);
   // the town: its anvils work nothing and its racks and stands are not the halls' ruins
-  for (const id of TOWN_AREAS) for (const p of AREAS[id]().props) assert.ok(!["anvil", "forge", "weaponrack", "armorstand"].includes(p.kind), `${id}: ${p.id}`);
+  for (const id of TOWN_AREAS) for (const p of SITE_BUILDERS[id]().props) assert.ok(!["anvil", "forge", "weaponrack", "armorstand"].includes(p.kind), `${id}: ${p.id}`);
   assert.equal(propDef("townanvil").station, undefined); assert.equal(propDef("townanvil").art, "anvil");
   assert.ok(PROP_ART.shoprack && PROP_ART.shopstand);
 });

@@ -69,7 +69,7 @@ export function run(dir = ".preview/timefx") {
   const w = createWorld(7);
   setFlag(w, FLAGS.golemEye); setFlag(w, FLAGS.golemArm); setFlag(w, FLAGS.tutorialDone);
   const g = new Game(mk(320, 180) as unknown as HTMLCanvasElement, mk(320, 180) as unknown as HTMLCanvasElement);
-  teleportTo(w, player(w), "town", 47 * TS + 8, 33 * TS + 8);
+  teleportTo(w, player(w), "surface", 47 * TS + 8, (33 + 3) * TS + 8); // Westwake's square (the town sits three rows down on the overworld)
   g.resume(w);
   advanceDayTo(w, 12);
   for (let i = 0; i < 90; i++) g.update(1 / 60);

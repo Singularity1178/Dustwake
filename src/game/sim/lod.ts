@@ -1,16 +1,28 @@
-// Simulation level of detail (pure, no DOM). With hundreds of residents, stepping
-// everyone loaded every tick does not hold, so actors are stepped by tier:
+// Simulation level of detail (pure, no DOM). With hundreds of residents, and an
+// overworld that is one continuous area meant to hold many settlements, stepping
+// everyone loaded every tick does not hold. Actors are stepped by tier:
 //
 //   active  in view (a box round the player as wide as the widest zoom, plus a
 //           margin): a full step every tick.
-//   near    the player's area, off camera: stepped on a coarser beat (every
-//           `nearDt` seconds, the step that long), in pieces no longer than
-//           `maxStep` so walking and collision stay as fine as ever.
-//   far     any other area: abstract. Routine actors (townsfolk) are not stepped
-//           at all and are set down where the hour says when the player comes
-//           in (sim/folk.ts: settle); an actor with work (a task, a queue, an
-//           order) is stepped on the far beat (`farDt`), so a worker gathering
-//           two areas away still gets its work done.
+//   near    in the player's area and close: inside the bubble (`nearW` x
+//           `nearH` round the player), or anywhere in a settlement that is
+//           awake. Stepped on a coarser beat (every `nearDt` seconds, the step
+//           that long), in pieces no longer than `maxStep` so walking and
+//           collision stay as fine as ever.
+//   far     everything else: another area, or the same area a long way off.
+//           Abstract. Routine actors (townsfolk) are not stepped at all: what
+//           they are doing is a function of the hour, and they are set down
+//           where it says when someone comes near (sim/folk.ts: settle). An
+//           actor with work (a task, a queue, an order) is stepped on the far
+//           beat (`farDt`) and walks abstractly: along its planned path with no
+//           collision against other bodies (sim/navigation.ts), so a worker sent
+//           to the far end of the overworld still walks there and does the job,
+//           at the pace it would have, for a fraction of the cost.
+//
+// Zones are the unit a settlement wakes by (world/zones.ts). A zone that wakes
+// "whole" (a town) is awake when the player's bubble touches any part of it, and
+// then all of it is near: a town is never half simulated, with people frozen at
+// an invisible line. Wild country wakes only where the bubble is.
 //
 // The beat is a pure function of world time and the actor's id (no per-actor
 // state), so LOD is deterministic, survives a save and load exactly, and gives
@@ -24,6 +36,7 @@
 import type { Actor, World } from "../world/world";
 import type { Area } from "../world/area";
 import { hash01 } from "../content/daycycle";
+import { zoneAt, zoneGap, zonesOf } from "../world/zones";
 
 export type LodTier = "active" | "near" | "far";
 
@@ -31,6 +44,9 @@ export interface LodPolicy {
   /** Half the size of the box round the player that counts as in view (px). */
   halfW: number;
   halfH: number;
+  /** Half the size of the bubble round the player that is simulated in place (px): about three screens each way. */
+  nearW: number;
+  nearH: number;
   /** The near beat (s). */
   nearDt: number;
   /** The far beat for actors with work (s). */
@@ -40,12 +56,14 @@ export interface LodPolicy {
 }
 
 /** The widest view is 640 x 360 world px (2x zoom); a 96 px margin keeps edge-walkers full-rate as they come in. */
-export const DEFAULT_LOD: LodPolicy = { halfW: 320 + 96, halfH: 180 + 96, nearDt: 0.1, farDt: 0.5, maxStep: 0.1 };
+export const DEFAULT_LOD: LodPolicy = { halfW: 320 + 96, halfH: 180 + 96, nearW: 1040, nearH: 720, nearDt: 0.1, farDt: 0.5, maxStep: 0.1 };
 
 export interface LodState {
   policy: LodPolicy;
   /** The area the player stood in last tick (entering another runs the catch-up hooks). Transient. */
   focusArea: string | null;
+  /** Zones of the player's area that are awake as a whole this tick (settlements the bubble touches). Transient. */
+  awake: Set<string>;
   /** Actors seen per tier on the last tick (presentation, the soak report). */
   counts: Record<LodTier, number>;
   /** Actor steps actually run on the last tick. */
@@ -56,7 +74,7 @@ export interface LodState {
 export type CatchUp = (w: World, area: Area, elapsed: number) => void;
 
 export function enableLod(w: World, policy: Partial<LodPolicy> = {}): LodState {
-  w.lod = { policy: { ...DEFAULT_LOD, ...policy }, focusArea: null, counts: { active: 0, near: 0, far: 0 }, steps: 0 };
+  w.lod = { policy: { ...DEFAULT_LOD, ...policy }, focusArea: null, awake: new Set(), counts: { active: 0, near: 0, far: 0 }, steps: 0 };
   return w.lod;
 }
 
@@ -67,7 +85,28 @@ export function lodTier(w: World, a: Actor, pl: Actor | undefined): LodTier {
   if (!pl || a.id === pl.id) return "active";
   if (a.area !== pl.area) return "far";
   const P = w.lod?.policy ?? DEFAULT_LOD;
-  return Math.abs(a.x - pl.x) <= P.halfW && Math.abs(a.y - pl.y) <= P.halfH ? "active" : "near";
+  const dx = Math.abs(a.x - pl.x), dy = Math.abs(a.y - pl.y);
+  if (dx <= P.halfW && dy <= P.halfH) return "active";
+  if (dx <= P.nearW && dy <= P.nearH) return "near";
+  const awake = w.lod?.awake;
+  if (awake?.size) {
+    const area = w.areas.get(a.area), z = area ? zoneAt(area, a.x, a.y) : null;
+    if (z && awake.has(z.id)) return "near";
+  }
+  return "far";
+}
+
+/** Is this zone of the player's area awake (LOD off: everything is)? */
+export const zoneAwake = (w: World, zone: string | undefined) => !w.lod || !zone || w.lod.awake.has(zone);
+
+/**
+ * Does `a` move abstractly this tick: LOD is on and it is far from the player? Such a body follows its planned path
+ * without testing other bodies (nobody is there to see it squeeze past), which is what makes distant work cheap.
+ */
+export function isAbstract(w: World, a: Actor): boolean {
+  if (!w.lod || a.id === w.playerId) return false;
+  const pl = w.actors.find((p) => p.id === w.playerId);
+  return !!pl && lodTier(w, a, pl) === "far";
 }
 
 /**
@@ -111,4 +150,24 @@ export function focusTick(w: World, dt: number, area: Area | undefined, hooks: r
   const elapsed = w.time - dt - area.lastTicked;
   if (lod.focusArea !== null && elapsed > 1e-6) for (const h of hooks) h(w, area, elapsed);
   lod.focusArea = area.id;
+}
+
+/**
+ * Called by stepWorld each tick, before focusTick: which settlements of the player's area are awake. A zone that wakes
+ * whole is awake while the player's bubble touches its rect. Cheap whatever the number of zones (a few comparisons
+ * each); nothing is done on waking, because nobody in a sleeping zone holds state that needs advancing: its people
+ * are set down by the hour the first time they are stepped again (sim/folk.ts: the STALE rule).
+ */
+export function wakeZones(w: World, pl: Actor, area: Area) {
+  const lod = w.lod;
+  if (!lod) return;
+  const zones = zonesOf(area);
+  if (!zones.length) { if (lod.awake.size) lod.awake = new Set(); return; }
+  const P = lod.policy, next = new Set<string>();
+  for (const z of zones) {
+    if (z.wake !== "whole") continue;
+    const g = zoneGap(z, pl.x, pl.y);
+    if (g.dx <= P.nearW && g.dy <= P.nearH) next.add(z.id);
+  }
+  lod.awake = next;
 }

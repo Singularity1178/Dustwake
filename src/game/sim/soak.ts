@@ -13,7 +13,8 @@
 import { createWorld, player, getArea, enterArea, type Actor, type World } from "../world/world";
 import { CENSUS, EXCLUSIVE_KINDS, EXCLUSIVE_IDS, type CensusRow } from "../content/folk";
 import { DAY_SECONDS } from "../content/daycycle";
-import { makeFolk, isFolk } from "./folk";
+import { makeFolk, isFolk, censusKey } from "./folk";
+import { zoneById } from "../world/zones";
 import { enableLod, lodTier } from "./lod";
 import { serialize, deserialize } from "../world/save";
 import { simTick, IDLE, type TickInput } from "./replay";
@@ -62,16 +63,16 @@ export interface SoakReport {
   ok: boolean;
 }
 
-/** Fill `area` up to `n` townsfolk, cloning its census rows (homes and routines reused, ids and people new). */
-export function populateResidents(w: World, n: number, area = "town"): Actor[] {
-  getArea(w, area);
-  const rows = CENSUS.filter((r) => r.area === area);
-  if (!rows.length) throw new Error(`no census rows for area "${area}"`);
-  const have = w.actors.filter((a) => isFolk(a) && a.person?.origin === area).length;
+/** Fill a place (a zone of the overworld, or an area) up to `n` townsfolk, cloning its census rows (homes and routines reused, ids and people new). */
+export function populateResidents(w: World, n: number, place = "westwake"): Actor[] {
+  const rows = CENSUS.filter((r) => censusKey(r) === place);
+  if (!rows.length) throw new Error(`no census rows for "${place}"`);
+  getArea(w, rows[0].area);
+  const have = w.actors.filter((a) => isFolk(a) && (a.person?.zone ?? a.person?.origin) === place).length;
   const taken = new Set(w.actors.filter(isFolk).map((a) => a.person!.name.split(" ")[0]));
   const made: Actor[] = [];
   for (let i = have; i < n; i++) {
-    const row: CensusRow = { ...rows[i % rows.length], id: `folk.soak.${area}.${i}` };
+    const row: CensusRow = { ...rows[i % rows.length], id: `folk.soak.${place}.${i}` };
     const a = makeFolk(w, row, taken);
     w.actors.push(a);
     made.push(a);
@@ -138,14 +139,15 @@ const diffCensus = (a: Map<string, number>, b: Map<string, number>) => {
 const WALK: TickInput[] = [{ ix: -1, iy: 0, use: false }, { ix: 0, iy: 1, use: false }, { ix: 1, iy: 0, use: false }, { ix: 0, iy: -1, use: false }];
 
 export function runSoak(o: SoakOptions = {}): SoakReport {
-  const seed = o.seed ?? 1234, area = o.area ?? "town", stuckS = o.stuckSeconds ?? 45, budget = o.budgetMs ?? 4;
+  const seed = o.seed ?? 1234, place = o.area ?? "westwake", stuckS = o.stuckSeconds ?? 45, budget = o.budgetMs ?? 4;
   const now = o.now ?? (() => globalThis.performance?.now?.() ?? Date.now());
   const w = createWorld(seed);
   if (o.lod !== false) enableLod(w);
   w.day = Math.floor(w.day) + 1 + (o.hour ?? 12) / 24;
-  const pl = player(w), at = getArea(w, area);
-  enterArea(w, pl, area, at.start.x, at.start.y);
-  populateResidents(w, o.residents ?? 300, area);
+  // the place soaked: a zone of the overworld (Westwake) or an area; the walker starts where one arrives in it
+  const pl = player(w), home = CENSUS.find((r) => censusKey(r) === place)?.area ?? place, at = getArea(w, home), s0 = zoneById(at, place)?.anchor ?? at.start;
+  enterArea(w, pl, home, s0.x, s0.y);
+  populateResidents(w, o.residents ?? 300, place);
   w.events = [];
   const ticks = Math.max(1, Math.round((o.seconds ?? (o.days ?? 1) * DAY_SECONDS) / TICK));
   const violations: Violation[] = [];
@@ -169,7 +171,7 @@ export function runSoak(o: SoakOptions = {}): SoakReport {
         if (!isFolk(a)) continue;
         const L = a.life!;
         // only people being simulated can be stuck: far ones are abstract (sim/lod.ts) and set down on re-entry
-        if (L.state !== "walk" || a.area !== pl.area) { walking.delete(a.id); continue; }
+        if (L.state !== "walk" || a.area !== pl.area || lodTier(w, a, pl) === "far") { walking.delete(a.id); continue; }
         const s = walking.get(a.id);
         if (!s || Math.hypot(a.x - s.x, a.y - s.y) > 2) walking.set(a.id, { x: a.x, y: a.y, since: w.time, told: false });
         else if (!s.told && w.time - s.since > stuckS) { s.told = true; v("stuck", `${a.id} walking in place at ${Math.round(a.x)},${Math.round(a.y)} in ${a.area} for ${Math.round(w.time - s.since)} s`); }

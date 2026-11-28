@@ -55,6 +55,7 @@ import { VisionView, type VisionCue, type VisionArt } from "./view/vision";
 import type { Target } from "./content/tasks";
 import { isAwake } from "./sim/dialogue";
 import type { Actor } from "./world/world";
+import { tendedAt } from "./world/zones";
 import { archetypeOf, folkPresent } from "./sim/folk";
 import { keeperPresent, shopOfArea, shopOpen } from "./sim/shops";
 import { drawClosedSign } from "./keeperArt";
@@ -820,7 +821,7 @@ export class Game {
    * habit; anywhere else, and anything the golem built itself, simply stays as it is.
    */
   tendedLevel(p: PropInst, hour = worldHour(this.world)): number {
-    if (!this.area.base.tended || p.dyn) return 1;
+    if (p.dyn || !tendedAt(this.area, p.x, p.y)) return 1;
     const habit = propDef(p.kind).habit;
     return habit ? litLevel(habit, p.id, hour) : 1;
   }
@@ -1075,7 +1076,7 @@ export class Game {
     for (const p of area.props) {
       const sm = propDef(p.kind).smoke;
       if (!sm || Math.abs(p.x - this.cam.x - VW / 2) > VW / 2 + 40 || Math.abs(p.y - this.cam.y - VH / 2) > VH / 2 + 70) continue;
-      for (let n = this.rolls(sm.rate * (area.base.tended ? hearthSmoke(hour) : 1)); n > 0; n--) // thick at breakfast and supper
+      for (let n = this.rolls(sm.rate * (tendedAt(area, p.x, p.y) ? hearthSmoke(hour) : 1)); n > 0; n--) // thick at breakfast and supper
         this.spawn({ x: p.x + sm.dx + (Math.random() - 0.5) * 3, y: p.y, z: sm.z, vx: 3 + Math.random() * 4, vy: (Math.random() - 0.5) * 1.5, vz: 7 + Math.random() * 5, life: 2.2 + Math.random() * 1.8, kind: "smoke", col: Math.random() < 0.5 ? "#6e6a70" : "#585460", g: -1, size: 2, emit: false });
     }
     // ambient dust motes

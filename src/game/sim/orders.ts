@@ -23,6 +23,7 @@ import { actorBoxes, nearestFree } from "./collision";
 import { areaBase, meansOf, routeExists } from "./routes";
 import { portalOpen, portalsOf } from "./portals";
 import { AREAS } from "../world/areas";
+import { zoneAt, zoneById, zonesOf } from "../world/zones";
 
 export const areaName = (id: string) => AREA_NAMES[id] ?? id.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 
@@ -113,10 +114,26 @@ const yields = (p: PropInst, item: ItemId) => HARVEST[p.kind]?.perHit.item === i
 export const sourceCount = (area: Area, item: ItemId) => area.props.filter((p) => !p.taken && yields(p, item)).length;
 
 /** Areas the worker can get to that still hold something yielding `item`. */
-export function gatherSources(w: World, a: Actor, item: ItemId): { area: string; label: string; count: number }[] {
-  return [...w.areas.keys()].sort().filter((id) => canReach(w, a, id)).flatMap((id) => {
-    const count = sourceCount(w.areas.get(id)!, item);
-    return count ? [{ area: id, label: areaName(id), count }] : [];
+export interface GatherSource { area: string; /** The zone of `area` to gather in (world/zones.ts), where it has zones. */ zone?: string; label: string; count: number }
+/**
+ * Where a worker can be sent to gather `item`: the places it can get to that still hold some. An area made of zones
+ * (the overworld) is offered zone by zone ("THE OLD ROAD", "THE RUINS"): somewhere to be sent is a place, and the
+ * surface as a whole is too big to be one.
+ */
+export function gatherSources(w: World, a: Actor, item: ItemId): GatherSource[] {
+  return [...w.areas.keys()].sort().filter((id) => canReach(w, a, id)).flatMap((id): GatherSource[] => {
+    const area = w.areas.get(id)!, zones = zonesOf(area);
+    if (!zones.length) { const count = sourceCount(area, item); return count ? [{ area: id, label: areaName(id), count }] : []; }
+    const counts = new Map<string, number>();
+    let rest = 0;
+    for (const p of area.props) {
+      if (p.taken || !yields(p, item)) continue;
+      const z = zoneAt(area, p.x, p.y);
+      if (z) counts.set(z.id, (counts.get(z.id) ?? 0) + 1); else rest++;
+    }
+    const out: GatherSource[] = zones.filter((z) => counts.get(z.id)).map((z) => ({ area: id, zone: z.id, label: z.name, count: counts.get(z.id)! }));
+    if (rest) out.push({ area: id, label: areaName(id), count: rest });
+    return out;
   });
 }
 
@@ -154,6 +171,8 @@ export function walkOptions(w: World, a: Actor): WalkOption[] {
       continue;
     }
     add(`${areaName(id)} START`, area, area.start.x, area.start.y);
+    // each place of an area made of zones (world/zones.ts): where one arrives in it (the East Gate, the middle of the road)
+    for (const z of zonesOf(area)) if (Math.hypot(z.anchor.x - area.start.x, z.anchor.y - area.start.y) > 1) add(`${z.name} START`, area, z.anchor.x, z.anchor.y);
     for (const o of [...storageOptions(w, a), ...stationOptions(w, a)].filter((o) => o.area === id)) {
       const p = area.prop(o.ref.prop)!;
       add(o.label, area, p.x, p.y + 12);
@@ -218,12 +237,15 @@ export function jobView(w: World, a: Actor): JobView | null {
   let title = "ORDER", progress = "", lines: string[] = [];
   if (j.kind === "gatherDeposit") {
     title = `GATHER ${ITEM_NAMES[j.args.resource as ItemId] ?? "?"}`; progress = amountText(j);
-    lines = [`FROM ${areaName(String(j.args.fromArea))}`, `TO ${j.args.storage ? refLabel(w, j.args.storage as unknown as PropRef) : INVENTORY_LABEL}`];
+    const src = w.areas.get(String(j.args.fromArea)), fz = src && typeof j.args.fromZone === "string" ? zoneById(src, j.args.fromZone) : undefined;
+    lines = [`FROM ${fz?.name ?? areaName(String(j.args.fromArea))}`, `TO ${j.args.storage ? refLabel(w, j.args.storage as unknown as PropRef) : INVENTORY_LABEL}`];
   } else if (j.kind === "craftAt") {
     title = `CRAFT ${CRAFT_RECIPES.find((r) => r.id === j.args.recipe)?.name ?? "?"}`; progress = amountText(j);
     lines = [`AT ${refLabel(w, j.args.station as unknown as PropRef)}`];
   } else if (j.kind === "walk") {
-    title = `GO TO ${areaName(String(j.args.area))}`;
+    // a settlement is named for itself ("GO TO WESTWAKE"); open country by its area
+    const to = w.areas.get(String(j.args.area)), tz = to ? zoneAt(to, Number(j.args.x), Number(j.args.y)) : null;
+    title = `GO TO ${tz?.kind === "settlement" ? tz.name : areaName(String(j.args.area))}`;
     lines = [`${Math.round(Number(j.args.x))},${Math.round(Number(j.args.y))}`];
   }
   const phase = j.transit || a.task?.effect?.op === "travel" ? "TRAVELLING" : PHASE_TEXT[j.phase] ?? j.phase.toUpperCase();

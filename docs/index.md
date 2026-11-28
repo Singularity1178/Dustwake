@@ -19,6 +19,7 @@ Phase 0 (groundwork for a management sim) is in: the fixed tick and game speeds,
 ### World
 
 - [Areas](world/areas.md)
+- [The overworld: one surface made of sites, zones, navigation at scale, simulation by distance (v21)](world/overworld.md)
 - [The dungeon audit](world/dungeon-audit.md)
 - [AreaSpec: areas made at runtime, links, compressed grids (0.3)](world/dynamic-areas.md)
 - [The entrance (v14)](world/entrance.md)

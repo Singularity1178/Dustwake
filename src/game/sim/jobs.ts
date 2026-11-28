@@ -14,7 +14,8 @@ import { AREAS } from "../world/areas";
 import { beginTask, faceTo } from "./tasks";
 import { countItem, roomFor } from "./inventory";
 import { powered } from "./actorStats";
-import { findPath, lineOfSight, navGrid, walkTo } from "./navigation";
+import { lineOfSight, navGrid, reachable, walkTo } from "./navigation";
+import { inZone, zoneById } from "../world/zones";
 import { firstHops, meansOf, type Hop } from "./routes";
 import { inPortal, portalById, portalStand, walkThrough } from "./portals";
 import type { Area } from "../world/area";
@@ -166,7 +167,7 @@ function approach(w: World, a: Actor, goal: Destination, dt: number): boolean {
     let way = ways.find((x) => `${a.area}:${x.x},${x.y}:${x.range}` === heading);
     if (!way) {
       const near = [...ways].sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
-      way = near.find((x) => findPath(w, a, x, false) !== null) ?? near[0];
+      way = near.find((x) => reachable(w, a, x)) ?? near[0];
     }
     const result = walkTo(w, a, { area: a.area, x: way.x, y: way.y, range: way.range }, dt);
     if (result === "stuck") block(w, a, "pathBlocked");
@@ -214,14 +215,16 @@ function gatherDeposit(w: World, a: Actor, j: Job, dt: number) {
     work(a, { kind: "reach", dur: 0.45, effect: { op: "deposit", item, n: Math.min(stock, remaining) } }, { kind: "storage", propId: p.id, x: p.x, y: p.y });
     return;
   }
-  const source = getArea(w, j.args.fromArea as string);
-  if (a.area !== source.id) { approach(w, a, { area: source.id, ...source.start, range: 1 }, dt); return; }
+  // `fromZone`: gather only within that zone of the source area (world/zones.ts): "from the old road", not "from the surface"
+  const source = getArea(w, j.args.fromArea as string), zone = zoneById(source, text(j.args.fromZone) ? j.args.fromZone : undefined);
+  if (a.area !== source.id) { approach(w, a, { area: source.id, ...(zone?.anchor ?? source.start), range: 1 }, dt); return; }
   if (!roomFor(w, a, item)) { block(w, a, "packFull"); return; }
   let p = j.target ? source.prop(j.target.prop) : undefined;
   if (!p || p.taken) {
-    const candidates = source.props.filter((p) => !p.taken && (HARVEST[p.kind]?.perHit.item === item || HARVEST[p.kind]?.final?.item === item))
+    const candidates = source.props.filter((p) => !p.taken && (HARVEST[p.kind]?.perHit.item === item || HARVEST[p.kind]?.final?.item === item) && (!zone || inZone(zone, p.x, p.y)))
       .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y) || (p.id < q.id ? -1 : 1));
-    p = candidates.find((p) => findPath(w, a, { x: p.x, y: p.y, range: propReach(p.kind) + 2 }, false) !== null);
+    // (nearest first; whether it can be walked to is asked of the region graph, not by searching a path to each)
+    p = candidates.find((p) => reachable(w, a, { x: p.x, y: p.y, range: propReach(p.kind) + 2 }));
     if (!p) {
       if (stock && storage) { j.phase = "deposit"; return; }
       block(w, a, "noResource"); return;
@@ -260,7 +263,7 @@ function craftAt(w: World, a: Actor, j: Job, dt: number) {
 
 export const JOB_HANDLERS: Record<string, JobHandler> = {
   gatherDeposit: {
-    validate: (p) => text(p.resource) && !!ITEMS[p.resource as ItemId] && text(p.fromArea) && !!AREAS[p.fromArea] && (p.storage === null || validRef(p.storage)) && (p.repeat === true || positive(p.amount)),
+    validate: (p) => text(p.resource) && !!ITEMS[p.resource as ItemId] && text(p.fromArea) && !!AREAS[p.fromArea] && (p.fromZone === undefined || text(p.fromZone)) && (p.storage === null || validRef(p.storage)) && (p.repeat === true || positive(p.amount)),
     step: gatherDeposit,
   },
   craftAt: {
@@ -299,8 +302,8 @@ export function tickJob(w: World, a: Actor, dt: number) {
 }
 
 /** `storage` null: the worker keeps what it gathers in its own pack (the order screen's INVENTORY), and the amount counts what it gathered. */
-export const gatherOrder = (resource: ItemId, fromArea: string, storage: PropRef | null, amount: number, repeat = false): JobOrder => ({
-  kind: "gatherDeposit", args: { resource, fromArea, storage: storage ? { ...storage } : null, amount, repeat },
+export const gatherOrder = (resource: ItemId, fromArea: string, storage: PropRef | null, amount: number, repeat = false, fromZone?: string): JobOrder => ({
+  kind: "gatherDeposit", args: { resource, fromArea, ...(fromZone ? { fromZone } : {}), storage: storage ? { ...storage } : null, amount, repeat },
 });
 export const craftOrder = (station: PropRef, recipe: string, amount: number, repeat = false): JobOrder => ({
   kind: "craftAt", args: { station: { ...station }, recipe, amount, repeat },

@@ -21,7 +21,8 @@ import { coreKey } from "./commands";
 import { portalAt, portalOpen, walkThrough } from "./portals";
 import { stepDay } from "./daytime";
 import { tickFolk, folkCatchUp } from "./folk";
-import { focusTick, lodDue, lodTier, stepIn, type CatchUp } from "./lod";
+import { focusTick, lodDue, lodTier, stepIn, wakeZones, type CatchUp } from "./lod";
+import { zoneAt, zoneById, zoneGap, inZone } from "../world/zones";
 import { tickKeepers } from "./shops";
 
 export interface PlayerInput {
@@ -102,8 +103,10 @@ export function stepWorld(w: World, dt: number) {
   stepDay(w, dt);
   runScheduled(w);
   const lod = w.lod, pl = w.actors.find((a) => a.id === w.playerId);
-  if (lod) focusTick(w, dt, pl && w.areas.get(pl.area), CATCH_UP);
-  for (const a of [...w.actors].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+  const here = pl && w.areas.get(pl.area);
+  if (lod) { if (pl && here) wakeZones(w, pl, here); focusTick(w, dt, here, CATCH_UP); }
+  if (pl && here) trackZone(w, pl, here);
+  for (const a of orderedActors(w)) {
     reconcileGear(w, a);
     reconcileCapacity(w, a);
     if (a.id === w.playerId) continue;
@@ -124,6 +127,39 @@ export function stepWorld(w: World, dt: number) {
   tickKeepers(w, dt);
   // Inner-monologue event triggers see everything this step emitted (sim/monologue.ts).
   reactToEvents(w);
+}
+
+/** How far inside a zone's edge (px) the player must be before it counts as entered: walking along a border names nothing twice. */
+const ZONE_EDGE = 20;
+
+/** Follow the player from zone to zone (world/zones.ts) and say so: `zoneEntered`. The first tick of a world only notes where they are. */
+function trackZone(w: World, pl: Actor, area: Area) {
+  const z = zoneAt(area, pl.x, pl.y), prev = w.focus;
+  if (!prev) { w.focus = { area: area.id, zone: z?.id ?? null }; return; }
+  const same = prev.area === area.id;
+  if (same && prev.zone === (z?.id ?? null)) return;
+  if (same) {
+    // across an edge on foot: only once well inside the new zone, or well clear of the old one
+    const b = ZONE_EDGE;
+    if (z && !(inZone(z, pl.x - b, pl.y - b) && inZone(z, pl.x + b, pl.y + b))) return;
+    const old = zoneById(area, prev.zone);
+    if (!z && old) { const g = zoneGap(old, pl.x, pl.y); if (g.dx < b && g.dy < b) return; }
+  }
+  w.focus = { area: area.id, zone: z?.id ?? null };
+  if (z) emit(w, { t: "zoneEntered", actor: pl.id, area: area.id, zone: z.id, from: same ? prev.zone : null, walked: same });
+}
+
+/**
+ * The actors in id order (the order they are stepped in, so a world steps the same whatever order they were made
+ * in). Sorted once and kept while the same actors are there: sorting hundreds of ids sixty times a second is real money.
+ */
+const ordered = new WeakMap<Actor[], { n: number; first: Actor | undefined; last: Actor | undefined; list: Actor[] }>();
+function orderedActors(w: World): Actor[] {
+  const src = w.actors, c = ordered.get(src);
+  if (c && c.n === src.length && c.first === src[0] && c.last === src[src.length - 1]) return c.list;
+  const list = [...src].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  ordered.set(src, { n: src.length, first: src[0], last: src[src.length - 1], list });
+  return list;
 }
 
 // ---------------------------------------------------------------- locomotion

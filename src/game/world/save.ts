@@ -108,8 +108,16 @@ import { rleEncode, rleDecode } from "./rle";
   *      or one whose spec keeps its grid (player-built), saves `gridRle` (the whole grid, run-length coded:
   *      world/rle.ts) instead of `tiles`. An area that went unticked under LOD records `lastTicked`. Older saves
   *      gain `specs: []`; nothing else changes, so a v19 save loads as it was.
+  * v21: the overworld. Westwake is no longer an area of its own: the surface is one continuous area made of sites
+  *      (overworld.ts), each a zone of it (world/zones.ts), and the old `town` area is the zone `westwake`. The
+  *      surface's own ground moved too (it is the zone `ruins`, 144 tiles east of where its map began). So a v20
+  *      save's `town` diff is folded into `surface` (its ids prefixed `westwake/`), everything saved in either area
+  *      is translated to where that ground now lies (actors, tasks, orders, dropped stacks, built props, decals,
+  *      tile edits), references to the town area become references to the surface, a gather order's source gains
+  *      its zone, townsfolk gain their zone (and carry on mid-stride), and the census flags
+  *      are renamed for zones. Positions are frozen in the migration (V21_AT), never read from the live table.
   */
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -135,7 +143,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 20;
+  version: 21;
   seed: number;
   rng: number;
   time: number;
@@ -377,7 +385,110 @@ export const MIGRATIONS: Record<number, Migration> = {
   18: (s) => ({ ...s, version: 19 }),
   // v20: dynamic areas (world/areaSpec.ts) and compressed grids. A v19 world made nothing at runtime.
   19: (s) => ({ ...s, version: 20, specs: Array.isArray(s.specs) ? s.specs : [] }),
+  // v21: the overworld (see toOverworld below).
+  20: (s) => toOverworld(s),
 };
+
+/**
+ * Where v21 set the two old maps down on the overworld, frozen (a migration must not read a table that keeps
+ * changing): each map's old width, where its (0, 0) went (tiles), the prefix its ids took and the zone it became.
+ */
+const V21_AT: Record<string, { tx: number; ty: number; w: number; prefix: string; zone: string }> = {
+  town: { tx: 0, ty: 3, w: 96, prefix: "westwake/", zone: "westwake" },
+  surface: { tx: 144, ty: 0, w: 96, prefix: "", zone: "ruins" },
+};
+const V21_W = 240, V21_AREA = "surface";
+
+function toOverworld(s: any): any {
+  const at = (area: unknown) => (typeof area === "string" && Object.prototype.hasOwnProperty.call(V21_AT, area) ? V21_AT[area] : undefined);
+  /** A copy of `o` with its px position moved to where `area`'s ground now lies. */
+  const px = (o: any, area: unknown) => { const m = at(area); return m && o && typeof o.x === "number" && typeof o.y === "number" ? { ...o, x: o.x + m.tx * TS, y: o.y + m.ty * TS } : o; };
+  const pid = (id: any, area: unknown) => { const m = at(area); return m && typeof id === "string" ? m.prefix + id : id; };
+  const ref = (r: any) => (r && typeof r === "object" && at(r.area) && typeof r.prop === "string" ? { ...r, area: V21_AREA, prop: pid(r.prop, r.area) } : r);
+  const effect = (e: any, area: unknown) => { const m = at(area); return m && e && e.op === "build" && typeof e.tx === "number" && typeof e.ty === "number" ? { ...e, tx: e.tx + m.tx, ty: e.ty + m.ty } : e; };
+  const target = (t: any, area: unknown) => {
+    const m = at(area);
+    if (!m || !t) return t;
+    const o = { ...px(t, area) };
+    if (typeof o.propId === "string") o.propId = pid(o.propId, area);
+    if (typeof o.looseId === "string") o.looseId = pid(o.looseId, area);
+    if (typeof o.tx === "number" && typeof o.ty === "number") { o.tx += m.tx; o.ty += m.ty; }
+    return o;
+  };
+  /** A task was started in `t.area`, or (untagged) where its actor stands. */
+  const task = (t: any, here: unknown) => {
+    const area = t?.area ?? here;
+    if (!t || !at(area)) return t;
+    return { ...t, ...(t.area ? { area: V21_AREA } : {}), ...(t.target ? { target: target(t.target, area) } : {}), ...(t.effect ? { effect: effect(t.effect, area) } : {}) };
+  };
+
+  const actors = (s.actors ?? []).map((a: any) => {
+    const here = a.area;
+    const o: any = at(here) ? { ...px(a, here), area: V21_AREA } : { ...a };
+    o.task = task(a.task, here);
+    o.queue = (a.queue ?? []).map((t: any) => task(t, here));
+    if (a.job) {
+      const args: any = { ...(a.job.args ?? {}) };
+      const from = at(args.fromArea);
+      if (from) { args.fromArea = V21_AREA; args.fromZone = from.zone; }
+      if (args.storage) args.storage = ref(args.storage);
+      if (args.station) args.station = ref(args.station);
+      if (a.job.kind === "walk" && at(args.area)) { const p = px({ x: args.x, y: args.y }, args.area); args.x = p.x; args.y = p.y; args.area = V21_AREA; }
+      // (the way it was walking is translated too; its goal key is in the old map's terms, so it plans again on its next step)
+      o.job = { ...a.job, args, target: ref(a.job.target), nav: a.job.nav && at(here) ? { ...a.job.nav, path: (a.job.nav.path ?? []).map((p: any) => px(p, here)) } : a.job.nav };
+    }
+    if (a.person) {
+      const home = at(a.person.origin);
+      if (home) o.person = { ...a.person, origin: V21_AREA, zone: home.zone };
+      if (a.life) {
+        // mid-stride: where they are going and the way there move with the ground; the places they hold are their zone's own ids
+        const duty = a.life.duty && at(a.life.duty.area) ? { ...px(a.life.duty, a.life.duty.area), area: V21_AREA } : a.life.duty;
+        o.life = { ...a.life, ...(a.life.goal ? { goal: px(a.life.goal, here) } : {}), path: (a.life.path ?? []).map((p: any) => px(p, here)), ...(a.life.duty !== undefined ? { duty } : {}) };
+      }
+    }
+    return o;
+  });
+
+  const part = (d: any, area: string) => {
+    const m = V21_AT[area];
+    return {
+      // (a whole-grid save of either map cannot be re-expressed and is dropped: nothing in v20 could edit 384 tiles of them)
+      tiles: (d.tiles ?? []).map(([i, t]: [number, number]) => [(Math.floor(i / m.w) + m.ty) * V21_W + (i % m.w) + m.tx, t]),
+      props: Object.fromEntries(Object.entries(d.props ?? {}).map(([id, st]) => [m.prefix + id, st])),
+      looseTaken: (d.looseTaken ?? []).map((id: string) => m.prefix + id),
+      looseAdded: (d.looseAdded ?? []).map((l: any) => ({ ...px(l, area), id: m.prefix + l.id })),
+      propsAdded: (d.propsAdded ?? []).map((p: any) => ({ ...px(p, area), id: m.prefix + p.id })),
+      propsRemoved: (d.propsRemoved ?? []).map((id: string) => m.prefix + id),
+      decalsAdded: (d.decalsAdded ?? []).map((c: any) => px(c, area)),
+    };
+  };
+  const areas: Record<string, any> = { ...(s.areas ?? {}) };
+  const wild = areas.surface, town = areas.town;
+  delete areas.town;
+  if (wild || town) {
+    const parts = [wild && part(wild, "surface"), town && part(town, "town")].filter(Boolean);
+    const join = (k: string) => parts.flatMap((p: any) => p[k]);
+    const lastTicked = wild?.lastTicked ?? town?.lastTicked;
+    areas.surface = {
+      tiles: join("tiles"), props: Object.assign({}, ...parts.map((p: any) => p.props)),
+      looseTaken: join("looseTaken"), looseAdded: join("looseAdded"), looseSeq: Math.max(wild?.looseSeq ?? 0, town?.looseSeq ?? 0),
+      propsAdded: join("propsAdded"), propSeq: Math.max(wild?.propSeq ?? 0, town?.propSeq ?? 0),
+      propsRemoved: join("propsRemoved"), decalsAdded: join("decalsAdded"), ritual: wild?.ritual ?? null,
+      ...(typeof lastTicked === "number" ? { lastTicked } : {}),
+    };
+  }
+  const FLAGS: Record<string, string> = { "census.town": "census.westwake", "census.surface": "census.ruins" };
+  return {
+    ...s, version: 21, actors, areas,
+    flags: (s.flags ?? []).map((f: string) => FLAGS[f] ?? f),
+    scheduled: (s.scheduled ?? []).map((e: any) => (at(e.area) ? { ...e, area: V21_AREA, effect: effect(e.effect, e.area) } : e)),
+    // a runtime area hung under either map (a floor dug down from it) keeps its way up, where that ground now lies
+    specs: (s.specs ?? []).map((sp: any) => ({
+      ...sp, ...(at(sp.parent) ? { parent: V21_AREA } : {}),
+      ...(sp.link && at(sp.link.area) ? { link: { ...px(sp.link, sp.link.area), area: V21_AREA } } : {}),
+    })),
+  };
+}
 
 type Rect = [number, number, number, number];
 /**

@@ -178,7 +178,7 @@ test("a v1 save (ItemId[] inventory, area-less schedule) migrates to the current
     })),
   };
   const w2 = deserialize(v1);
-  assert.equal(SAVE_VERSION, 20); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
+  assert.equal(SAVE_VERSION, 21); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
   assert.deepEqual(player(w2).inventory.filter(Boolean), [{ item: "chisel", n: 1 }, { item: "coin", n: 1 }]);
   assert.equal(player(w2).inventory.length, 8);
   assert.equal(w2.scheduled[0].area, "dungeon");
@@ -341,7 +341,7 @@ test("placing a torch consumes materials, creates a lit prop and registers its l
   const view = new AreaView(a);
   assert.ok(orderBuild(w, pl, "torch_post", tx, ty));
   while (pl.task) frame(w);
-  const torch = a.props.find((p) => p.kind === "torch_post")!;
+  const torch = a.props.find((p) => p.kind === "torch_post" && p.dyn)!; // (Westwake, on the same surface, has torch posts of its own)
   assert.ok(torch && torch.lit && torch.dyn);
   assert.equal(countItem(pl, "wood"), 1); assert.equal(countItem(pl, "stone"), 0);
   view.flush();

@@ -1,4 +1,5 @@
 // Phase 0.4: save system v2 (slots, autosave backups, recovery, export / import, the legacy slot, budgets).
+import { OVER, WESTWAKE, townStart } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createWorld, player, getArea, enterArea } from "../src/game/world/world";
@@ -92,12 +93,12 @@ test("budgets (0.4): saves stay small and load fast, up to a 300-resident town",
   const fresh = createWorld(36);
   const freshText = JSON.stringify(serialize(fresh));
   assert.ok(freshText.length < 24 * 1024, `fresh save ${freshText.length} B`);
-  const w = createWorld(37), pl = player(w), town = getArea(w, "town");
-  enterArea(w, pl, "town", town.start.x, town.start.y);
+  const w = createWorld(37), pl = player(w), town = getArea(w, OVER); void town;
+  enterArea(w, pl, OVER, townStart(w).x, townStart(w).y);
   for (let i = 0; i < 120; i++) simTick(w);
   const townText = JSON.stringify(serialize(w));
   assert.ok(townText.length < 160 * 1024, `town save ${townText.length} B`);
-  populateResidents(w, 300, "town");
+  populateResidents(w, 300, WESTWAKE);
   for (let i = 0; i < 60; i++) simTick(w);
   const t0 = now(), bigText = JSON.stringify(serialize(w)), t1 = now();
   const back = deserialize(JSON.parse(bigText)), t2 = now();

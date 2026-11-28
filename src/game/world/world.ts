@@ -18,6 +18,7 @@ import { populateFolk, type Person, type Life } from "../sim/folk";
 import { populateKeepers, type KeeperState } from "../sim/shops";
 import { buildFromSpec, attachLinks, nextSpecId, type AreaSpec } from "./areaSpec";
 import type { LodState } from "../sim/lod";
+import { presenceChanged } from "./presence";
 
 /** Gear worn on the body, by slot (Actor.gear). */
 export type Gear = Partial<Record<GearSlot, ItemId>>;
@@ -102,6 +103,11 @@ export type SimEvent =
   | { t: "openStation"; actor: string; prop: string; station: string }
   | { t: "learned"; flag: string }
   | { t: "areaEntered"; actor: string; area: string }
+  /**
+   * The player came into zone `zone` of `area` (world/zones.ts). `walked`: across the zone's edge, on foot, within the
+   * same area (then `from` is the zone left, or null for open country); else they arrived in the area there.
+   */
+  | { t: "zoneEntered"; actor: string; area: string; zone: string; from: string | null; walked: boolean }
   /** `actor` walked through portal `from` of `fromArea` (a road, a doorway) and came out of `to` in `toArea`. */
   | { t: "portal"; actor: string; fromArea: string; from: string; toArea: string; to: string }
   /** `actor` addressed NPC actor `npc`; presentation opens `segment` of `script`. */
@@ -166,6 +172,8 @@ export interface World {
   specs: Map<string, AreaSpec>;
   /** Simulation level of detail (sim/lod.ts). Null: everything is stepped every tick. A host policy, never saved. */
   lod: LodState | null;
+  /** Where the player was last tick: the area and the zone of it (sim/step.ts emits `zoneEntered` on a change). Transient, never saved. */
+  focus?: { area: string; zone: string | null };
 }
 
 export function createWorld(seed: number): World {
@@ -251,6 +259,7 @@ export const currentArea = (w: World) => areaOf(w, player(w));
 export function enterArea(w: World, a: Actor, areaId: string, x: number, y: number) {
   getArea(w, areaId);
   a.area = areaId;
+  presenceChanged();
   a.x = x; a.y = y; a.vx = 0; a.vy = 0;
   a.task = null;
   a.queue = a.queue.filter((t) => !t.area || t.area === areaId);

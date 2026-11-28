@@ -1,5 +1,6 @@
 // Phase 0.8 (and the exit criterion "a 300-actor soak holds the frame budget"): the soak harness and the content
 // linter. A soak that breaks the budget or any invariant fails `npm test`.
+import { OVER, WESTWAKE, townStart } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runSoak, itemCensus, doubleHeld, populateResidents, roundTripDiff } from "../src/game/sim/soak";
@@ -21,14 +22,14 @@ test("acceptance (0.2 / 0.8): a 300-actor soak holds the frame budget and every 
 });
 
 test("the soak catches what it is there for: an item made from nothing, a place held twice, a save that does not round-trip", () => {
-  const w = createWorld(51), pl = player(w), town = getArea(w, "town");
-  enterArea(w, pl, "town", town.start.x, town.start.y);
-  populateResidents(w, 40, "town");
+  const w = createWorld(51), pl = player(w), town = getArea(w, OVER); void town;
+  enterArea(w, pl, OVER, townStart(w).x, townStart(w).y);
+  populateResidents(w, 40, WESTWAKE);
   const before = itemCensus(w);
   pl.inventory[0] = { item: "wood", n: 3 };
   assert.notEqual(itemCensus(w).get("wood") ?? 0, before.get("wood") ?? 0);
   const [a, b] = w.actors.filter(isFolk);
-  a.area = b.area = "town";
+  a.area = b.area = OVER;
   a.life!.spot = b.life!.spot = "watch.post.test";
   assert.ok(doubleHeld(w).size >= 1);
   assert.equal(roundTripDiff(w), "", "a live world round-trips");

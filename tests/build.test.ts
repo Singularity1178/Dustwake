@@ -1,6 +1,8 @@
 // Building overhaul: catalog data, wall placement, gating, built-prop saves,
 // the crafting bench's station path, and deconstruction (refunds, overflow,
 // caches, persistence of removed authored props, refusals).
+import { preOverworld } from "./support/preOverworld";
+import { SITE_AT } from "../src/game/content/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas, resetTrace, traceHash } from "./support/fakeCanvas";
@@ -49,12 +51,12 @@ function atWallFace(w: World) {
 }
 
 /** On the surface, standing in a cleared 9x9 patch of open ground. */
-function inClearing(w: World) {
+function inClearing(w: World, ox = 0) {
   const pl = player(w);
   frame(w);
-  enterArea(w, pl, "surface", 20 * TS + 8, 50 * TS + 14);
+  enterArea(w, pl, "surface", (ox + 20) * TS + 8, 50 * TS + 14);
   const a = currentArea(w);
-  for (let ty = 46; ty <= 54; ty++) for (let tx = 16; tx <= 24; tx++) a.setTile(tx, ty, T.FLOOR);
+  for (let ty = 46; ty <= 54; ty++) for (let tx = ox + 16; tx <= ox + 24; tx++) a.setTile(tx, ty, T.FLOOR);
   for (const p of [...a.props]) if (Math.abs(p.x - pl.x) < 96 && Math.abs(p.y - pl.y) < 96) a.removeProp(p.id);
   pl.facing = "down";
   return { a, pl };
@@ -111,10 +113,10 @@ test("wall torch: valid only on a plain wall face with floor below; failing case
   // the floor torch post is the opposite: never on a wall
   pl.y = 4 * TS + 12;
   assert.deepEqual(placement(w, pl, a, "torch_post", tx, ty), { ok: false, reason: "solid" });
-  // the surface has no masonry walls at all: no site anywhere for a wall torch
+  // the ruins have no masonry walls at all: no site anywhere for a wall torch (Westwake, west along the road, has)
   const { a: sa } = inClearing(w);
   let any = false;
-  for (let y = 0; y < sa.h && !any; y++) for (let x = 0; x < sa.w && !any; x++) any = siteFor(w, sa, "wall_torch", x, y).ok;
+  for (let y = 0; y < sa.h && !any; y++) for (let x = SITE_AT.ruins.x; x < sa.w && !any; x++) any = siteFor(w, sa, "wall_torch", x, y).ok;
   assert.equal(any, false);
 });
 
@@ -233,12 +235,13 @@ test("v5 -> v6 migration: areas gain propsRemoved, pending 'torch' build work be
 
 test("v6 -> v7 migration: a saved crafting bench becomes the workbench prop, keeping its id, recipe and station", () => {
   const w = newWorld(); kit(w);
-  const { a, pl } = inClearing(w);
-  assert.ok(orderBuild(w, pl, "craftbench", 20, 52)); finish(w);
+  // (in the ruins: the surface a v6 save knew, so the save can be put back as v6 held it)
+  const { a, pl } = inClearing(w, SITE_AT.ruins.x);
+  assert.ok(orderBuild(w, pl, "craftbench", SITE_AT.ruins.x + 20, 52)); finish(w);
   const bench = a.props.find((p) => p.dyn && p.kind === "workbench")!;
   // what a v6 save looked like: the bench was its own `craftbench` kind
   const s: any = serialize(w);
-  s.version = 6;
+  Object.assign(s, preOverworld(s)); s.version = 6; // (as a save from before the overworld held it)
   s.areas.surface.propsAdded.find((p: any) => p.id === bench.id).kind = "craftbench";
   const m: any = migrate(s);
   assert.equal(m.version, SAVE_VERSION);

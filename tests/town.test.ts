@@ -1,6 +1,10 @@
 // Westwake, the market town west of the surface: the road to it, the town, the
 // six rooms behind its shop doors, and the walk-through portals that join them.
 // Headless: builders, sim and the recording fake canvas only.
+import { inTown } from "./support/places";
+import { buildOverworld } from "../src/game/overworld";
+import { zoneById } from "../src/game/world/zones";
+import { SITE_BUILDERS } from "./support/places";
 import { ESTABLISHMENTS as SHOP_IDS, interiorId as shopRoom, type Establishment as ShopId } from "../src/game/content/town";
 import { isKeeper, keeperId } from "../src/game/sim/shops";
 import { test } from "node:test";
@@ -38,7 +42,7 @@ import { viewSize, ZOOM_STEPS } from "../src/game/view/zoom";
 import { events, frame, newWorld } from "./helpers";
 
 const TOWN_AREAS = [TOWN_ID, ...ESTABLISHMENTS.map(interiorId)];
-const areaOf = (id: string) => new Area(AREAS[id]());
+const areaOf = (id: string) => new Area(SITE_BUILDERS[id]());
 const boxesOf = (a: Area): Box[] => a.props.filter(propBlocks).map((p) => p.box!);
 const reachOf = (a: Area) => reachable(a, boxesOf(a), a.base.start);
 /** Can the golem stand somewhere it can walk to, within `rad` px of (x, y)? */
@@ -71,7 +75,9 @@ test("the Guardian's village is where it said: a road leaves the surface westwar
   const wild = buildSurface({ westRoad: false });
   assert.ok(!wild.portals!.some((p) => p.id === WEST_ROAD.portal), "(the stair head's own portal is not a road: tests/entrance.test.ts)"); assert.equal(wild.exits.length, 0);
   assert.equal(wild.grid[WEST_ROAD.surface.y0 * wild.w + 1], T.THICKET, "without the road the wild is as it was");
-  assert.equal(AREA_NAMES[TOWN_ID], "WESTWAKE");
+  // Westwake is a zone of the overworld now (world/zones.ts), named there; the road no longer ends at a map edge
+  assert.equal(zoneById(buildOverworld(), "westwake")!.name, "WESTWAKE");
+  assert.ok(!buildOverworld().portals!.some((p) => p.id === WEST_ROAD.portal || p.id.endsWith("east_road")), "no portal between the ruins and the town");
 });
 
 // ------------------------------------------------------------------ builders
@@ -83,11 +89,11 @@ test("town and interiors: deterministic, unique ids, big enough for the widest z
   for (const e of ESTABLISHMENTS) assert.equal(JSON.stringify(buildInterior(e).props), JSON.stringify(buildInterior(e).props), e);
   const big = viewSize(Math.max(...ZOOM_STEPS));
   for (const id of TOWN_AREAS) {
-    const d = AREAS[id]();
+    const d = SITE_BUILDERS[id]();
     assert.equal(d.id, id);
     assert.equal(new Set(d.props.map((p) => p.id)).size, d.props.length, `${id}: prop ids unique`);
     assert.ok(d.w * TS >= big.w && d.h * TS >= big.h, `${id} fills the 2x view`);
-    assert.ok(AREA_NAMES[id], `${id} has a name`);
+    assert.ok(id === TOWN_ID ? zoneById(buildOverworld(), "westwake")!.name : AREA_NAMES[id], `${id} has a name`);
   }
 });
 
@@ -115,7 +121,7 @@ test("buildings: inside the map, never overlapping, solid, with a street-level r
 
 // ------------------------------------------------------------------ portals
 test("portals pair up both ways and let out onto free, reachable ground", () => {
-  for (const id of ["surface", ...TOWN_AREAS]) {
+  for (const id of ["surface", ...ESTABLISHMENTS.map(interiorId)]) { // (the overworld holds Westwake and its doors: world/compose.ts)
     const a = areaOf(id), r = reachOf(a);
     for (const p of portalsOf(a)) {
       const dest = areaOf(p.to.area), q = portalById(dest, p.to.portal);
@@ -130,34 +136,36 @@ test("portals pair up both ways and let out onto free, reachable ground", () => 
   assert.equal(portalsOf(areaOf(TOWN_ID)).length, ESTABLISHMENTS.length + 1, "six doors and the road");
 });
 
-test("walking: down the old road into Westwake, in and out of all six doors, and back to the ruins", () => {
+test("walking: down the old road into Westwake with nothing crossed, in and out of all six doors", () => {
   const w = newWorld(), pl = player(w);
-  const surface = areaOf("surface"), out = portalArrival(portalById(surface, WEST_ROAD.portal)!);
-  enterArea(w, pl, "surface", out.x + 40, out.y);
+  const over = getArea(w, "surface"), ruins = zoneById(over, "ruins")!, town = zoneById(over, "westwake")!;
+  // on the road, just inside the ruins' western edge (where the road used to run off the map)
+  enterArea(w, pl, "surface", ruins.ox + 3 * TS, (WEST_ROAD.surface.y0 + 1) * TS + 12);
+  for (let i = 0; i < 5; i++) frame(w);
   events(w);
-  assert.ok(push(w, -1, 0, () => pl.area === TOWN_ID), "pushing west along the road arrives in the town");
+  const seen: string[] = [];
+  for (let i = 0; i < 14000 && !(pl.x < town.anchor.x + 30); i++) {
+    frame(w, { ix: -1, iy: 0, use: false });
+    for (const e of events(w)) { if (e.t === "portal" || e.t === "areaEntered") seen.push(e.t); else if (e.t === "zoneEntered") seen.push(`${e.zone}${e.walked ? "" : "!"}`); }
+  }
+  assert.ok(pl.x < town.anchor.x + 30, `west along the whole road and in through the East Gate (stopped at ${pl.x.toFixed(0)}, ${pl.y.toFixed(0)})`);
+  assert.equal(pl.area, "surface", "one area all the way");
   assert.equal(pl.facing, "left");
-  const ev = events(w).find((e) => e.t === "portal");
-  assert.ok(ev && ev.t === "portal" && ev.fromArea === "surface" && ev.toArea === TOWN_ID && ev.actor === pl.id);
+  assert.deepEqual(seen, ["oldroad", "westwake"], "no portal and no area change: only each place's name as its edge is walked across");
   assert.ok(w.monologue.said.includes("town.arrive"), "the golem notes that the village became a town");
-  const town = areaOf(TOWN_ID);
   for (const e of ESTABLISHMENTS) {
-    const door = portalArrival(portalById(town, `door.${e}`)!);
+    const door = portalArrival(portalById(over, `westwake/door.${e}`)!);
     pl.x = door.x; pl.y = door.y; pl.vx = pl.vy = 0;
     assert.ok(push(w, 0, -1, () => pl.area === interiorId(e), 240), `${e}: pushing on the door goes in`);
     assert.equal(pl.facing, "up");
     for (let i = 0; i < 40; i++) frame(w, { ix: 0, iy: -1, use: false });
     assert.equal(pl.area, interiorId(e), `${e}: still inside after walking in`);
-    assert.ok(push(w, 0, 1, () => pl.area === TOWN_ID, 600), `${e}: walking back down to the sill goes out`);
+    assert.ok(push(w, 0, 1, () => pl.area === "surface", 600), `${e}: walking back down to the sill goes out`);
     assert.equal(pl.facing, "down");
     assert.ok(Math.hypot(pl.x - door.x, pl.y - door.y) < 10, `${e}: out by its own door`);
     for (let i = 0; i < 40; i++) frame(w, { ix: 0, iy: 1, use: false });
-    assert.equal(pl.area, TOWN_ID, `${e}: stepping away from the door does not go back in`);
+    assert.equal(pl.area, "surface", `${e}: stepping away from the door does not go back in`);
   }
-  const east = portalArrival(portalById(town, "east_road")!);
-  pl.x = east.x; pl.y = east.y; pl.vx = pl.vy = 0;
-  assert.ok(push(w, 1, 0, () => pl.area === "surface", 600), "east through the gate leads back to the wild");
-  assert.equal(pl.facing, "right");
   assert.equal(w.monologue.said.filter((s) => s === "town.arrive").length, 1);
 });
 
@@ -166,7 +174,7 @@ test("a save made inside a shop loads back inside it, and the door still works",
   enterArea(w, pl, "town_tavern", room.base.start.x, room.base.start.y);
   const w2 = deserialize(JSON.parse(JSON.stringify(serialize(w)))), p2 = player(w2);
   assert.equal(p2.area, "town_tavern");
-  assert.ok(push(w2, 0, 1, () => p2.area === TOWN_ID, 600));
+  assert.ok(push(w2, 0, 1, () => p2.area === "surface", 600));
   assert.ok(debugPlaces(w2).some((d) => d.group === "WESTWAKE"), "the debug teleport lists the town");
 });
 
@@ -222,7 +230,7 @@ test("light is the town's map of itself: runes for the bright side, fire for eve
 // ------------------------------------------------------------------ scope
 test("lived in, and every shop kept, but nothing for sale yet: the census's townsfolk and the six shopkeepers are the only people, and nothing can be bought, stored, crafted, taken or cut down", () => {
   for (const id of TOWN_AREAS) {
-    const d = AREAS[id]();
+    const d = SITE_BUILDERS[id]();
     assert.equal((d.npcs ?? []).length, 0, `${id}: the builder places nobody (no shopkeeper, golem or special NPC); townsfolk come from the census`);
     assert.equal(d.loose.length, 0, `${id}: nothing to pick up`);
     assert.equal(d.ritual, undefined);
@@ -236,9 +244,9 @@ test("lived in, and every shop kept, but nothing for sale yet: the census's town
   // who does live here: exactly the census's Westwake rows, all townsfolk (sim/folk.ts), none of them a golem, a
   // shopkeeper or anyone with a dialogue script or a pack (talking to one is a line in a bubble, not a shop)
   const w = createWorld(7);
-  for (const id of TOWN_AREAS) getArea(w, id);
-  const here = w.actors.filter((a) => TOWN_AREAS.includes(a.area));
-  const rows = CENSUS.filter((r) => TOWN_AREAS.includes(r.area));
+  for (const id of TOWN_AREAS) getArea(w, id === TOWN_ID ? "surface" : id);
+  const here = w.actors.filter((a) => TOWN_AREAS.includes(a.area) || inTown(a));
+  const rows = CENSUS.filter((r) => r.zone === "westwake");
   assert.ok(rows.length >= 10, "people live in Westwake");
   // (v19) and one keeper behind each of the six counters (sim/shops.ts), each in their own shop's room: placeholders
   // with a line to say, not yet a shop (no pack, no dialogue script, nothing made)
@@ -257,8 +265,8 @@ test("lived in, and every shop kept, but nothing for sale yet: the census's town
 test("every line of the town's text fits the bitmap font", () => {
   for (const [kind, text] of SIGNS) { lint(text, kind); assert.equal(propDef(kind).examine, text); }
   for (const id of TOWN_AREAS) {
-    const d = AREAS[id]();
-    lint(AREA_NAMES[id], id);
+    const d = SITE_BUILDERS[id]();
+    lint(id === TOWN_ID ? zoneById(buildOverworld(), "westwake")!.name : AREA_NAMES[id], id);
     for (const r of d.rooms) lint(r.name, `${id} room`);
     for (const p of d.portals ?? []) if (p.label) lint(p.label, `${id}.${p.id}`);
     for (const p of d.props) { const t = propDef(p.kind).examine; if (t) lint(t, p.kind); }
@@ -273,9 +281,9 @@ test("town art: every sprite draws and fits the renderer's culling margin; the t
     assert.ok(s, `${k} v${v}`);
     assert.ok(s!.w <= 96 && s!.h <= 60, `${k}: ${s!.w}x${s!.h} stays inside the cull margin`);
   }
-  for (const id of TOWN_AREAS) for (const p of AREAS[id]().props) assert.ok(propSprite(p.kind, p.v, false), `${id}: ${p.kind} has art`);
+  for (const id of TOWN_AREAS) for (const p of SITE_BUILDERS[id]().props) assert.ok(propSprite(p.kind, p.v, false), `${id}: ${p.kind} has art`);
   for (const id of TOWN_AREAS) {
-    const d = AREAS[id](), c = makeCanvas(d.w * TS, d.h * TS);
+    const d = SITE_BUILDERS[id](), c = makeCanvas(d.w * TS, d.h * TS);
     bakeRegion(c.ctx, d, 0, 0, d.w - 1, d.h - 1);
   }
 });

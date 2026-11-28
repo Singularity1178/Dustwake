@@ -16,7 +16,8 @@
 // `customer` spot in front; every stool has a `seat` spot; the middle of each
 // floor and the line from the door to the counter are kept clear.
 import { TS, T, FS, WS } from "./content/tiles";
-import { ESTABLISHMENTS, HIGH_END, TOWN_ID, building, interiorId, type Establishment } from "./content/town";
+import { ESTABLISHMENTS, HIGH_END, building, interiorId, type Establishment } from "./content/town";
+import { OVERWORLD_ID, ZONE, zoneRef } from "./content/places";
 import { areaKit } from "./town";
 import type { AreaData, PropDef, Spot } from "./map";
 
@@ -57,7 +58,7 @@ function buildRoom(e: Establishment, s: RoomSpec): AreaData {
   k.D("threshold", dx * TS, dy * TS, 0, s.doorW * TS);
   k.portals.push({
     id: "door", x: dx * TS + 1, y: dy * TS + 6, w: s.doorW * TS - 2, h: 11, dir: "down", door: true,
-    to: { area: TOWN_ID, portal: `door.${e}` }, arrive: { x: mid, y: dy * TS - 3 }, label: b.name,
+    to: { area: OVERWORLD_ID, portal: zoneRef(ZONE.westwake, `door.${e}`) }, arrive: { x: mid, y: dy * TS - 3 }, label: b.name,
   });
   // the sky outside leaks a little way in over the sill: the night as authored, daylight by day (`sky`)
   k.lights.push({ x: mid, y: dy * TS + 10, rad: 44, col: [0.5, 0.6, 0.95], int: 0.3, flick: 0, sky: true });

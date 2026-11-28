@@ -4,6 +4,7 @@
 // shopkeepers (hours, greeting, serving, tidying, the golem's talk, scan), conversations (in turn, varied, never the
 // same exchange twice running), the guild board (a look only; the duty seam), saves (v18 -> v19, mid-visit), and the
 // invariants over whole days in every room: nobody stuck, no place held by two, no head turned round. Plus timing.
+import { OVER, WESTWAKE, townStart, inTown } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
@@ -43,9 +44,10 @@ const natural = (facing: Facing, head: Facing | null | undefined) => !head || (h
 /** The golem in an area (by its door, out of the doorway if there is room), at an hour of the day. */
 function at(hour: number, area = "town", seed = 7): World {
   const w = createWorld(seed);
-  getArea(w, "town"); // the golem came through the town to get anywhere in it: its people exist
-  const A = getArea(w, area), pl = player(w);
-  if (!(area !== "town" && teleportTo(w, pl, area, A.start.x - 36, A.start.y - 30))) assert.ok(teleportTo(w, pl, area, A.start.x, A.start.y), `room for the golem in ${area}`);
+  getArea(w, OVER); // the golem came through the town to get anywhere in it: its people exist
+  // ("town" is Westwake: a zone of the overworld now, entered where its own map used to start, inside the East Gate)
+  const town = area === "town", id = town ? OVER : area, A = getArea(w, id), pl = player(w), s = town ? townStart(w) : A.start;
+  if (!(!town && teleportTo(w, pl, id, s.x - 36, s.y - 30))) assert.ok(teleportTo(w, pl, id, s.x, s.y), `room for the golem in ${area}`);
   advanceDayTo(w, hour);
   return w;
 }
@@ -183,8 +185,8 @@ test("shop trips come off the clock: inside the right blocks, only while the sho
   const by: Record<string, Record<string, number>> = {}, heads: Record<string, number> = {}, perHead = { rich: 0, richN: 0, rest: 0, restN: 0 };
   let total = 0;
   for (let seed = 1; seed <= 10; seed++) {
-    const w = createWorld(seed); getArea(w, "town"); getArea(w, "surface");
-    const w2 = createWorld(seed); getArea(w2, "town"); getArea(w2, "surface");
+    const w = createWorld(seed); getArea(w, OVER); getArea(w, "surface");
+    const w2 = createWorld(seed); getArea(w2, OVER); getArea(w2, "surface");
     for (const a of folkOf(w)) {
       const day = 3, blocks = blocksOf(a), trips = tripsOf(w, a, day, blocks);
       assert.deepEqual(trips, tripsOf(w2, actorById(w2, a.id)!, day, blocksOf(actorById(w2, a.id)!)), `${a.id}: the same seed, the same trips`);
@@ -222,7 +224,7 @@ test("shop trips come off the clock: inside the right blocks, only while the sho
 });
 
 test("a trip is a plan of its own: the shop's room while it lasts, the rest of the block after it; the visit's steps follow the clock", () => {
-  const w = createWorld(7); getArea(w, "town");
+  const w = createWorld(7); getArea(w, OVER);
   const { a, plan } = tripsAhead(w)[0];
   assert.equal(plan.act, "shop"); assert.ok(plan.key.includes(":s"));
   const before = planAt(w, a, plan.startDay - 1e-4), after = planAt(w, a, plan.endDay + 1e-4);
@@ -291,7 +293,7 @@ test("a keeper greets the golem, tidies the shelves between customers and comes 
 test("a customer's visit, seen from inside: in by the door, a look at the shelves, the counter, a deal with the keeper said in turn with coin across, and out again", () => {
   let done = false;
   for (let seed = 1; seed <= 12 && !done; seed++) {
-    const w0 = createWorld(seed); getArea(w0, "town");
+    const w0 = createWorld(seed); getArea(w0, OVER);
     const pick = tripsAhead(w0).find((t) => t.plan.trip!.visit === "buy" && t.plan.endDay - t.plan.startDay > 2 / 24);
     if (!pick) continue;
     const shop = pick.plan.trip!.shop, room = interiorId(shop);
@@ -331,8 +333,8 @@ test("a customer's visit, seen from inside: in by the door, a look at the shelve
 });
 
 test("seen from the street: people walk to a shop's door, go in, and come out of it later", () => {
-  const w = createWorld(7), town = getArea(w, "town"), door = spotById(town, "door.smithy")!;
-  assert.ok(teleportTo(w, player(w), "town", door.x + 40, door.y + 34));
+  const w = createWorld(7), town = getArea(w, OVER), door = spotById(town, "door.smithy")!;
+  assert.ok(teleportTo(w, player(w), OVER, door.x + 40, door.y + 34));
   advanceDayTo(w, 7.2);
   const where = new Map<string, string>(), pos = new Map<string, { x: number; y: number }>(), awaySince = new Map<string, number>();
   let ins = 0, outs = 0, t = 0;
@@ -340,12 +342,12 @@ test("seen from the street: people walk to a shop's door, go in, and come out of
     stepWorld(w, DT); t += DT; w.events = [];
     for (const a of folkOf(w)) {
       const was = where.get(a.id);
-      if (was === "town" && a.area === "town_smithy") {
+      if (was === OVER && a.area === "town_smithy") {
         const p = pos.get(a.id)!;
         assert.ok(Math.hypot(p.x - door.x, p.y - door.y) < 20, `${a.id} went in by the smithy's door`);
         ins++; awaySince.set(a.id, t);
       }
-      if (was === "town_smithy" && a.area === "town") {
+      if (was === "town_smithy" && inTown(a)) {
         assert.ok(Math.hypot(a.x - door.x, a.y - door.y) < 24, `${a.id} came out of the smithy's door`);
         if (awaySince.has(a.id)) { assert.ok(t - awaySince.get(a.id)! > 8, `${a.id} was inside a while`); outs++; }
       }
@@ -418,11 +420,11 @@ test("a day in every shop and a day in the street: nobody stuck, no place held b
 
 test("two neighbours talk in words, in turn, each in their own voice; the next time they talk it is something else", () => {
   const w = at(10); run(w, DT);
-  const s = spotById(getArea(w, "town"), "wander.sq.2")!, chatty = (a: Actor) => a.person!.traits.reduce((m, t) => m * (TRAITS[t].chatty ?? 1), 1);
-  const [a, b] = folkOf(w).filter((x) => x.person!.origin === "town").sort((x, y) => chatty(y) - chatty(x) || (x.id < y.id ? -1 : 1));
-  for (const x of [a, b]) x.area = "town";
-  assignDuty(a, { act: "socialize", area: "town", x: s.x - 6, y: s.y, facing: "right", until: w.day + 0.4 });
-  assignDuty(b, { act: "socialize", area: "town", x: s.x + 6, y: s.y, facing: "left", until: w.day + 0.4 });
+  const s = spotById(getArea(w, OVER), "wander.sq.2")!, chatty = (a: Actor) => a.person!.traits.reduce((m, t) => m * (TRAITS[t].chatty ?? 1), 1);
+  const [a, b] = folkOf(w).filter((x) => x.person!.zone === WESTWAKE).sort((x, y) => chatty(y) - chatty(x) || (x.id < y.id ? -1 : 1));
+  for (const x of [a, b]) x.area = OVER;
+  assignDuty(a, { act: "socialize", area: OVER, x: s.x - 6, y: s.y, facing: "right", until: w.day + 0.4 });
+  assignDuty(b, { act: "socialize", area: OVER, x: s.x + 6, y: s.y, facing: "left", until: w.day + 0.4 });
   const talks: { ex: string; lines: { who: string; line: string }[] }[] = [];
   let cur = "", t = 0;
   while (t < 260 && talks.length < 3) {
@@ -444,11 +446,11 @@ test("two neighbours talk in words, in turn, each in their own voice; the next t
 
 // ------------------------------------------------------------------ the board
 test("the guild board is looked at, not used: a duty sends someone to read it (the seam for contracts), and adventurers find their own way there", () => {
-  const w = at(9.4, "town_guild"), guild = getArea(w, "town_guild"), town = getArea(w, "town");
+  const w = at(9.4, "town_guild"), guild = getArea(w, "town_guild"), town = getArea(w, OVER);
   assert.ok((guild.base.spots ?? []).filter((s) => s.id.startsWith(BOARD.spots)).length >= 3 && (town.base.spots ?? []).some((s) => s.id.startsWith(BOARD.spots)), "places at the guild's board and at the notices in the square");
   assert.ok(guild.props.some((p) => p.kind === "questboard") && town.props.some((p) => p.kind === "noticeboard"));
   run(w, 1);
-  const a = folkOf(w).find((x) => x.person!.archetype === "resident" && x.area === "town" )!, s = spotById(guild, "idle.board.2")!;
+  const a = folkOf(w).find((x) => x.person!.archetype === "resident" && inTown(x) )!, s = spotById(guild, "idle.board.2")!;
   assignDuty(a, { act: "board", area: "town_guild", x: s.x, y: s.y, facing: "up", until: w.day + 60 / DAY_SECONDS, label: "READ THE BOARD" });
   const poses = new Set<FolkPose>(); let there = false;
   run(w, 56, () => {
@@ -470,7 +472,7 @@ test("the guild board is looked at, not used: a duty sends someone to read it (t
 
 // ------------------------------------------------------------------ saves, determinism, timing
 test("saves: v18 loads with a keeper for every shop room it had visited; a save mid-visit carries on exactly; the same seed gives the same afternoon", () => {
-  assert.equal(SAVE_VERSION, 20);
+  assert.equal(SAVE_VERSION, 21);
   const w = at(12.4, "town_tavern", 6); run(w, 6);
   assert.ok(folkOf(w).some((a) => a.area === "town_tavern" && a.life!.act === "shop"), "customers in the middle of a visit");
   // an older save: no keepers, version 18
@@ -478,7 +480,7 @@ test("saves: v18 loads with a keeper for every shop room it had visited; a save 
   old.actors = old.actors.filter((x: any) => x.kind !== "keeper");
   for (const x of old.actors) if (x.life) { delete x.life.step; delete x.life.beat; delete x.life.dealt; delete x.life.lastEx; delete x.life.lastSay; }
   assert.deepEqual(MIGRATIONS[18](old), { ...old, version: 19 }, "nothing older is rewritten");
-  assert.equal((migrate(old) as { version: number }).version, 20);
+  assert.equal((migrate(old) as { version: number }).version, 21);
   const up = deserialize(old);
   for (const id of up.areas.keys()) if (id.startsWith("town_")) assert.equal(up.actors.filter((x) => isKeeper(x) && x.area === id).length, 1, `${id}: its keeper, once`);
   assert.ok(keeperOf(up, "town_tavern"), "the tavern's keeper is made on load");
@@ -503,7 +505,7 @@ test("performance holds with shops in use: a tick of the town and of a busy room
 
 // ------------------------------------------------------------------ art
 test("the new poses paint in every garb and facing (coin in the hand that pays); a shake of the head stays a quarter turn; the keeper is a black box, swappable per shop", () => {
-  const w = createWorld(1); getArea(w, "town"); getArea(w, "surface");
+  const w = createWorld(1); getArea(w, OVER); getArea(w, "surface");
   for (const a of folkOf(w)) for (const pose of ["pay", "point", "read", "note", "nod", "shake"] as FolkPose[]) for (const facing of ROT) for (const frame of [0, 1]) {
     const gd = new FolkGrid();
     paintFolk(gd, ARCHETYPES[a.person!.archetype].garb, a.person!.look, ARCHETYPES[a.person!.archetype].age, { facing, head: null, pose, frame, carry: false, lantern: false, pole: false, blink: false });
@@ -519,5 +521,5 @@ test("the new poses paint in every garb and facing (coin in the hand that pays);
   keeperPainter("smithy")(new Pen(ctx as unknown as CanvasRenderingContext2D, false), 100, 50, { facing: "down", state: "tend", moving: false, phase: 0, t: 0 });
   assert.deepEqual(rects, [[100 - KEEPER_BOX.w / 2, 50 - KEEPER_BOX.h, KEEPER_BOX.w, KEEPER_BOX.h, "#000000"]], "one plain black box, about a person's size");
   assert.ok(KEEPER_BOX.h >= 18 && KEEPER_BOX.h <= 26 && KEEPER_BOX.w >= 8 && KEEPER_BOX.w <= 12);
-  assert.equal(CENSUS.filter((r) => r.area === "town").length, 17, "the census itself is unchanged: keepers are not census rows");
+  assert.equal(CENSUS.filter((r) => r.zone === WESTWAKE).length, 17, "the census itself is unchanged: keepers are not census rows");
 });

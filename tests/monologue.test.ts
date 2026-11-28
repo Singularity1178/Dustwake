@@ -3,6 +3,7 @@
 // (event triggers, the `think` effect, the `think` command), the shipped
 // power lines through real interactions, save/load and the v10 -> v11 migration, the
 // Primer's note, and the intro script played through the real host.
+import { RUINS_AT } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
@@ -111,16 +112,16 @@ test("event triggers: a data row with `on` fires from the matching player event,
     const w = newWorld(), pl = player(w);
     const other = makeActor("other", "worker_golem", "dungeon", pl.x + 40, pl.y);
     w.actors.push(other);
-    enterArea(w, other, "surface", 100, 100);
+    enterArea(w, other, "surface", RUINS_AT.x + 100, 100);
     frame(w);
     assert.deepEqual(thoughts(events(w)), [], "another actor's event is not the golem's thought");
     enterArea(w, pl, "dungeon", pl.x, pl.y);
     frame(w);
     assert.deepEqual(thoughts(events(w)), [], "field match: the wrong area");
-    enterArea(w, pl, "surface", 100, 100);
+    enterArea(w, pl, "surface", RUINS_AT.x + 100, 100);
     frame(w);
     assert.deepEqual(thoughts(events(w)), ["t.surface"]);
-    enterArea(w, pl, "dungeon", 100, 100); enterArea(w, pl, "surface", 100, 100);
+    enterArea(w, pl, "dungeon", 100, 100); enterArea(w, pl, "surface", RUINS_AT.x + 100, 100);
     frame(w);
     assert.deepEqual(thoughts(events(w)), [], "one-shot");
   });
@@ -213,12 +214,12 @@ test("monologue state saves and loads: one-shot lines stay said, cooldowns carry
 });
 
 test("v10 -> v11: the migration adds an empty monologue; a migrated save plays on", () => {
-  assert.equal(SAVE_VERSION, 20); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
+  assert.equal(SAVE_VERSION, 21); // v18: townsfolk (tests/folk.test.ts); v19: shops (tests/shops.test.ts)
   const w = newWorld();
   const s: any = serialize(w);
   s.version = 10; delete s.monologue;
   const m: any = migrate(s);
-  assert.equal(m.version, 20);
+  assert.equal(m.version, 21);
   assert.deepEqual(m.monologue, { said: [], ready: {} });
   const w2 = deserialize(s);
   assert.deepEqual(serialize(w2), serialize(w));

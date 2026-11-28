@@ -7,7 +7,7 @@
 //   node scripts/townPreview.mjs        -> .preview/town/*.png
 import { writeFileSync, mkdirSync } from "node:fs";
 import { RCanvas, png } from "./uiSnapshot";
-import { AREAS } from "../../src/game/world/areas";
+import { SITE_BUILDERS } from "./places";
 import { Area } from "../../src/game/world/area";
 import { bakeRegion } from "../../src/game/art/tiles";
 import { propSprite, PROP_ART } from "../../src/game/art/props";
@@ -45,7 +45,7 @@ export function installDom() { (globalThis as any).document = { createElement: (
 
 /** One area, as the game would draw it with nobody in it: [lit, unlit albedo]. */
 export function renderArea(id: string): { lit: RCanvas; flat: RCanvas; area: Area } {
-  const area = new Area(AREAS[id]());
+  const area = new Area(SITE_BUILDERS[id]());
   const W = area.w * TS, H = area.h * TS;
   const scene = canvas(W, H), emit = canvas(W, H);
   bakeRegion(scene.getContext() as any, area, 0, 0, area.w - 1, area.h - 1);
@@ -116,6 +116,6 @@ export function run(dir = ".preview/town") {
     const x = (rm.x - 2) * TS, y = (rm.y - 3) * TS, w = (rm.w + 4) * TS, h = (rm.h + 6) * TS;
     save(`in_${e}`, crop(r.lit, x, y, w, h), 3); save(`in_${e}_flat`, crop(r.flat, x, y, w, h), 2);
   }
-  const s = renderArea("surface"), ry = WEST_ROAD.surface.y0;
+  const s = renderArea("wild"), ry = WEST_ROAD.surface.y0;
   save("surface_road", crop(s.lit, 0, (ry - 6) * TS, 26 * TS, 15 * TS), 2); save("surface_road_flat", crop(s.flat, 0, (ry - 6) * TS, 26 * TS, 15 * TS), 2);
 }

@@ -3,11 +3,13 @@
 // at each end of the High Street, and the layout audit
 // (tests/support/townAudit.ts) finds nothing wrong in the town or its rooms.
 // Headless: builders, sim and the recording fake canvas only.
+import { OVER, TOWN_AT } from "./support/places";
+import { SITE_BUILDERS } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
 installFakeCanvas();
-import { AREAS } from "../src/game/world/areas";
+
 import { Area } from "../src/game/world/area";
 import { buildTown } from "../src/game/town";
 import { BUILDINGS, STREETS, TOWN_ID, building } from "../src/game/content/town";
@@ -68,7 +70,7 @@ test("the town wall is a closed ring of rampart, open only where the High Street
 });
 
 test("the West Bar is shut: the bar spans its passage, so the east gate is the only way through the wall", () => {
-  const a = new Area(AREAS[TOWN_ID]());
+  const a = new Area(SITE_BUILDERS[TOWN_ID]());
   const boxes: Box[] = a.props.filter(propBlocks).map((p) => p.box!);
   const bar = a.props.find((p) => p.kind === "tollbar")!;
   assert.ok(bar.box, "the bar is solid");
@@ -85,23 +87,23 @@ test("the West Bar is shut: the bar spans its passage, so the east gate is the o
 });
 
 test("walking into the edge of the map: the golem stops where the tiles end, in every direction", () => {
-  const t = buildTown(), W = t.w * TS, H = t.h * TS;
-  const w = newWorld(), pl = player(w);
+  // (Westwake's own map is a site of the overworld now: its west edge is still the world's; south of it one more row of meadow, then the edge)
+  const w = newWorld(), pl = player(w), H = getArea(w, OVER).h * TS;
   const walk = (ix: number, iy: number, n = 240) => { for (let i = 0; i < n; i++) frame(w, { ix, iy, use: false }); };
   // the north-west corner of the land outside the wall
-  enterArea(w, pl, TOWN_ID, 24, 24);
+  enterArea(w, pl, OVER, 24, 24);
   walk(-1, 0); walk(0, -1); walk(-1, -1);
-  assert.equal(pl.area, TOWN_ID);
+  assert.equal(pl.area, OVER);
   assert.ok(pl.x >= 5 - 0.01 && pl.x < 12 && pl.y >= 5 - 0.01 && pl.y < 12, `stopped in the corner (${pl.x.toFixed(1)}, ${pl.y.toFixed(1)})`);
-  // the south-east corner
-  pl.x = W - 24; pl.y = H - 24; pl.vx = pl.vy = 0;
-  walk(1, 0); walk(0, 1); walk(1, 1);
-  assert.equal(pl.area, TOWN_ID);
-  assert.ok(pl.x <= W - 5 + 0.01 && pl.x > W - 12 && pl.y <= H + 0.01 && pl.y > H - 7, `stopped in the corner (${pl.x.toFixed(1)}, ${pl.y.toFixed(1)})`);
+  // the south-west corner
+  pl.x = 24; pl.y = H - 24; pl.vx = pl.vy = 0;
+  walk(-1, 0); walk(0, 1); walk(-1, 1);
+  assert.equal(pl.area, OVER);
+  assert.ok(pl.x >= 5 - 0.01 && pl.x < 12 && pl.y <= H + 0.01 && pl.y > H - 7, `stopped in the corner (${pl.x.toFixed(1)}, ${pl.y.toFixed(1)})`);
   // the west road beyond the bar is a road that goes nowhere yet: pushing along it off the map changes nothing
-  pl.x = 40; pl.y = (STREETS.high.y0 + 1) * TS + 12; pl.vx = pl.vy = 0;
+  pl.x = 40; pl.y = TOWN_AT.y + (STREETS.high.y0 + 1) * TS + 12; pl.vx = pl.vy = 0;
   walk(-1, 0, 400);
-  assert.equal(pl.area, TOWN_ID);
+  assert.equal(pl.area, OVER);
   assert.ok(pl.x >= 5 - 0.01 && pl.x < 12);
 });
 
@@ -128,19 +130,20 @@ test("houses are painted over the ground decals round them, and the wall-walk ha
 test("a save from before the wall: a golem saved where masonry now stands is set down on free ground beside it", () => {
   const roundTrip = (x: number, y: number) => {
     const w = newWorld(), pl = player(w);
-    enterArea(w, pl, TOWN_ID, x, y);
+    enterArea(w, pl, OVER, x, y);
     pl.x = x; pl.y = y; pl.vx = pl.vy = 0;
     const kept = new Map<string, string>(), storage = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => { kept.set(k, v); } };
     saveToStorage(w, storage);
     const back = loadFromStorage(storage)!;
     // (deserialize alone stays the exact inverse of serialize: the guard is on the way in from storage)
     assert.deepEqual(serialize(deserialize(serialize(w))), serialize(w));
-    return { p: player(back), a: getArea(back, TOWN_ID) };
+    return { p: player(back), a: getArea(back, OVER) };
   };
   // inside the north wall, inside the West Bar's tower, inside the south wall (all open meadow, once)
-  for (const [x, y] of [[40 * TS + 8, Wl.northY0 * TS + 20], [4 * TS + 8, 27 * TS], [60 * TS + 8, Wl.southY0 * TS + 24]]) {
+  for (const [x0, y0] of [[40 * TS + 8, Wl.northY0 * TS + 20], [4 * TS + 8, 27 * TS], [60 * TS + 8, Wl.southY0 * TS + 24]]) {
+    const x = x0 + TOWN_AT.x, y = y0 + TOWN_AT.y; // (the town's own coordinates, set down on the overworld)
     const { p, a } = roundTrip(x, y);
-    assert.equal(p.area, TOWN_ID);
+    assert.equal(p.area, OVER);
     assert.ok(boxFree(a, p.x, p.y), `(${x}, ${y}) loads onto free ground`);
     assert.ok(Math.hypot(p.x - x, p.y - y) <= 80, `(${x}, ${y}) loads close to where it was saved`);
   }

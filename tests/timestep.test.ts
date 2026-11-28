@@ -1,5 +1,6 @@
 // Phase 0.1 / 0.2: the fixed-timestep clock, deterministic replay at any speed, render interpolation, and
 // simulation LOD (tiers, beats, far-area catch-up, determinism across a save and load).
+import { OVER, townStart } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SimClock, TICK, stepSpeed, GAME_SPEEDS } from "../src/game/core/clock";
@@ -27,8 +28,8 @@ test("the clock hands out whole ticks: 1/60 fed sixty times is sixty; speed mult
 
 /** A town afternoon: its people about, the player walking a square and pressing E now and then. */
 function townSave(seed = 4242): string {
-  const w = createWorld(seed), pl = player(w), town = getArea(w, "town");
-  enterArea(w, pl, "town", town.start.x, town.start.y);
+  const w = createWorld(seed), pl = player(w), town = getArea(w, OVER); void town;
+  enterArea(w, pl, OVER, townStart(w).x, townStart(w).y);
   w.day = Math.floor(w.day) + 1 + 13 / 24;
   w.events = [];
   return JSON.stringify(serialize(w));
@@ -81,15 +82,18 @@ test("the picture is drawn between ticks: lerp by alpha, a jump drawn where it l
 });
 
 test("LOD tiers: in view is active, the rest of the area near, other areas far; the player is always active", () => {
-  const w = createWorld(11), pl = player(w), town = getArea(w, "town");
-  enterArea(w, pl, "town", town.start.x, town.start.y);
+  const w = createWorld(11), pl = player(w), town = getArea(w, OVER); void town;
+  enterArea(w, pl, OVER, townStart(w).x, townStart(w).y);
   enableLod(w);
   const folk = w.actors.filter(isFolk);
   assert.ok(folk.length > 4);
   const [a, b, c] = folk;
-  a.area = "town"; a.x = pl.x + 30; a.y = pl.y;
-  b.area = "town"; b.x = pl.x + 2000; b.y = pl.y;
+  a.area = OVER; a.x = pl.x + 30; a.y = pl.y;
+  // near is the bubble round the player (about three screens each way), not the whole area: the overworld is far wider
+  b.area = OVER; b.x = pl.x + 700; b.y = pl.y;
+  const d = folk[3]; d.area = OVER; d.x = pl.x + 2000; d.y = pl.y;
   c.area = "dungeon";
+  assert.equal(lodTier(w, d, pl), "far", "the same area, a long way off (and no settlement awake round it): abstract");
   assert.equal(lodTier(w, pl, pl), "active");
   assert.equal(lodTier(w, a, pl), "active");
   assert.equal(lodTier(w, b, pl), "near");
@@ -112,8 +116,8 @@ test("near actors step on their beat (every 0.1 s, the step that long, offset pe
 });
 
 test("far areas wait and catch up on entry: the circle's charge is advanced by the time away", () => {
-  const w = createWorld(13), pl = player(w), town = getArea(w, "town"), d = getArea(w, "dungeon");
-  enterArea(w, pl, "town", town.start.x, town.start.y);
+  const w = createWorld(13), pl = player(w), town = getArea(w, OVER), d = getArea(w, "dungeon"); void town;
+  enterArea(w, pl, OVER, townStart(w).x, townStart(w).y);
   d.ritual!.active = true; d.ritual!.actT = 0;
   enableLod(w);
   for (let i = 0; i < 120; i++) simTick(w);
@@ -123,7 +127,7 @@ test("far areas wait and catch up on entry: the circle's charge is advanced by t
   assert.ok(Math.abs(d.ritual!.actT - 121 * TICK) < 1e-6, `caught up to ${d.ritual!.actT}`);
   // without LOD every area ticks every step, as before
   const w2 = createWorld(13), d2 = getArea(w2, "dungeon"), p2 = player(w2);
-  enterArea(w2, p2, "town", getArea(w2, "town").start.x, getArea(w2, "town").start.y);
+  enterArea(w2, p2, OVER, townStart(w2).x, townStart(w2).y);
   d2.ritual!.active = true; d2.ritual!.actT = 0;
   for (let i = 0; i < 60; i++) simTick(w2);
   assert.ok(Math.abs(d2.ritual!.actT - 60 * TICK) < 1e-6);

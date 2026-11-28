@@ -19,6 +19,7 @@ import { makeCanvas } from "../util";
 import { computeVis, makeLight, type Light } from "../light";
 import { unionRect, type Area, type TileRect } from "../world/area";
 import type { LightHabit } from "../content/daycycle";
+import { tendedAt } from "../world/zones";
 
 interface LightWant { key: string; make: () => Light }
 export const CH = 8;
@@ -127,7 +128,7 @@ export class AreaView {
       if (l.owner) {
         const p = a.prop(l.owner);
         if (!p || (propDef(p.kind).light?.when === "lit" && !p.lit)) return;
-        if (a.base.tended) habit = propDef(p.kind).habit;
+        if (tendedAt(a, p.x, p.y)) habit = propDef(p.kind).habit;
       }
       out.push({
         key: "area" + i,

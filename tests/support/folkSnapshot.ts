@@ -7,6 +7,7 @@
 // Also a sheet of heads (every facing with the head straight, turned to each side, and asked to turn round to the
 // back, which must draw exactly as straight ahead: sim/folk.ts naturalHead), and close-ups of the places that must
 // hold one person at a time (the smithy's two anvils, a bench, the camp asleep on its bedrolls).
+import { OVERWORLD_ID, SITE_AT } from "../../src/game/content/places";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { RCanvas, png } from "./uiSnapshot";
 import { Game } from "../../src/game/game";
@@ -85,6 +86,9 @@ function sheet(cols: number, frames: { label: string; img: RCanvas }[]): RCanvas
 
 /** The golem standing at a tile of an area, at an hour, after `settle` seconds of play. */
 export function scene(area: string, tx: number, ty: number, hour: number, settle = 4, seed = 7): { g: Game; w: World } {
+  // "town" and "surface" name the two authored sites, in each one's own tiles; the overworld sets them down (content/places.ts)
+  const site = area === "town" ? "westwake" : area === "surface" ? "ruins" : null;
+  if (site) { area = OVERWORLD_ID; if (tx >= 0) { tx += SITE_AT[site].x; ty += SITE_AT[site].y; } else if (site === "westwake") { tx = SITE_AT.westwake.x + 85; ty = SITE_AT.westwake.y + 31; } }
   const g = newGame(), w = createWorld(seed);
   setFlag(w, FLAGS.golemEye); setFlag(w, FLAGS.golemArm); setFlag(w, FLAGS.tutorialDone);
   getArea(w, area);

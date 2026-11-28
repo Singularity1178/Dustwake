@@ -186,7 +186,7 @@ export class ManageUi {
       this.amountRow(st),
       {
         label: "ISSUE ORDER", ok: !why, note: [why ? `${why}.` : `GATHER ${repeat ? "WITHOUT END" : String(amount)} ${ITEM_NAMES[item]} FROM ${from!.label}, TO ${to.label}.`],
-        act: () => this.issue(gatherOrder(item, from!.area, to.ref ? { ...to.ref } : null, repeat ? 1 : (amount as number), repeat)),
+        act: () => this.issue(gatherOrder(item, from!.area, to.ref ? { ...to.ref } : null, repeat ? 1 : (amount as number), repeat, from!.zone)),
       },
     ];
   }

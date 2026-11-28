@@ -1,10 +1,15 @@
 // Collision queries shared by locomotion, drop placement, travel arrival and
 // build placement. Pure sim.
+//
+// Props are looked up through the area's collision buckets (world/area.ts:
+// blockedBy), so a query costs what stands near the box, not what stands in the
+// whole area: the overworld holds thousands of props and is meant to grow.
 import { TS, isSolidT } from "../content/tiles";
 import { HARVEST } from "../content/harvest";
 import { propDef } from "../content/props";
 import type { Area, PropInst } from "../world/area";
 import type { Actor, World } from "../world/world";
+import { solidActors } from "../world/presence";
 import { actorDef } from "../content/actors";
 import type { Box } from "./reach";
 
@@ -19,7 +24,7 @@ export function actorBox(a: Actor): Box | null {
 /** Blocking bodies of the actors in an area, except one (usually the mover). */
 export function actorBoxes(w: World, areaId: string, except?: string): Box[] {
   const out: Box[] = [];
-  for (const a of w.actors) {
+  for (const a of solidActors(w)) {
     if (a.area !== areaId || a.id === except) continue;
     const b = actorBox(a);
     if (b) out.push(b);
@@ -38,11 +43,7 @@ export function boxFree(area: Area, x: number, y: number, bodies: readonly Box[]
       if (tx < 0 || ty < 0 || tx >= area.w || ty >= area.h) return false;
       if (isSolidT(area.grid[ty * area.w + tx])) return false;
     }
-  for (const p of area.props) {
-    if (!propBlocks(p)) continue;
-    const b = p.box!;
-    if (x1 > b[0] && x0 < b[2] && y1 > b[1] && y0 < b[3]) return false;
-  }
+  if (area.blockedBy(x0, y0, x1, y1, propBlocks)) return false;
   for (const b of bodies) if (x1 > b[0] && x0 < b[2] && y1 > b[1] && y0 < b[3]) return false;
   return true;
 }

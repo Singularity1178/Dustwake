@@ -90,6 +90,34 @@ export interface Spot {
     | "browse" | "queue" | "tidy";
   x: number; y: number;
   facing: "down" | "up" | "left" | "right";
+  /** The zone this place belongs to, in an area made of sites (world/compose.ts). Spot ids are unique within a zone. */
+  zone?: string;
+}
+
+/**
+ * A named region of an area (world/zones.ts): Westwake, the old road, the ruins. What orders, routines and the
+ * simulation's level of detail mean by "a place" inside one large continuous area.
+ */
+export interface Zone {
+  id: string;
+  /** What the game calls it ("WESTWAKE"). */
+  name: string;
+  /** A settlement is lived in; wild and road are country. */
+  kind: "settlement" | "wild" | "road";
+  /** Tile rect. */
+  x: number; y: number; w: number; h: number;
+  /** Origin (px) of the coordinates the zone was authored in: authored + origin = the area's. */
+  ox: number; oy: number;
+  /** Where someone sent "to <zone>" arrives (px, the area's coordinates). */
+  anchor: { x: number; y: number };
+  /** Simulation (sim/lod.ts): "whole" wakes all of it when the player nears any part (a town); "bubble" only what is near. */
+  wake: "whole" | "bubble";
+  /** People keep the lights here (as AreaData.tended, for this ground only). */
+  tended?: boolean;
+  /** Shown when the player walks in. */
+  label?: string;
+  /** The prefix the zone's props, portals and loose items carry in the area ("" for none). */
+  ids?: string;
 }
 
 /** Static definition of an area. Builders must be deterministic. */
@@ -120,6 +148,8 @@ export interface AreaData {
   portals?: Portal[];
   /** Standing places for future shopkeepers and townsfolk (data only). */
   spots?: Spot[];
+  /** Named regions (world/zones.ts). An area composed of sites has one per site. */
+  zones?: Zone[];
   /** NPCs that live here (spawned as actors on first visit; saved as actors afterwards). */
   npcs?: NpcSpawn[];
   start: { x: number; y: number };

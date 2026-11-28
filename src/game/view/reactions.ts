@@ -20,6 +20,7 @@ import { type AnimCue } from "../workerAnim";
 import { eventAudience } from "./audience";
 import { npcActor } from "../sim/dialogue";
 import type { Actor } from "../world/world";
+import { tendedAt, zoneById } from "../world/zones";
 import { folkLabel, sayTime } from "../sim/folk";
 import { keeperLabel } from "../sim/shops";
 import { type DayPhase } from "../content/daycycle";
@@ -341,6 +342,15 @@ export class EventReactions {
         if (e.first) { this.g.letterbox(true); this.g.monologue.pinned = true; playerThinks(this.g.world, "cross.engage"); }
         break;
       case "areaEntered": break;
+      case "zoneEntered": {
+        // Walked across into another part of the same area (world/zones.ts): no fade, nothing stops; only its name.
+        // (Arriving in an area by a door, a stair or a rune is already named by the way taken.)
+        const z = e.walked && e.actor === this.g.world.playerId ? zoneById(this.g.area, e.zone) : undefined;
+        if (z?.label) this.g.say(z.label);
+        // reaching a settlement on foot is an arrival like any other: autosave shortly
+        if (z?.kind === "settlement") this.g.autosave.soon = 2;
+        break;
+      }
       case "dayPhase": this.onDayPhase(e.phase); break;
       case "portal": {
         // Walked through a doorway or out along a road (sim/portals.ts): a latch or a footfall, a short fade up from
@@ -393,7 +403,7 @@ export class EventReactions {
   onDayPhase(phase: DayPhase) {
     const a = this.g.area;
     if (!a.base.outdoor || !this.g.screens.is("play")) return;
-    const town = !!a.base.tended;
+    const town = tendedAt(a, this.g.pl.x, this.g.pl.y);
     if (phase === "dawn") { this.g.say(town ? "DAWN. THE TOWN PUTS OUT ITS LAMPS." : "DAWN BREAKS."); if (town) this.g.sfx.bell(); }
     else if (phase === "dusk") { this.g.say(town ? "DUSK. THE TOWN LIGHTS ITS LAMPS." : "DUSK. THE LIGHT IS GOING."); if (town) this.g.sfx.bell(); }
     else if (phase === "night") this.g.say("NIGHT FALLS.");

@@ -16,7 +16,8 @@
 // Seams: `keeper.with` / keeperServe is where a real sale will happen; keeperTalk is where a shop screen or the
 // guild's contract desk opens; a keeper's art is KEEPER_ART (keeperArt.ts).
 import { SHOPS, SHOP_HABITS, TRIP, VISITS, type ShopDef, type VisitStep } from "../content/shops";
-import { BUILDINGS, ESTABLISHMENTS, TOWN_ID, interiorId, type Establishment } from "../content/town";
+import { BUILDINGS, ESTABLISHMENTS, interiorId, type Establishment } from "../content/town";
+import { OVERWORLD_ID } from "../content/places";
 import { NAMES, TRAITS, type RoutineBlock } from "../content/folk";
 import { hash01, hourOf, wrapHour } from "../content/daycycle";
 import { actorById, emit, getArea, makeActor, player, type Actor, type World } from "../world/world";
@@ -188,7 +189,7 @@ export function populateKeepers(w: World, area: string) {
   if (!shop || actorById(w, keeperId(shop.id))) return;
   // a shop's room is part of the town: its customers are the town's people, so the town exists once the room does
   // (the golem normally walks in from the street; a debug teleport straight into a shop must not find it empty for ever)
-  getArea(w, TOWN_ID);
+  getArea(w, OVERWORLD_ID);
   const room = w.areas.get(area);
   const home = room ? spotById(room, "keeper") : undefined;
   if (!home) return;

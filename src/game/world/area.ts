@@ -42,6 +42,15 @@ type Listener = (r: TileRect) => void;
 
 /** Tiles of context re-baked around a change (AO, wall rims and decals reach this far). */
 const DIRTY_PAD = 2;
+/**
+ * Side of a navigation sector, in tiles. Layout changes are recorded per sector (`sectorRev`), so path data is
+ * thrown away only where the layout changed (sim/navigation.ts), however large the area.
+ */
+export const SECTOR = 16;
+/** Side of a collision bucket (px). A collision query looks only at the props whose boxes reach the buckets it touches. */
+const BUCKET = 64;
+/** A layout change can alter where a body may stand this far beyond what changed (px): a body's size and a step. */
+const LAYOUT_PAD = 2 * TS;
 
 export class Area {
   readonly id: string;
@@ -67,14 +76,26 @@ export class Area {
   propSeq = 0;
   /** World time this area's own features (the ritual's charge) were last ticked: LOD catches it up from here (sim/lod.ts). */
   lastTicked = 0;
+  /** Navigation sectors across and down (SECTOR tiles each). */
+  readonly sw: number;
+  readonly sh: number;
+  /** Per sector: how many layout changes have touched it. Only ever grows. */
+  readonly sectorRev: Uint32Array;
   private listeners: Listener[] = [];
   private propIndex = new Map<string, PropInst>();
+  /** Props with a collision box, by the buckets their box reaches. */
+  private buckets = new Map<number, PropInst[]>();
+  private bw: number;
+  private bh: number;
 
   constructor(base: AreaData) {
     this.base = base;
     this.id = base.id;
     this.w = base.w;
     this.h = base.h;
+    this.sw = Math.ceil(base.w / SECTOR); this.sh = Math.ceil(base.h / SECTOR);
+    this.sectorRev = new Uint32Array(this.sw * this.sh);
+    this.bw = Math.max(1, Math.ceil(base.w * TS / BUCKET)); this.bh = Math.max(1, Math.ceil(base.h * TS / BUCKET));
     this.grid = base.grid.slice();
     this.plan = base.plan;
     this.style = base.style;
@@ -96,8 +117,44 @@ export class Area {
     }
     if (dyn) inst.dyn = true;
     this.propIndex.set(p.id, inst);
+    this.bucket(inst, true);
     return inst;
   }
+
+  // ---- collision buckets and navigation sectors
+  private bucketRange(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+    const c = (v: number, hi: number) => Math.min(hi, Math.max(0, Math.floor(v / BUCKET)));
+    return [c(x0, this.bw - 1), c(y0, this.bh - 1), c(x1, this.bw - 1), c(y1, this.bh - 1)];
+  }
+  private bucket(p: PropInst, add: boolean) {
+    if (!p.box) return;
+    const [bx0, by0, bx1, by1] = this.bucketRange(p.box[0], p.box[1], p.box[2], p.box[3]);
+    for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+      const k = by * this.bw + bx, list = this.buckets.get(k);
+      if (add) { if (list) list.push(p); else this.buckets.set(k, [p]); }
+      else if (list) { const i = list.indexOf(p); if (i >= 0) list.splice(i, 1); }
+    }
+  }
+  /**
+   * Does the px box [x0, y0, x1, y1] overlap the collision box of a prop that `blocks`? Looks only at props near
+   * the box. (`blocks` is sim/collision.ts: propBlocks; it is passed in because world does not import sim.)
+   */
+  blockedBy(x0: number, y0: number, x1: number, y1: number, blocks: (p: PropInst) => boolean): boolean {
+    const [bx0, by0, bx1, by1] = this.bucketRange(x0, y0, x1, y1);
+    for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+      const list = this.buckets.get(by * this.bw + bx);
+      if (!list) continue;
+      for (const p of list) { const b = p.box!; if (x1 > b[0] && x0 < b[2] && y1 > b[1] && y0 < b[3] && blocks(p)) return true; }
+    }
+    return false;
+  }
+  /** Record a layout change in the px rect: the sectors it can affect are bumped. */
+  private bumpSectors(x0: number, y0: number, x1: number, y1: number) {
+    const S = SECTOR * TS, c = (v: number, hi: number) => Math.min(hi, Math.max(0, Math.floor(v / S)));
+    const sx0 = c(x0 - LAYOUT_PAD, this.sw - 1), sx1 = c(x1 + LAYOUT_PAD, this.sw - 1), sy0 = c(y0 - LAYOUT_PAD, this.sh - 1), sy1 = c(y1 + LAYOUT_PAD, this.sh - 1);
+    for (let sy = sy0; sy <= sy1; sy++) for (let sx = sx0; sx <= sx1; sx++) this.sectorRev[sy * this.sw + sx]++;
+  }
+  private bumpBox(p: PropInst) { if (p.box) this.bumpSectors(p.box[0], p.box[1], p.box[2], p.box[3]); }
 
   // ---- static-ish accessors (pass-through so an Area is usable as MapData)
   get rooms() { return this.base.rooms; }
@@ -138,6 +195,8 @@ export class Area {
     if (!p) return;
     if (s.name !== undefined) { if (s.name) p.name = s.name; else delete p.name; }
     const layout = s.taken !== undefined && s.taken !== p.taken;
+    // (whether a prop blocks can turn on `taken` and on `open`: sim/collision.ts propBlocks)
+    if (layout || (s.open !== undefined && s.open !== p.open)) this.bumpBox(p);
     if (s.open !== undefined) p.open = s.open;
     if (s.taken !== undefined) p.taken = s.taken;
     if (s.lit !== undefined) p.lit = s.lit;
@@ -165,6 +224,7 @@ export class Area {
     if (this.propIndex.has(pid)) throw new Error(`duplicate prop id "${pid}"`);
     const inst = this.instProp({ v: 0, ...o, id: pid, kind, x, y }, true);
     this.props.push(inst);
+    this.bumpBox(inst);
     this.touch("layout");
     return inst;
   }
@@ -178,6 +238,8 @@ export class Area {
     if (!p) return undefined;
     this.propIndex.delete(id);
     this.props = this.props.filter((q) => q !== p);
+    this.bucket(p, false);
+    this.bumpBox(p);
     this.touch("layout");
     return p;
   }
@@ -242,6 +304,7 @@ export class Area {
   }
   private markDirty(x0: number, y0: number, x1: number, y1: number, layout = true) {
     this.touch(layout ? "layout" : "state");
+    if (layout) this.bumpSectors(x0 * TS, y0 * TS, (x1 + 1) * TS, (y1 + 1) * TS);
     const r = { x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(this.w - 1, x1), y1: Math.min(this.h - 1, y1) };
     for (const l of this.listeners) l(r);
   }

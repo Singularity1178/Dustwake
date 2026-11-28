@@ -76,9 +76,9 @@ test("saves through the host: K to the quick slot, L loads the latest, and an ar
   press(g, "l");
   assert.notEqual(g.world, w, "a new world was loaded");
   assert.ok(Math.abs(g.world.time - saved) < 0.05);
-  const town = g.world.areas.get("town") ?? null;
-  assert.equal(town, null);
-  assert.ok(g.debugTeleport({ label: "town", group: "t", area: "town", x: 600, y: 600 }) || true);
+  const tavern = g.world.areas.get("town_tavern") ?? null;
+  assert.equal(tavern, null);
+  assert.ok(g.debugTeleport({ label: "tavern", group: "t", area: "town_tavern", x: 200, y: 160 }) || true);
   for (let i = 0; i < 160; i++) g.update(1 / 60);
   assert.ok(g.store.has("auto"), "autosaved after coming into another area");
 });

@@ -18,6 +18,7 @@
 // optionally, an id prefix and how near home to look. A stool, an anvil or a
 // bedroll holds one person at a time (EXCLUSIVE_KINDS); meeting places are shared.
 
+import { OVERWORLD_ID, ZONE } from "./places";
 import type { Spot } from "../map";
 
 export type FolkHabitat = "town" | "forest";
@@ -279,36 +280,41 @@ export const NAMES = {
 } as const;
 
 /** Who lives where: one row per person. `home` is a door spot id (or a camp bed spot for the forest). */
-export interface CensusRow { id: string; area: string; archetype: string; home: string; routine?: string; route?: string }
+/**
+ * A person the world is born with. `area` is where they live; in an area made of zones (the overworld) `zone` says
+ * which: their home, the places they go and the rounds they walk are all that zone's (world/zones.ts).
+ */
+export interface CensusRow { id: string; area: string; zone?: string; archetype: string; home: string; routine?: string; route?: string }
 
 export const CENSUS: CensusRow[] = [
   // ---- Westwake
-  { id: "folk.watch.1", area: "town", archetype: "watch", home: "door.watch", routine: "watch_day", route: "high" },
-  { id: "folk.watch.2", area: "town", archetype: "watch", home: "door.watch", routine: "watch_night", route: "low" },
-  { id: "folk.watch.3", area: "town", archetype: "watch", home: "door.house_w1", routine: "watch_day", route: "west" },
-  { id: "folk.lab.1", area: "town", archetype: "labourer", home: "door.cot_s1" },
-  { id: "folk.lab.2", area: "town", archetype: "labourer", home: "door.cot_s3" },
-  { id: "folk.lab.3", area: "town", archetype: "labourer", home: "door.house_l1" },
-  { id: "folk.app.1", area: "town", archetype: "apprentice", home: "door.house_l2" },
-  { id: "folk.app.2", area: "town", archetype: "apprentice", home: "door.cooper" },
-  { id: "folk.adv.1", area: "town", archetype: "adventurer", home: "door.tavern" },
-  { id: "folk.adv.2", area: "town", archetype: "adventurer", home: "door.tavern" },
-  { id: "folk.res.1", area: "town", archetype: "resident", home: "door.cot_well_w" },
-  { id: "folk.res.2", area: "town", archetype: "resident", home: "door.bakery" },
-  { id: "folk.res.3", area: "town", archetype: "resident", home: "door.house_l3" },
-  { id: "folk.res.4", area: "town", archetype: "resident", home: "door.cot_s2" },
-  { id: "folk.res.5", area: "town", archetype: "resident", home: "door.townhouse_h" },
-  { id: "folk.eld.1", area: "town", archetype: "elder", home: "door.cot_old" },
-  { id: "folk.eld.2", area: "town", archetype: "elder", home: "door.cot_well_e" },
+  { id: "folk.watch.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "watch", home: "door.watch", routine: "watch_day", route: "high" },
+  { id: "folk.watch.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "watch", home: "door.watch", routine: "watch_night", route: "low" },
+  { id: "folk.watch.3", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "watch", home: "door.house_w1", routine: "watch_day", route: "west" },
+  { id: "folk.lab.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "labourer", home: "door.cot_s1" },
+  { id: "folk.lab.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "labourer", home: "door.cot_s3" },
+  { id: "folk.lab.3", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "labourer", home: "door.house_l1" },
+  { id: "folk.app.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "apprentice", home: "door.house_l2" },
+  { id: "folk.app.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "apprentice", home: "door.cooper" },
+  { id: "folk.adv.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "adventurer", home: "door.tavern" },
+  { id: "folk.adv.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "adventurer", home: "door.tavern" },
+  { id: "folk.res.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "resident", home: "door.cot_well_w" },
+  { id: "folk.res.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "resident", home: "door.bakery" },
+  { id: "folk.res.3", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "resident", home: "door.house_l3" },
+  { id: "folk.res.4", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "resident", home: "door.cot_s2" },
+  { id: "folk.res.5", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "resident", home: "door.townhouse_h" },
+  { id: "folk.eld.1", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "elder", home: "door.cot_old" },
+  { id: "folk.eld.2", area: OVERWORLD_ID, zone: ZONE.westwake, archetype: "elder", home: "door.cot_well_e" },
   // ---- the hunters' camp in the north-west wood
-  { id: "folk.hunt.1", area: "surface", archetype: "hunter", home: "bed.1" },
-  { id: "folk.hunt.2", area: "surface", archetype: "hunter", home: "bed.2" },
-  { id: "folk.forage.1", area: "surface", archetype: "forager", home: "bed.3" },
+  { id: "folk.hunt.1", area: OVERWORLD_ID, zone: ZONE.ruins, archetype: "hunter", home: "bed.1" },
+  { id: "folk.hunt.2", area: OVERWORLD_ID, zone: ZONE.ruins, archetype: "hunter", home: "bed.2" },
+  { id: "folk.forage.1", area: OVERWORLD_ID, zone: ZONE.ruins, archetype: "forager", home: "bed.3" },
 ];
 
 /** Watch routes: spot ids walked in order, there and back. */
 export const ROUTES: Record<string, Record<string, string[]>> = {
-  town: {
+  // (keyed by zone: Westwake's rounds)
+  [ZONE.westwake]: {
     high: ["patrol.watchhouse", "patrol.gate", "patrol.high.e", "patrol.square.ne", "patrol.square.nw", "patrol.high.w", "patrol.bar"],
     low: ["patrol.watchhouse", "patrol.high.e", "patrol.yard.n", "patrol.low.e", "patrol.low.mid", "patrol.tavern", "patrol.low.w", "patrol.lane.w", "patrol.high.w", "patrol.square.nw", "patrol.square.ne"],
     west: ["patrol.bar", "patrol.high.w", "patrol.lane.n", "patrol.old.w", "patrol.old.e", "patrol.lane.n", "patrol.square.nw", "patrol.square.ne", "patrol.high.e"],
@@ -329,7 +335,7 @@ export const FOLK_INTERIORS: Record<string, { area: string; door: string }> = {
 export const INTERIOR_OF: Partial<Record<Activity, string>> = { tavern: "tavern" };
 
 /** Each area's people: the habitat they belong to. */
-export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: ["town", "town_tavern", "town_smithy", "town_armory", "town_jeweler", "town_tailor", "town_guild"], forest: ["surface"] };
+export const HABITAT_AREAS: Record<FolkHabitat, string[]> = { town: [OVERWORLD_ID, "town_tavern", "town_smithy", "town_armory", "town_jeweler", "town_tailor", "town_guild"], forest: [OVERWORLD_ID] };
 
 /**
  * Places one person holds at a time: a stool or a bench, a work place (an anvil, a haul pile), a chore, a bedroll, a

@@ -1,14 +1,15 @@
 // Area registry: area id -> deterministic builder. Saves store only per-area
 // diffs against these builders, so builders must be deterministic.
 import { buildDungeon, type AreaData } from "../map";
-import { buildSurface } from "../surface";
-import { buildTown } from "../town";
+import { buildOverworld } from "../overworld";
+import { OVERWORLD_ID } from "../content/places";
 import { INTERIOR_BUILDERS } from "../townInteriors";
 
 export const AREAS: Record<string, () => AreaData> = {
   dungeon: buildDungeon,
-  surface: buildSurface,
-  // Westwake, the market town west of the surface, and the six rooms behind its shop doors.
-  town: buildTown,
+  // The overworld: one continuous surface made of sites (overworld.ts): Westwake, the old road, the ruins.
+  // Westwake is a zone of it (world/zones.ts), not an area of its own.
+  [OVERWORLD_ID]: buildOverworld,
+  // The six rooms behind Westwake's shop doors: under a roof, so areas of their own.
   ...INTERIOR_BUILDERS,
 };

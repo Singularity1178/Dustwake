@@ -2,6 +2,8 @@
 // nobody, waking nothing), a worker's routes over runes and portals alike (the dug-out stair, the old road to
 // Westwake, the shops' doors), gather orders that keep what they gather, and the v16 -> v17 migration. The host's
 // side (the rune's refusal as it is drawn) is tests/runeHost.test.ts.
+import { preOverworld } from "./support/preOverworld";
+import { zoneAt } from "../src/game/world/zones";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RUNE_NODES, runeDestinations } from "../src/game/content/runes";
@@ -115,7 +117,7 @@ test("a broken circle below severs the surface rune: it stays lit but carries no
 });
 
 test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, and an order stopped for want of a route keeps its reason", () => {
-  assert.equal(SAVE_VERSION, 20);
+  assert.equal(SAVE_VERSION, 21);
   const { w } = crossed();
   breakCircle(w);
   const wk = withWorker(w);
@@ -125,18 +127,19 @@ test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, a
   assert.equal(blockText("noRoute"), "NO WAY THERE"); assert.ok(!("noRuneRoute" in BLOCK_TEXT));
   const now = JSON.parse(JSON.stringify(serialize(w)));
   // that world as v16 saved it once the bug had bitten: the dark circle's flag set by a trip down, the old reason name
-  const v16 = { ...now, version: 16, flags: [...now.flags, "rune.dungeon.active"], actors: now.actors.map((a: { id: string; job: object }) => (a.id === WORKER ? { ...a, job: { ...a.job, reason: "noRuneRoute" } } : a)) };
+  const pre = preOverworld(now); // (as a save from before the overworld held it: tests/support/preOverworld.ts)
+  const v16 = { ...pre, version: 16, flags: [...pre.flags, "rune.dungeon.active"], actors: pre.actors.map((a: { id: string; job: object }) => (a.id === WORKER ? { ...a, job: { ...a.job, reason: "noRuneRoute" } } : a)) };
   const up = migrate(v16) as typeof now;
-  assert.equal(up.version, 20);
+  assert.equal(up.version, 21);
   assert.ok(!up.flags.includes("rune.dungeon.active") && up.flags.includes("rune.surface.active"));
   assert.deepEqual(up, now, "and nothing else moved");
   const w2 = deserialize(v16);
   assert.equal(runeState(w2, S), "severed"); assert.equal(runeState(w2, D), "dormant");
   // a circle that is lit keeps its flag; a save that never reached the ritual is untouched
   const lit = JSON.parse(JSON.stringify(serialize(crossed().w)));
-  assert.deepEqual(migrate({ ...lit, version: 16 }), lit);
+  assert.deepEqual(migrate({ ...preOverworld(lit), version: 16 }), lit);
   const early = JSON.parse(JSON.stringify(serialize(newWorld())));
-  assert.deepEqual(migrate({ ...early, version: 16 }), early);
+  assert.deepEqual(migrate({ ...preOverworld(early), version: 16 }), early);
 });
 
 // ------------------------------------------------------------------ routes
@@ -146,32 +149,29 @@ test("a worker takes the dug-out stair when the rune will not carry it, and walk
   breakCircle(w);
   // rune dark, stair buried: nothing leads out of the halls, and nothing beyond them is offered
   assert.deepEqual(firstHops(w, means, "dungeon", "surface"), []);
-  assert.ok(!canReach(w, wk, "surface") && !canReach(w, wk, "town"));
+  assert.ok(!canReach(w, wk, "surface"));
   assert.ok(walkOptions(w, wk).every((o) => o.area === "dungeon"));
   openStair(w);
   assert.deepEqual(firstHops(w, means, "dungeon", "surface"), [{ via: "portal", portal: STAIR.below.portal, area: "surface" }]);
   assert.deepEqual(firstHops(w, means, "surface", "dungeon"), [{ via: "portal", portal: STAIR.above.portal, area: "dungeon" }]);
-  assert.deepEqual(firstHops(w, means, "dungeon", "town"), [{ via: "portal", portal: STAIR.below.portal, area: "surface" }]);
-  assert.ok(canReach(w, wk, "surface") && canReach(w, wk, "town"));
-  // Westwake has never been visited: it is known as the far end of the road out of the surface, and offered by its start
-  assert.ok(!w.areas.has("town"));
-  assert.deepEqual(knownAreas(w), ["dungeon", "surface", "town"]);
+  assert.ok(canReach(w, wk, "surface"));
+  // Westwake is a zone of the surface (world/zones.ts): not an area to route to, a place on it to walk to, offered by where one arrives in it
+  assert.deepEqual(knownAreas(w).filter((id) => !id.startsWith("town_")), ["dungeon", "surface"]);
   const spot = walkOptions(w, wk).find((o) => o.label === "WESTWAKE START")!;
-  assert.ok(spot && spot.area === "town");
-  assert.ok(!w.areas.has("town"), "listing it instantiates nothing");
+  assert.ok(spot && spot.area === "surface");
+  assert.equal(zoneAt(getArea(w, "surface"), spot.x, spot.y)?.id, "westwake");
   assert.ok(assignJob(w, wk, walkOrder(spot.area, spot.x, spot.y)));
+  assert.equal(jobView(w, wk)!.title, "GO TO WESTWAKE");
   const seen = follow(w, wk);
   assert.equal(wk.job?.status, "done", JSON.stringify(wk.job));
-  assert.deepEqual(seen, ["stair_up>stair_down", "west_road>east_road"], "up the stair, then west along the road: no rune");
-  assert.equal(wk.area, "town"); assert.ok(Math.hypot(wk.x - spot.x, wk.y - spot.y) < 3);
-  assert.ok(w.areas.has("town"), "the town exists once someone has walked in");
+  assert.deepEqual(seen, ["stair_up>stair_down"], "up the stair, then west along the road on foot, all the way: no rune, and no second crossing");
+  assert.equal(wk.area, "surface"); assert.ok(Math.hypot(wk.x - spot.x, wk.y - spot.y) < 3);
   // from there the shops' doors are ways too, and the way home is the same road and stair
   assert.ok(knownAreas(w).includes("town_guild") && walkOptions(w, wk).some((o) => o.label === "GUILD HALL START"));
-  assert.deepEqual(firstHops(w, means, "town", "town_smithy"), [{ via: "portal", portal: "door.smithy", area: "town_smithy" }]);
-  assert.deepEqual(firstHops(w, means, "town_smithy", "dungeon"), [{ via: "portal", portal: "door", area: "town" }]);
-  assert.deepEqual(firstHops(w, means, "town", "dungeon"), [{ via: "portal", portal: "east_road", area: "surface" }]);
+  assert.deepEqual(firstHops(w, means, "surface", "town_smithy"), [{ via: "portal", portal: "westwake/door.smithy", area: "town_smithy" }]);
+  assert.deepEqual(firstHops(w, means, "town_smithy", "dungeon"), [{ via: "portal", portal: "door", area: "surface" }]);
   // a body that cannot use runes still walks; one that can only use runes has no way while the circle is dark
-  assert.equal(firstHops(w, { runes: false, portals: true }, "town", "dungeon").length, 1);
+  assert.equal(firstHops(w, { runes: false, portals: true }, "surface", "dungeon").length, 1);
   assert.deepEqual(firstHops(w, { runes: true, portals: false }, "surface", "dungeon"), []);
 });
 
@@ -212,7 +212,7 @@ test("every road, door and stair can be stood in by a worker's body and walked t
       assert.ok(portalsOf(getArea(w, p.to.area)).some((q) => q.id === p.to.portal), `${id}.${p.id}: its far side exists`);
     }
   }
-  assert.equal(n, 16, "the stair's two ends, the road's two ends, six shop doors and the six ways back out");
+  assert.equal(n, 14, "the stair's two ends, six shop doors and the six ways back out (the road is no way between areas now: it is one area)");
   // a box that is blocked whole has nowhere to stand
   assert.equal(portalStand(portalsOf(getArea(w, "surface"))[0], () => false), null);
 });

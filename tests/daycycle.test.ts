@@ -7,6 +7,9 @@
 // opening skipped with Esc, the first jump played right through the crossing,
 // the crossing skipped at every stage (and the world left the same as when it
 // is watched), R at the chapter card, and the town's lamps following the hour.
+import { tendedAt } from "../src/game/world/zones";
+import { buildTown } from "../src/game/town";
+import { OVER, townStart } from "./support/places";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeCanvas } from "./support/fakeCanvas";
@@ -112,12 +115,16 @@ test("the first crossing lands in the last dark before dawn; later hops take no 
 });
 
 // ------------------------------------------------------------------ who tends which light
-const town = () => AREAS.town();
+const town = () => buildTown(); // Westwake's own map (a site of the overworld: overworld.ts), where its lights are authored
 const tended = (habit: string) => town().props.filter((p) => propDef(p.kind).habit === habit).map((p) => p.id!);
 
 test("only the town is tended, and its lights have their habits (the charter stone's rune never sleeps)", () => {
   assert.equal(town().tended, true);
   assert.ok(!AREAS.surface().tended && !AREAS.dungeon().tended, "the wild and the halls keep no hours");
+  // on the overworld it is Westwake's ground that is tended (world/zones.ts), not the whole surface
+  const over = AREAS.surface(), zones = over.zones!;
+  assert.deepEqual(zones.filter((z) => z.tended).map((z) => z.id), ["westwake"]);
+  assert.ok(tendedAt(over, zones[0].anchor.x, zones[0].anchor.y) && !tendedAt(over, over.start.x, over.start.y), "lamps are kept inside the town, not at the rune");
   assert.ok(!AREAS.town_tavern().tended, "a room keeps its own lamps lit");
   assert.equal(propDef("rune_lamp").habit, "rune"); assert.equal(propDef("rune_sconce").habit, "rune");
   for (const k of ["lantern", "torch", "torch_post", "brazier"]) assert.equal(propDef(k).habit, "fire", k);
@@ -157,7 +164,7 @@ test("the town puts its lights out in the morning and lights them at dusk, each 
 
 // ------------------------------------------------------------------ saving
 test("save v13: the clock is saved; an older save resumes at night in the halls, at its first morning on the surface", () => {
-  assert.equal(SAVE_VERSION, 20);
+  assert.equal(SAVE_VERSION, 21);
   const w = newWorld();
   advanceDayTo(w, 15.25);
   const s = serialize(w);
@@ -170,7 +177,7 @@ test("save v13: the clock is saved; an older save resumes at night in the halls,
     return o;
   };
   const halls = migrate(old(false)) as { version: number; day: number }, up = migrate(old(true)) as { version: number; day: number };
-  assert.equal(halls.version, 20); assert.ok(near(hourOf(halls.day), START_HOUR));
+  assert.equal(halls.version, 21); assert.ok(near(hourOf(halls.day), START_HOUR));
   assert.ok(near(hourOf(up.day), FIRST_MORNING_HOUR));
   const loaded = deserialize(old(true));
   for (let i = 0; i < 30; i++) stepWorld(loaded, 1 / 60);
@@ -340,8 +347,8 @@ test("left alone the chapter card hands over by itself; R on it wakes the golem 
 });
 
 test("host: the town's lamps follow the hour, the charter stone never sleeps, and the roof crack lets in the day", () => {
-  const g = new Game(canvas(), canvas()), w = newWorld(), s = getArea(w, "town").start;
-  enterArea(w, player(w), "town", s.x, s.y);
+  const g = new Game(canvas(), canvas()), w = newWorld(), s = townStart(w);
+  enterArea(w, player(w), OVER, s.x, s.y);
   g.resume(w);
   const lamps = () => [...g.view.lights.values()].filter((L) => L.habit);
   const lit = (habit: string) => lamps().filter((L) => L.habit === habit && (L.day ?? 1) > 0.5).length;

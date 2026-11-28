@@ -84,8 +84,8 @@ export const SURFACE_GATE_ZONE = {
 /** What the order screens call an area (bitmap font text). Areas without a row read as their id, uppercased. */
 export const AREA_NAMES: Record<string, string> = {
   dungeon: "DUNGEON", surface: "SURFACE",
-  // The market town west of the surface and the rooms behind its doors (content/town.ts).
-  town: "WESTWAKE", town_smithy: "BLACK ANVIL", town_armory: "GILDED BUCKLER", town_jeweler: "BRIGHT FACET",
+  // The rooms behind Westwake's doors (content/town.ts). Westwake itself is a zone of the surface (world/zones.ts) and is named there.
+  town_smithy: "BLACK ANVIL", town_armory: "GILDED BUCKLER", town_jeweler: "BRIGHT FACET",
   town_tailor: "SILVER NEEDLE", town_tavern: "SUNKEN CROWN", town_guild: "GUILD HALL",
 };
 

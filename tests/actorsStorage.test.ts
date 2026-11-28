@@ -136,7 +136,8 @@ test("generic inventories transfer and stack atomically without layout or intera
   const w2 = deserialize(serialize(w));
   assert.deepEqual(serialize(w2), serialize(w), "authored storage diffs round-trip");
   area.setTile(1, 1, T.WALL);
-  assert.notEqual(navGrid(area, pl), grid);
+  // the grid is kept (only the sectors a change can affect are worked out again: sim/navigation.ts) and is current
+  assert.equal(navGrid(area, pl), grid); assert.ok(!grid.stand(1 * area.w + 1), "the new wall cannot be stood on");
 });
 
 test("full storage gives a partial transfer, never deletes the remainder", () => {

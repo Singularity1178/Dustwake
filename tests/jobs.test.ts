@@ -204,7 +204,8 @@ test("navigation caches per body and layout, and replans after a wall changes", 
   assert.notEqual(navGrid(area, player(w)), grid, "different footprints have different grids");
   assert.ok(findPath(w, a, { x: 40, y: 43, range: 1 }));
   area.setTile(2, 2, T.WALL);
-  assert.notEqual(navGrid(area, a), grid);
+  // the grid is kept (only the sectors a change can affect are worked out again: sim/navigation.ts) and is current
+  assert.equal(navGrid(area, a), grid); assert.ok(!grid.stand(2 * area.w + 2), "the new wall cannot be stood on");
   assignJob(w, a, walk(area.id, 40, 123));
   until(w, () => a.job?.status === "done");
   assert.ok(boxFree(area, a.x, a.y, actorBoxes(w, area.id, a.id), actorDef(a).body.box));

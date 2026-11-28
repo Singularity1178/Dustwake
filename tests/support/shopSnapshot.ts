@@ -39,7 +39,7 @@ function standTile(e: Establishment): [number, number] {
 }
 /** Sim only: how many customers are in a shop just after arriving at an hour. */
 function customersAt(e: Establishment, hour: number, seed: number, board = false): number {
-  const w = createWorld(seed); getArea(w, "town");
+  const w = createWorld(seed); getArea(w, "surface");
   const A = getArea(w, interiorId(e));
   teleportTo(w, player(w), A.id, A.start.x, A.start.y); advanceDayTo(w, hour);
   for (let i = 0; i < 40; i++) { stepWorld(w, 0.05); w.events = []; }
@@ -53,7 +53,7 @@ function busiest(e: Establishment, seed: number, board = false): number {
 /** The first shop trip of kind `visit` in a seed's day: who, where, and when its time at the counter comes. */
 function findTrip(visit: string, seeds: number[]): { seed: number; id: string; shop: Establishment; start: number; end: number } | null {
   for (const seed of seeds) {
-    const w: World = createWorld(seed); getArea(w, "town");
+    const w: World = createWorld(seed); getArea(w, "surface");
     for (const a of w.actors.filter(isFolk)) for (let d = w.day + 0.01; d < w.day + 1; d += 0.004) {
       const p = planAt(w, a, d);
       if (p.trip?.visit === visit && p.endDay - p.startDay > 2.1 / 24) return { seed, id: a.id, shop: p.trip.shop, start: p.startDay, end: p.endDay };

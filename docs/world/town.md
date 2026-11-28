@@ -1,5 +1,7 @@
 # Westwake, day and night, the crossing
 
+> Since v21 Westwake is not an area of its own: it is a site of the overworld, set down by the compositor, and a zone of the `surface` area (`westwake`). Its builder, its table and its audits are unchanged and still speak in the town's own coordinates; the road east is no longer a portal. See [the overworld](overworld.md).
+
 > Split out of the old single `ARCHITECTURE.md` (Phase 0.9). Index: [docs/index.md](../index.md).
 
 ## The market town (Westwake)

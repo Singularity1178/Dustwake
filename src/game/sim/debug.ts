@@ -11,6 +11,7 @@ import { AREA_NAMES } from "../content/geography";
 import { npcDef } from "../content/npcs";
 import { TS } from "../content/tiles";
 import { AREAS } from "../world/areas";
+import { zoneAt, zonesOf } from "../world/zones";
 import { player, setActorFlag, setFlag, clearFlag, hasFlag, enterArea, getArea, areaOf, type Actor, type World } from "../world/world";
 import { countItem, giveItem, addItems, removeItems, heldItems, dropSpot, spawnLoose } from "./inventory";
 import { actorBoxes, boxFree } from "./collision";
@@ -195,7 +196,12 @@ export function debugPlaces(w: World): DebugPlace[] {
       continue;
     }
     out.push({ label: `${name}: START`, group: name, area: id, x: area.start.x, y: area.start.y });
-    for (const r of area.rooms) out.push({ label: `${name}: ${r.name}`, group: name, area: id, x: (r.x + r.w / 2) * TS, y: (r.y + r.h / 2) * TS });
+    // an area made of zones (the overworld): each place by where one arrives in it, and its named parts under its own name
+    for (const z of zonesOf(area)) out.push({ label: `${z.name}: START`, group: z.name, area: id, x: z.anchor.x, y: z.anchor.y });
+    for (const r of area.rooms) {
+      const x = (r.x + r.w / 2) * TS, y = (r.y + r.h / 2) * TS, g = zoneAt(area, x, y)?.name ?? name;
+      out.push({ label: `${g}: ${r.name}`, group: g, area: id, x, y });
+    }
     if (area.base.ritual) out.push({ label: `${name}: CIRCLE`, group: name, area: id, x: area.base.ritual.x, y: area.base.ritual.y + 36 });
     for (const n of Object.values(RUNE_NODES)) {
       const p = n.area === id ? area.prop(n.prop) : undefined;

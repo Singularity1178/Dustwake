@@ -6,6 +6,7 @@
 // out, the HUD clock, the letterbox, the golem's thoughts).
 //
 //   node scripts/dayPreview.mjs        -> .preview/day/*.png
+import { OVERWORLD_ID, SITE_AT } from "../../src/game/content/places";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { RCanvas, png } from "./uiSnapshot";
 import { Game } from "../../src/game/game";
@@ -89,6 +90,9 @@ function sheet(cols: number, frames: { label: string; img: RCanvas }[]): RCanvas
 
 /** A world with the golem standing at a place, its eye mended (the wider view) if `wide`. */
 function at(area: string, tx: number, ty: number, wide: boolean): { g: Game; w: World } {
+  // "town" and "surface" name the two authored sites, in each one's own tiles; the overworld sets them down (content/places.ts)
+  const site = area === "town" ? "westwake" : area === "surface" ? "ruins" : null;
+  if (site) { area = OVERWORLD_ID; if (tx >= 0) { tx += SITE_AT[site].x; ty += SITE_AT[site].y; } else if (site === "westwake") { tx = SITE_AT.westwake.x + 85; ty = SITE_AT.westwake.y + 31; } }
   const g = newGame(), w = createWorld(7);
   if (wide) setFlag(w, FLAGS.golemEye);
   setFlag(w, FLAGS.golemArm);

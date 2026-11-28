@@ -91,5 +91,5 @@ test("a v19 save still loads (it made no areas at runtime) and plays on; ids nev
   for (let i = 0; i < 30; i++) simTick(w);
   const a = createArea(w, { kind: "floor", seed: 1, w: 50, h: 32 }), b = createArea(w, { kind: "floor", seed: 2, w: 50, h: 32 });
   assert.notEqual(a.id, b.id);
-  assert.throws(() => createArea(w, { id: "town", kind: "floor", seed: 1, w: 50, h: 32 }), /already exists/);
+  assert.throws(() => createArea(w, { id: "town_tavern", kind: "floor", seed: 1, w: 50, h: 32 }), /already exists/);
 });

@@ -6,8 +6,10 @@
 | Tier | Who | How it is stepped |
 | --- | --- | --- |
 | active | within the in-view box round the player (the widest zoom's 640x360 view plus 96 px) | every tick |
-| near | the player's area, off camera | on a 0.1 s beat, the step that long, cut into pieces of at most `maxStep` (0.1 s) |
-| far | any other area | routine actors (townsfolk) not at all: they are set down where the hour says on entry; actors with work (a task, a queue, an order) on a 0.5 s beat |
+| near | the player's area, inside the bubble round the player (1040 x 720 px each way), or anywhere in a settlement zone that is awake | on a 0.1 s beat, the step that long, cut into pieces of at most `maxStep` (0.1 s) |
+| far | any other area, and the same area beyond the bubble | routine actors (townsfolk) not at all: they are set down where the hour says when someone comes near; actors with work (a task, a queue, an order) on a 0.5 s beat, walking abstractly (their planned path, no other bodies) |
+
+Since v21 the surface is one large area ([the overworld](../world/overworld.md)), so "near" is no longer "the rest of the player's area". Zones decide it: a zone that wakes whole (a town) is awake while the player's bubble touches its rect, and then all of it is near; open country is near only inside the bubble. `wakeZones` works that out each tick; `LodState.awake` holds the result.
 
 The beat is `floor((time + hash(id) * period) / period)` changing: a pure function of world time and the actor's id. There is no per-actor LOD state, so LOD is deterministic, survives a save and load exactly, and gives the same world at 1x and 8x.
 
