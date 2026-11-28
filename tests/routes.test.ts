@@ -3,6 +3,7 @@
 // Westwake, the shops' doors), gather orders that keep what they gather, and the v16 -> v17 migration. The host's
 // side (the rune's refusal as it is drawn) is tests/runeHost.test.ts.
 import { preOverworld } from "./support/preOverworld";
+import { TOWN_AT } from "./support/places";
 import { discover } from "../src/game/world/discovery";
 import { zoneAt } from "../src/game/world/zones";
 import { test } from "node:test";
@@ -118,11 +119,11 @@ test("a broken circle below severs the surface rune: it stays lit but carries no
 });
 
 test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, and an order stopped for want of a route keeps its reason", () => {
-  assert.equal(SAVE_VERSION, 22);
+  assert.equal(SAVE_VERSION, 23);
   const { w } = crossed();
   breakCircle(w);
   const wk = withWorker(w);
-  assert.ok(assignJob(w, wk, walkOrder("surface", 100, 100)));
+  assert.ok(assignJob(w, wk, walkOrder("surface", TOWN_AT.x + 100, TOWN_AT.y + 100)));
   for (let i = 0; i < 5; i++) stepWorld(w, DT);
   assert.deepEqual([wk.job!.status, wk.job!.reason], ["blocked", "noRoute"], "rune dark, stair buried: no way out of the halls");
   assert.equal(blockText("noRoute"), "NO WAY THERE"); assert.ok(!("noRuneRoute" in BLOCK_TEXT));
@@ -133,7 +134,7 @@ test("v16 -> v17: a circle the surface rune had wrongly woken goes dark again, a
   const pre = preOverworld(now); // (as a save from before the overworld held it: tests/support/preOverworld.ts)
   const v16 = { ...pre, version: 16, flags: [...pre.flags, "rune.dungeon.active"], actors: pre.actors.map((a: { id: string; job: object }) => (a.id === WORKER ? { ...a, job: { ...a.job, reason: "noRuneRoute" } } : a)) };
   const up = migrate(v16) as typeof now;
-  assert.equal(up.version, 22);
+  assert.equal(up.version, 23);
   assert.ok(!up.flags.includes("rune.dungeon.active") && up.flags.includes("rune.surface.active"));
   assert.deepEqual(up, now, "and nothing else moved");
   const w2 = deserialize(v16);

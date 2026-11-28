@@ -26,10 +26,15 @@ export function run(dir = ".preview/overworld") {
   const o = renderArea(OVERWORLD_ID), ry = WEST_ROAD.surface.y0;
   // the whole overworld, day (unlit albedo) at a quarter size
   save("whole", shrink(o.flat, 4));
-  // where Westwake's own map ends and the old road begins: the East Gate, the watch fire, the track running on
-  save("seam_town_road", crop(o.flat, (SITE_AT.oldroad.x - 16) * TS, (ry - 10) * TS, 40 * TS, 23 * TS));
+  // the East Gate, its spur, the Throne Road crossing it north and south, and the old track leaving it east
+  save("seam_town_road", crop(o.flat, (SITE_AT.throneroad.x - 18) * TS, (ry - 10) * TS, 40 * TS, 23 * TS));
+  // the Throne Road running off the top and bottom of the map, either side of the crossing
+  save("throne_road_north", crop(o.flat, (SITE_AT.throneroad.x - 16) * TS, 0, 36 * TS, 30 * TS));
+  save("throne_road_south", crop(o.flat, (SITE_AT.throneroad.x - 16) * TS, (o.flat.height / TS - 30) * TS, 36 * TS, 30 * TS));
+  // the West Bar and the road going west to the edge of the map
+  save("west_road", crop(o.flat, 0, (ry - 10) * TS, (SITE_AT.westwake.x + 14) * TS, 23 * TS));
   // where the road goes into the wood round the ruins: the old map edge, opened
   save("seam_road_ruins", crop(o.flat, (SITE_AT.ruins.x - 18) * TS, (ry - 10) * TS, 40 * TS, 23 * TS));
   // the same two by night, lit as in the game
-  save("seam_town_road_night", crop(o.lit, (SITE_AT.oldroad.x - 16) * TS, (ry - 10) * TS, 40 * TS, 23 * TS));
+  save("seam_town_road_night", crop(o.lit, (SITE_AT.throneroad.x - 18) * TS, (ry - 10) * TS, 40 * TS, 23 * TS));
 }

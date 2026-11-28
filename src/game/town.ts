@@ -65,6 +65,8 @@ export function areaKit(w: number, h: number) {
   return { n, grid, style, tvar, props, lights, decals, loose, portals, spots, inb, set, rect, P, Pt, D, spot };
 }
 
+export type AreaKit = ReturnType<typeof areaKit>;
+
 /** Which street a door gives onto (the note shown on stepping back out). */
 const STREET_OF: Record<string, string> = {
   guild: "MARKET SQUARE", tailor: "MARKET SQUARE", jeweler: "MARKET SQUARE", armory: "HIGH STREET", tavern: "LOW STREET", smithy: "LOW STREET",
@@ -92,8 +94,12 @@ export function buildTown(): AreaData {
 
   // ---- streets. Setts where the light runes are; cobbles where the town is older; earth where nobody pays.
   pave(Wl.westX0, hs.y0, Wl.x1, hs.y1, FS.SETT);                 // the West Bar -> the square -> the east gate
-  pave(Wl.x1 + 1, hs.y0, W - 1, hs.y1, FS.DIRT);                 // ...and out, as the old road, to the edge of the map
-  pave(0, hs.y0, Wl.westX0 - 1, hs.y1, FS.DIRT);                 // the west road beyond the bar: four days to anywhere larger
+  // ...and out of the gates onto the Throne's roads: a metalled road, between verges of bare earth (roadKit.ts). The east spur
+  // runs to the edge of this map, where the Throne Road crosses it (throneRoad.ts); the old track is no part of this.
+  pave(Wl.x1 + 1, hs.y0 - 1, W - 1, hs.y0 - 1, FS.DIRT); pave(Wl.x1 + 1, hs.y1 + 1, W - 1, hs.y1 + 1, FS.DIRT);
+  pave(0, hs.y0 - 1, Wl.westX0 - 1, hs.y0 - 1, FS.DIRT); pave(0, hs.y1 + 1, Wl.westX0 - 1, hs.y1 + 1, FS.DIRT);
+  pave(Wl.x1 + 1, hs.y0, W - 1, hs.y1, FS.ROAD);
+  pave(0, hs.y0, Wl.westX0 - 1, hs.y1, FS.ROAD);                  // the west road beyond the bar: four days to anywhere larger
   pave(sq.x0, sq.y0, sq.x1, sq.y1, FS.SETT); pave(sq.x0 + 1, sq.y0 + 1, sq.x1 - 1, sq.y1 - 1, FS.WEAVE);
   pave(33, 27, 36, 29, FS.SETT); pave(58, 27, 61, 29, FS.SETT);  // the corners by the tailor and the jeweller
   pave(60, 17, 61, 29, FS.SETT);                                 // Lamp Street

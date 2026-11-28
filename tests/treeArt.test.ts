@@ -59,7 +59,7 @@ test("the retextured sprites are pixel-stable", () => {
 });
 
 test("art only: sizes, anchors, footprints, what is harvested and what is saved are as they were", () => {
-  assert.equal(SAVE_VERSION, 22, "the retexture changed no saved field");
+  assert.equal(SAVE_VERSION, 23, "the retexture changed no saved field");
   const tree = propSprite("tree", 0, false)!, taken = propSprite("tree", 0, true)!, stump = propSprite("stump", 0, false)!;
   // the standing tree is the size it always was, and stands on the same anchor
   assert.deepEqual([tree.w, tree.h, tree.ax, tree.ay], [34, 44, 17, 44]);

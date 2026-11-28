@@ -16,6 +16,7 @@ import { FLAGS } from "../src/game/content/flags";
 import { FONT_GLYPHS } from "../src/game/font";
 import { Lighting, applyGlow, computeVis, makeLight } from "../src/game/light";
 import { TS, T } from "../src/game/content/tiles";
+import { SITE_AT } from "../src/game/content/places";
 import { newWorld, frame, frames, useOn, propItem } from "./helpers";
 
 const give = (w: World, id: ItemId) => addItems(w, player(w), id, 1);
@@ -23,13 +24,14 @@ const slotOf = (w: World, id: ItemId) => player(w).inventory.findIndex((s) => s?
 const wear = (w: World, id: ItemId) => assert.equal(wearFromSlot(w, player(w), slotOf(w, id)), "ok");
 
 /** The golem in a cleared patch of the surface, walking right for `n` frames: how far it gets. */
+const WEST_AT = SITE_AT.westwake.x;
 function walk(runes: ItemId[], n = 90) {
   const w = newWorld(); frame(w);
   const pl = player(w);
   setFlag(w, FLAGS.golemArm);
-  enterArea(w, pl, "surface", 10 * TS + 8, 50 * TS + 14);
+  enterArea(w, pl, "surface", (WEST_AT + 10) * TS + 8, 50 * TS + 14); // (inside Westwake, where it was before the land grew a west road)
   const a = currentArea(w);
-  for (let ty = 46; ty <= 54; ty++) for (let tx = 4; tx <= 80; tx++) a.setTile(tx, ty, T.FLOOR);
+  for (let ty = 46; ty <= 54; ty++) for (let tx = WEST_AT + 4; tx <= WEST_AT + 80; tx++) a.setTile(tx, ty, T.FLOOR);
   a.props = a.props.filter((p) => Math.abs(p.y - pl.y) > 90);
   for (const id of runes) { give(w, id); wear(w, id); }
   const x0 = pl.x;

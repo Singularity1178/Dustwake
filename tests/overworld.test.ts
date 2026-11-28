@@ -11,6 +11,8 @@ import { buildOverworld, SITES } from "../src/game/overworld";
 import { buildTown } from "../src/game/town";
 import { buildSurface } from "../src/game/surface";
 import { buildOldRoad } from "../src/game/oldRoad";
+import { buildThroneRoad } from "../src/game/throneRoad";
+import { buildWestRoad } from "../src/game/westRoad";
 import { Area, SECTOR } from "../src/game/world/area";
 import { AREAS } from "../src/game/world/areas";
 import { actorById, createWorld, enterArea, getArea, player, type Actor, type World } from "../src/game/world/world";
@@ -42,15 +44,18 @@ const roadY = (WEST_ROAD.surface.y0 + 1) * TS + 12;
 
 // ------------------------------------------------------------------ the compositor
 test("the overworld is one area made of sites: each set down whole at its place, a zone each, nothing overlapping", () => {
-  const o = buildOverworld(), town = buildTown(), wild = buildSurface(), road = buildOldRoad();
+  const o = buildOverworld(), town = buildTown(), wild = buildSurface(), road = buildOldRoad(), west = buildWestRoad(), cross = buildThroneRoad();
   assert.deepEqual([o.id, o.w, o.h], [OVERWORLD_ID, OVERWORLD_W, OVERWORLD_H]);
   assert.equal(AREAS.town, undefined, "Westwake is not an area");
   assert.deepEqual(zonesOf(o).map((z) => [z.id, z.kind, z.x, z.y, z.w, z.h]), [
-    ["westwake", "settlement", 0, 3, town.w, town.h], ["oldroad", "road", town.w, 0, road.w, road.h], ["ruins", "wild", town.w + road.w, 0, wild.w, wild.h],
+    ["westroad", "road", 0, 0, west.w, west.h], ["westwake", "settlement", west.w, 3, town.w, town.h],
+    ["throneroad", "road", west.w + town.w, 0, cross.w, cross.h], ["oldroad", "road", west.w + town.w + cross.w, 0, road.w, road.h],
+    ["ruins", "wild", west.w + town.w + cross.w + road.w, 0, wild.w, wild.h],
   ]);
-  assert.deepEqual(SITES.map((s) => s.zone), [ZONE.westwake, ZONE.oldroad, ZONE.ruins]);
+  assert.deepEqual(SITES.map((s) => s.zone), [ZONE.westroad, ZONE.westwake, ZONE.throneroad, ZONE.oldroad, ZONE.ruins]);
+  assert.equal(o.w, west.w + town.w + cross.w + road.w + wild.w, "the overworld is exactly its sites, side by side");
   // every tile, prop, light, decal and spot of a site is there, moved by the site's origin and by nothing else
-  for (const [d, site] of [[town, "westwake"], [wild, "ruins"], [road, "oldroad"]] as const) {
+  for (const [d, site] of [[town, "westwake"], [wild, "ruins"], [road, "oldroad"], [west, "westroad"], [cross, "throneroad"]] as const) {
     const at = SITE_AT[site], z = zoneById(o, site)!, pre = z.ids ?? "";
     let tiles = 0;
     for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) if (o.grid[(y + at.y) * o.w + x + at.x] !== d.grid[y * d.w + x]) tiles++;
@@ -62,8 +67,8 @@ test("the overworld is one area made of sites: each set down whole at its place,
     assert.deepEqual([z.ox, z.oy], [at.x * TS, at.y * TS]);
   }
   assert.equal(new Set(o.props.map((p) => p.id)).size, o.props.length, "prop ids are unique across sites");
-  assert.equal(o.props.length, town.props.length + wild.props.length + road.props.length);
-  assert.equal(o.decals.length, town.decals.length + wild.decals.length + road.decals.length);
+  assert.equal(o.props.length, town.props.length + wild.props.length + road.props.length + west.props.length + cross.props.length);
+  assert.equal(o.decals.length, town.decals.length + wild.decals.length + road.decals.length + west.decals.length + cross.decals.length);
   // the ruins keep the ids every save and rune names; Westwake's carry its zone
   assert.ok(o.props.some((p) => p.id === "rune.surface") && o.props.some((p) => p.kind === "marketcross" && p.id.startsWith("westwake/marketcross@")) && o.lights.some((l) => l.id === "runeglow"));
   // the same builders give the same overworld
@@ -92,7 +97,7 @@ test("zones: which place a point is in, a zone's own places, where lamps are kep
   const town = zoneById(o, "westwake")!, ruins = zoneById(o, "ruins")!, road = zoneById(o, "oldroad")!;
   assert.equal(zoneAt(o, town.anchor.x, town.anchor.y), town); assert.equal(zoneAt(o, o.start.x, o.start.y), ruins);
   assert.equal(zoneAt(o, road.anchor.x, road.anchor.y), road);
-  assert.equal(zoneAt(o, 40, 8), null, "the meadow north of the town's own map belongs to no site");
+  assert.equal(zoneAt(o, (town.x + 40) * TS, 8), null, "the meadow north of the town's own map belongs to no site");
   assert.equal(zoneAt(o, -5, 20), null); assert.equal(zoneAt(o, o.w * TS + 5, 20), null);
   // every tile of the map agrees with the zones' rects (the index is exact, also where a cell straddles a border)
   for (let y = 0; y < o.h; y++) for (let x = 0; x < o.w; x++) {
@@ -107,8 +112,8 @@ test("zones: which place a point is in, a zone's own places, where lamps are kep
   assert.equal(spotsIn(o, "oldroad").length, 0);
   // tended: Westwake's ground only; and how each wakes (a town as a whole; open country only where the player is)
   assert.ok(tendedAt(o, door.x, door.y) && !tendedAt(o, o.start.x, o.start.y) && !tendedAt(o, road.anchor.x, road.anchor.y));
-  assert.deepEqual(zonesOf(o).map((z) => z.wake), ["whole", "bubble", "whole"]);
-  assert.deepEqual(zonesOf(o).map((z) => z.name), ["WESTWAKE", "THE OLD ROAD", "THE RUINS"]);
+  assert.deepEqual(zonesOf(o).map((z) => z.wake), ["bubble", "whole", "bubble", "bubble", "whole"]);
+  assert.deepEqual(zonesOf(o).map((z) => z.name), ["THE WEST ROAD", "WESTWAKE", "THE THRONE ROAD", "THE OLD ROAD", "THE RUINS"]);
 });
 
 // ------------------------------------------------------------------ performance: collision and navigation
@@ -291,7 +296,7 @@ test("sent across the overworld with nobody watching, a worker gets there; when 
 
 // ------------------------------------------------------------------ saves
 test("save v21: a save from before the overworld loads with Westwake folded into the surface, everything where that ground now lies", () => {
-  assert.equal(SAVE_VERSION, 22);
+  assert.equal(SAVE_VERSION, 23);
   const w = createWorld(21), a = over(w), pl = player(w), town = zoneById(a, "westwake")!, ruins = zoneById(a, "ruins")!;
   enterArea(w, pl, OVERWORLD_ID, town.anchor.x, town.anchor.y);
   // (it came up at the ruins and walked the road, as anyone standing in Westwake has: what a save from before v22 is taken to know)
@@ -313,8 +318,8 @@ test("save v21: a save from before the overworld loads with Westwake folded into
   assert.equal(old.version, 20);
   assert.ok(["dungeon", "surface", "town"].every((k) => k in old.areas), `the town an area again (${Object.keys(old.areas)})`);
   const oldPl = old.actors.find((x: Actor) => x.id === pl.id), oldWk = old.actors.find((x: Actor) => x.id === WORKER);
-  assert.deepEqual([oldPl.area, oldPl.x, oldPl.y], ["town", pl.x, pl.y - 3 * TS], "the golem was in the town area, in the town's own coordinates");
-  assert.deepEqual([oldWk.area, oldWk.x, oldWk.job.args.fromArea, oldWk.job.args.fromZone], ["surface", wk.x - 144 * TS, "surface", undefined]);
+  assert.deepEqual([oldPl.area, oldPl.x, oldPl.y], ["town", pl.x - town.ox, pl.y - 3 * TS], "the golem was in the town area, in the town's own coordinates");
+  assert.deepEqual([oldWk.area, oldWk.x, oldWk.job.args.fromArea, oldWk.job.args.fromZone], ["surface", wk.x - ruins.ox, "surface", undefined]);
   assert.ok(old.flags.includes("census.town") && old.flags.includes("census.surface") && !old.flags.includes("census.westwake"));
   assert.ok(old.actors.filter((x: Actor) => x.area === "town" && x.kind === "folk").length > 5);
   assert.deepEqual(old.areas.town.looseAdded.map((l: { id: string }) => l.id), ["drop90"]); assert.deepEqual(old.areas.town.props[wellWas], { dmg: 1 }, "under the id the town's own map gave it");
@@ -331,5 +336,5 @@ test("save v21: a save from before the overworld loads with Westwake folded into
   assert.equal(wk2.job?.status, "done", JSON.stringify(wk2.job));
   assert.ok(countItem(wk2, "wood") >= 3);
   // an older save runs the whole chain
-  assert.equal((migrate({ ...old, version: 19 }) as { version: number }).version, 22);
+  assert.equal((migrate({ ...old, version: 19 }) as { version: number }).version, 23);
 });

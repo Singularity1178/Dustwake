@@ -1,12 +1,15 @@
-// The old road: the stretch of country between Westwake's east gate and the
-// wood that closed over the sunken keep. A site of the overworld (overworld.ts),
-// authored like the others in its own coordinates. Pure, deterministic builder
-// (no DOM): fixed seed, stable prop ids (kind@tx,ty).
+// The old road: the stretch of country between the Throne Road (which passes
+// Westwake's east wall) and the wood that closed over the sunken keep. A site of
+// the overworld (overworld.ts), authored like the others in its own coordinates.
+// Pure, deterministic builder (no DOM): fixed seed, stable prop ids (kind@tx,ty).
 //
 // It is deliberately plain: open meadow, a few stands of trees, rock here and
-// there, and the rutted track through the middle of it that the town's carts
-// stopped using when there was no longer anywhere east to go. Thicket closes
-// the north and south, as it does round the ruins. Nothing glows.
+// there, and the track through the middle of it. That is a desire path, worn by
+// the hunters going into the wood and by nobody else since there was no longer
+// anywhere east worth going: trodden earth with grass coming in at the edges,
+// nothing like the Throne's cobbled road it leaves (throneRoad.ts), which
+// keeps well away from the ruins. Thicket closes the north and south, as it
+// does round the ruins. Nothing glows.
 //
 // The road keeps to the rows the two sites either side of it agree on
 // (content/geography.ts: WEST_ROAD), so the three stretches meet end to end.
@@ -37,7 +40,13 @@ export function buildOldRoad(): AreaData {
     if (edge < Math.floor((2 + fbm(x, y, 520) * 5 - 0.4) * Math.min(1, x / 12))) { grid[i] = T.THICKET; continue; }
     // ...and the wood round the ruins reaches out raggedly into the east of this land, so its edge is not a ruled line
     if (!onRoad(y) && W - 1 - x < Math.floor(fbm(x, y, 524) * 6 - 1 + vnoise(y, 7, 3, 525) * 2)) { grid[i] = T.THICKET; continue; }
-    if (onRoad(y)) { style[i] = y === mid || hash2(x, y, 521) < 0.55 ? FS.EARTH : FS.DIRT; continue; }
+    if (onRoad(y)) {
+      // a desire path, not a built road: trodden earth down the middle, and the outer rows only where feet and cart wheels
+      // have really worn it (patchy: grass comes and goes along both edges). Where it leaves the Throne Road it is full width.
+      const worn = y === mid || x < 2 || vnoise(x, y, 4, 580) > 0.5;
+      style[i] = !worn ? FS.GRASS : y === mid || hash2(x, y, 521) < 0.55 ? FS.EARTH : FS.DIRT;
+      continue;
+    }
     const wd = fbm(x, y, 501), pn = vnoise(x, y, 4, 506);
     if (wd > 0.58) { wood[i] = 1; style[i] = pn < 0.14 ? FS.GRASS : pn > 0.8 ? FS.MOSS : FS.LEAF; }
     else style[i] = vnoise(x, y, 5, 507) > 0.8 ? FS.DIRT : pn > 0.86 ? FS.MOSS : FS.GRASS;
@@ -136,6 +145,7 @@ export function buildOldRoad(): AreaData {
     if (grid[i] !== T.FLOOR) continue;
     const bx = x * TS, by = y * TS, r = rng(), s = style[i];
     if (onRoad(y)) {
+      if (s === FS.GRASS) { if (r < 0.4) D("tuft", bx + 3 + rng() * 10, by + 6 + rng() * 9, 0); continue; }
       if (r < 0.22) D("pebbles", bx + 8, by + 4 + rng() * 10, 0);
       if ((y === y0 || y === y1) && hash2(x, y, 585) < 0.6) D("weeds", bx + 3 + hash2(x, y, 586) * 10, by + (y === y0 ? 7 : 15), 0);
       continue;

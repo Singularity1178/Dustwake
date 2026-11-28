@@ -1,4 +1,4 @@
-// The overworld: the one continuous surface area, as a table of sites.
+// The overworld: the one continuous surface area, as a table of sites (west to east: the West Road, Westwake, the Throne Road, the old road, the ruins).
 //
 // Westwake, the old road and the ruins used to be reached through a fade
 // between separate maps. They are one area now: you walk out of the East Gate,
@@ -16,6 +16,8 @@ import { OVERWORLD_H, OVERWORLD_ID, OVERWORLD_W, SITE_AT, ZONE } from "./content
 import { TOWN_NAME } from "./content/town";
 import type { AreaData } from "./map";
 import { buildOldRoad } from "./oldRoad";
+import { buildThroneRoad } from "./throneRoad";
+import { buildWestRoad } from "./westRoad";
 import { buildSurface } from "./surface";
 import { buildTown } from "./town";
 import { composeArea, type ComposeDef, type SiteDef } from "./world/compose";
@@ -33,9 +35,20 @@ const once = (build: () => AreaData) => () => {
 
 export const SITES: readonly SiteDef[] = [
   {
+    // The Throne's road out of the West Bar: how the empire's carriers come. It runs west to the edge of the map.
+    zone: ZONE.westroad, name: "THE WEST ROAD", kind: "road", at: SITE_AT.westroad, build: once(buildWestRoad), ids: `${ZONE.westroad}/`,
+    label: "THE WEST ROAD",
+  },
+  {
     // The market town. Its east road used to be a portal off the edge of its map; the road simply goes on now.
     zone: ZONE.westwake, name: TOWN_NAME, kind: "settlement", at: SITE_AT.westwake, build: once(buildTown), ids: `${ZONE.westwake}/`,
     label: `${TOWN_NAME}, MARKET TOWN`, dropPortals: ["east_road"],
+  },
+  {
+    // The Throne Road past the town's east wall, north and south, with the East Gate's spur running into it. It is
+    // well away from the ruins (the hunters' track, not this, goes there).
+    zone: ZONE.throneroad, name: "THE THRONE ROAD", kind: "road", at: SITE_AT.throneroad, build: once(buildThroneRoad), ids: `${ZONE.throneroad}/`,
+    label: "THE THRONE ROAD",
   },
   {
     zone: ZONE.oldroad, name: "THE OLD ROAD", kind: "road", at: SITE_AT.oldroad, build: once(buildOldRoad), ids: `${ZONE.oldroad}/`,

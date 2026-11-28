@@ -95,3 +95,20 @@ export const AREA_NAMES: Record<string, string> = {
  * so the two ends of the road always agree.
  */
 export const WEST_ROAD = { surface: { y0: 33, y1: 35 }, portal: "west_road" } as const;
+
+/**
+ * The Throne's roads, which are not the old road. Westwake is a rich market town of an empire that makes golems, and
+ * the empire's carriers reach it by metalled road (cobbles with earth shoulders, kept up by the same labour golems
+ * that haul on it). They meet the town at its two gates and keep their distance from the ruins, whose rune nobody
+ * has found in all the years the carts have rolled:
+ *
+ *   - WEST: out of the West Bar, straight away west (a site of its own: `westroad`, `WEST_PAD` tiles wide);
+ *   - EAST: out of the East Gate a short spur runs to the Throne Road, which crosses it north and south (the site
+ *     `throneroad`, `CROSS_W` tiles wide, `CROSS_LANE` its paved columns). The hunters' old track is not part of
+ *     this: it leaves the Throne Road's east verge as a trodden path and goes on east, to the wood.
+ *
+ * Every road leaves at the High Street's rows (WEST_ROAD.surface), so that all of them meet end to end.
+ */
+export const WEST_PAD = 24;
+export const CROSS_W = 8;
+export const CROSS_LANE = { x0: 2, x1: 5 } as const;

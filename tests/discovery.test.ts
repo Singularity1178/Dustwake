@@ -10,7 +10,7 @@ import { WEST_ROAD } from "../src/game/content/geography";
 import { actorById, currentArea, enterArea, getArea, player, type Actor, type World } from "../src/game/world/world";
 import { areaDiscovered, discover, knownAt, zoneDiscovered } from "../src/game/world/discovery";
 import { spotIn, zoneById } from "../src/game/world/zones";
-import { SAVE_VERSION, deserialize, migrate, serialize } from "../src/game/world/save";
+import { SAVE_VERSION, asV22Layout, deserialize, migrate, serialize } from "../src/game/world/save";
 import { checkRune } from "../src/game/sim/ritual";
 import { stepWorld } from "../src/game/sim/step";
 import { assignJob, walkOrder } from "../src/game/sim/jobs";
@@ -119,16 +119,16 @@ test("only the golem discovers: a worker's travels, and areas loaded for any oth
 });
 
 test("save v22: a save from before discovery knows where it shows the golem has been, and what its orders already name", () => {
-  assert.equal(SAVE_VERSION, 22);
-  /** A world of today as v21 saved it: no record of where the golem has been. */
-  const v21 = (w: World, edit: (s: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(w))); delete s.discovered; s.version = 21; edit(s); return s; };
+  assert.equal(SAVE_VERSION, 23);
+  /** A world of today as v21 saved it: no record of where the golem has been, and the land laid out as it was before the Throne's roads (v23). */
+  const v21 = (w: World, edit: (s: any) => void = () => {}) => { const s = JSON.parse(JSON.stringify(serialize(w))); delete s.discovered; edit(s); return { ...asV22Layout(s), version: 21 }; };
   const found = (s: unknown) => (migrate(s) as { version: number; discovered: Record<string, string[]> }).discovered;
   // a save that never left the halls
   assert.deepEqual(found(v21(newWorld())), { dungeon: [] });
   // at the ruins, Westwake unseen (the case that showed the fault): the ruins, and no more. What was played is what comes back.
   const base = crossed();
   assert.deepEqual(found(v21(base.w)), { dungeon: [], [S]: ["ruins"] });
-  assert.deepEqual(migrate(v21(base.w)), JSON.parse(JSON.stringify(serialize(base.w))), "the migrated save is the save a v22 game would have made");
+  assert.deepEqual(migrate(v21(base.w)), JSON.parse(JSON.stringify(serialize(base.w))), "the migrated save is the save a v23 game would have made");
   const loaded = deserialize(v21(base.w)), lw = actorById(loaded, WORKER)!;
   assert.ok(!labels(loaded, lw).some((l) => TOWNISH.test(l)), "and Westwake is no longer on offer in it");
   assert.deepEqual(sources(loaded, lw), ["THE RUINS"]);

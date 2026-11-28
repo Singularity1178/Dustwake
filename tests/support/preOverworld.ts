@@ -9,13 +9,16 @@
 //
 // Frozen numbers, as in the migration: where v21 set the two maps down. (Nothing that stands on the old road can be
 // expressed in a v20 save, which had no such ground; the tests that use this put nothing there.)
+import { asV22Layout } from "../../src/game/world/save";
 type Site = { tx: number; ty: number; w: number; prefix: string; zone: string; area: string };
 const TOWN: Site = { tx: 0, ty: 3, w: 96, prefix: "westwake/", zone: "westwake", area: "town" };
 const WILD: Site = { tx: 144, ty: 0, w: 96, prefix: "", zone: "ruins", area: "surface" };
 const W = 240, TS = 16, OVER = "surface";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export function preOverworld(s: any): any {
+export function preOverworld(save: any): any {
+  // (a save of today is in the layout v23 gave the land: put the ground back where v22 had it first, then undo v21)
+  const s = asV22Layout(save);
   const siteAt = (x: number) => (x < TOWN.w * TS ? TOWN : WILD);
   const siteOfId = (id: string) => (id.startsWith(TOWN.prefix) ? TOWN : WILD);
   const bare = (id: any, m: Site) => (typeof id === "string" && m.prefix && id.startsWith(m.prefix) ? id.slice(m.prefix.length) : id);

@@ -40,6 +40,12 @@ export const FS = {
   TILE: 15,
   /** A flight of stone steps climbing to the south (the stair from the halls up to the surface). */
   STAIR: 16,
+  /**
+   * A metalled country road: small, old, dust-grey cobbles with earth in the joints, the Throne's roads outside the
+   * town. A ground style on purpose (it bakes with soft, noise-warped borders against grass and earth, as a worn
+   * road does) where FS.COBBLE, the dungeon's and the town lanes' paving, has a hard edge.
+   */
+  ROAD: 17,
 } as const;
 
 /**
@@ -60,7 +66,7 @@ export const WS = {
 } as const;
 
 /** Natural ground styles: they bake with organic, noise-warped borders between each other. */
-export const isGroundFS = (s: number) => s === FS.GRASS || s === FS.DIRT || s === FS.MOSS || s === FS.LEAF || s === FS.MUD || s === FS.EARTH;
+export const isGroundFS = (s: number) => s === FS.GRASS || s === FS.DIRT || s === FS.MOSS || s === FS.LEAF || s === FS.MUD || s === FS.EARTH || s === FS.ROAD;
 
 export const isSolidT = (t: number) => t !== T.FLOOR;
 export const isOpaqueT = (t: number) =>

@@ -151,7 +151,7 @@ test("walking: down the old road into Westwake with nothing crossed, in and out 
   assert.ok(pl.x < town.anchor.x + 30, `west along the whole road and in through the East Gate (stopped at ${pl.x.toFixed(0)}, ${pl.y.toFixed(0)})`);
   assert.equal(pl.area, "surface", "one area all the way");
   assert.equal(pl.facing, "left");
-  assert.deepEqual(seen, ["oldroad", "westwake"], "no portal and no area change: only each place's name as its edge is walked across");
+  assert.deepEqual(seen, ["oldroad", "throneroad", "westwake"], "no portal and no area change: only each place's name as its edge is walked across");
   assert.ok(w.monologue.said.includes("town.arrive"), "the golem notes that the village became a town");
   for (const e of ESTABLISHMENTS) {
     const door = portalArrival(portalById(over, `westwake/door.${e}`)!);

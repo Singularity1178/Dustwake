@@ -102,6 +102,21 @@ function groundPix(style: number, tx: number, ty: number, wx: number, wy: number
       const peb = hash2(wx, wy, 43) < 0.04 ? 14 : 0;
       return [74 + n + patch * 10 + peb, 60 + n + patch * 6 + peb, 44 + n * 0.8 + peb];
     }
+    case FS.ROAD: {
+      // a metalled road gone soft with age: small rounded cobbles packed in earth, dust-grey and warm, the odd one sunk
+      // or missing (earth showing), so that it sits between the verge's earth and the meadow rather than against them
+      const cs = 5, cx = Math.floor(wx / cs), cy = Math.floor(wy / cs);
+      let d1 = 99, d2 = 99, id = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const px = (cx + i) * cs + hash2(cx + i, cy + j, 121) * cs, py = (cy + j) * cs + hash2(cx + i, cy + j, 122) * cs;
+        const d = Math.hypot(wx - px, wy - py);
+        if (d < d1) { d2 = d1; d1 = d; id = (cx + i) * 131 + (cy + j); } else if (d < d2) d2 = d;
+      }
+      const lost = hash2(id, 3, 124) < 0.1;
+      if (lost || d2 - d1 < 1.1) { const e = hash2(wx, wy, 125) < 0.06 ? 8 : 0; return [66 + n * 0.6 + e + patch * 6, 55 + n * 0.5 + e + patch * 4, 42 + n * 0.4 + e]; }
+      const t = (hash2(id, 1, 123) - 0.5) * 22, dust = hash2(wx >> 1, wy >> 1, 126) < 0.12 ? 7 : 0;
+      return [104 + t - d1 * 3 + n + dust + patch * 6, 94 + t - d1 * 3 + n + dust + patch * 5, 80 + t * 0.9 - d1 * 3 + n * 0.8 + dust + patch * 3];
+    }
     case FS.EARTH: {
       // bare packed earth: lighter, pebbly, with hairline drying cracks
       const h = hash2(wx, wy, 101);

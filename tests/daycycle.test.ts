@@ -121,10 +121,12 @@ const tended = (habit: string) => town().props.filter((p) => propDef(p.kind).hab
 test("only the town is tended, and its lights have their habits (the charter stone's rune never sleeps)", () => {
   assert.equal(town().tended, true);
   assert.ok(!AREAS.surface().tended && !AREAS.dungeon().tended, "the wild and the halls keep no hours");
-  // on the overworld it is Westwake's ground that is tended (world/zones.ts), not the whole surface
+  // on the overworld it is Westwake's ground that is tended (world/zones.ts), not the whole surface; and the Throne Road,
+  // whose rune lamps the town's own labourers keep (the empire pays for them, as it pays for the road)
   const over = AREAS.surface(), zones = over.zones!;
-  assert.deepEqual(zones.filter((z) => z.tended).map((z) => z.id), ["westwake"]);
-  assert.ok(tendedAt(over, zones[0].anchor.x, zones[0].anchor.y) && !tendedAt(over, over.start.x, over.start.y), "lamps are kept inside the town, not at the rune");
+  assert.deepEqual(zones.filter((z) => z.tended).map((z) => z.id), ["westwake", "throneroad"]);
+  const ww = zones.find((z) => z.id === "westwake")!;
+  assert.ok(tendedAt(over, ww.anchor.x, ww.anchor.y) && !tendedAt(over, over.start.x, over.start.y), "lamps are kept inside the town, not at the rune");
   assert.ok(!AREAS.town_tavern().tended, "a room keeps its own lamps lit");
   assert.equal(propDef("rune_lamp").habit, "rune"); assert.equal(propDef("rune_sconce").habit, "rune");
   for (const k of ["lantern", "torch", "torch_post", "brazier"]) assert.equal(propDef(k).habit, "fire", k);
@@ -164,7 +166,7 @@ test("the town puts its lights out in the morning and lights them at dusk, each 
 
 // ------------------------------------------------------------------ saving
 test("save v13: the clock is saved; an older save resumes at night in the halls, at its first morning on the surface", () => {
-  assert.equal(SAVE_VERSION, 22);
+  assert.equal(SAVE_VERSION, 23);
   const w = newWorld();
   advanceDayTo(w, 15.25);
   const s = serialize(w);
@@ -177,7 +179,7 @@ test("save v13: the clock is saved; an older save resumes at night in the halls,
     return o;
   };
   const halls = migrate(old(false)) as { version: number; day: number }, up = migrate(old(true)) as { version: number; day: number };
-  assert.equal(halls.version, 22); assert.ok(near(hourOf(halls.day), START_HOUR));
+  assert.equal(halls.version, 23); assert.ok(near(hourOf(halls.day), START_HOUR));
   assert.ok(near(hourOf(up.day), FIRST_MORNING_HOUR));
   const loaded = deserialize(old(true));
   for (let i = 0; i < 30; i++) stepWorld(loaded, 1 / 60);

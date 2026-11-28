@@ -92,6 +92,9 @@ const TOWN_PROPS: Record<string, PropKindDef> = {
   tollbar: { box: [6, 48], examine: "THE WEST BAR, DOWN AND CHAINED. BEYOND IT THE ROAD RUNS FOUR DAYS TO ANYWHERE LARGER. THE CAPITAL IS ONLY A NAME HERE." },
   waymark: { box: [8, 4], examine: "A WAYMARK, LEANING. ITS ARM POINTS WEST ALONG AN OLD ROAD: WESTWAKE. THE CUT LETTERS ARE NEWER THAN THE POST." },
   milestone: { box: [8, 5], examine: "A MILESTONE. WEST: WESTWAKE. EAST: NOTHING IS CARVED. SOMEONE HAS SCRATCHED BELOW IT: RUINS. KEEP OUT." },
+  // the Throne's own stones: the same cut as the old one, newer, lettered by a guild hand, and they say more
+  kingsmilestone: { box: [8, 5], art: "milestone", examine: "A MILESTONE, SQUARE AND CLEAN. THE THRONE ROAD RUNS NORTH AND SOUTH FROM HERE, AS FAR AS A STONE CAN SAY. WEST: WESTWAKE. EAST, WHERE A TRACK LEAVES THE ROAD, THE STONE IS BLANK." },
+  kingsmilestone_w: { box: [8, 5], art: "milestone", examine: "A MILESTONE, SQUARE AND CLEAN. EAST: WESTWAKE, A MARKET TOWN BY GRANT OF THE ALIGARCH THRONE. THE ROAD UNDER YOUR FEET WAS LAID BY LABOUR GOLEMS. IT IS THE BEST ROAD FOR FOUR DAYS." },
   // ---- labour: what the golems that haul and lift leave behind (there are none here to see)
   golempad: { flat: true, examine: "A GOLEM STAND: A SLAB WORN INTO TWO FLAT HOLLOWS, AN IRON RING FOR THE TETHER. LABOUR GOLEMS ARE STOOD HERE WHEN THERE IS NOTHING TO HAUL. IT IS EMPTY." },
   yokerack: { box: [24, 5], examine: "CARRYING YOKES AND A STONE HOD, CUT FAR TOO WIDE FOR HUMAN SHOULDERS. THE GRIPS ARE WORN TO THE SHAPE OF BROAD, FINGERLESS HANDS." },

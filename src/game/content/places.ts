@@ -18,21 +18,26 @@ import { TS } from "./tiles";
 /** The overworld's area id. It keeps the id the surface always had, so saves, runes and stairs still name it. */
 export const OVERWORLD_ID = "surface";
 /** Its size in tiles. Sites must fit inside; ground no site covers is plain meadow. */
-export const OVERWORLD_W = 240, OVERWORLD_H = 72;
+export const OVERWORLD_W = 272, OVERWORLD_H = 72;
 
 /** Zone ids of the sites that make up the overworld today. */
-export const ZONE = { westwake: "westwake", oldroad: "oldroad", ruins: "ruins" } as const;
+export const ZONE = { westroad: "westroad", westwake: "westwake", throneroad: "throneroad", oldroad: "oldroad", ruins: "ruins" } as const;
 export type SiteId = keyof typeof ZONE;
 
 /**
  * Where each site's own (0, 0) lies on the overworld, in tiles. Westwake sits
- * three rows down so that its High Street (its rows 30..32) meets the old road
- * (rows 33..35 of the ruins' wild, and of the country between).
+ * three rows down so that its High Street (its rows 30..32) meets the roads
+ * (rows 33..35 of every site that has one). From the west: the Throne's road
+ * out of the West Bar, the town, the Throne Road that crosses the way out of
+ * the East Gate north and south, then the hunters' old track and the ruins.
+ * (content/geography.ts: WEST_PAD, CROSS_W.)
  */
 export const SITE_AT: Record<SiteId, { x: number; y: number }> = {
-  westwake: { x: 0, y: 3 },
-  oldroad: { x: 96, y: 0 },
-  ruins: { x: 144, y: 0 },
+  westroad: { x: 0, y: 0 },
+  westwake: { x: 24, y: 3 },
+  throneroad: { x: 120, y: 0 },
+  oldroad: { x: 128, y: 0 },
+  ruins: { x: 176, y: 0 },
 };
 
 /** A site's origin in px: add it to a site-local position to get the overworld's. */

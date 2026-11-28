@@ -121,8 +121,14 @@ import { rleEncode, rleDecode } from "./rle";
   *      into (world/discovery.ts). Order screens name only those places. Before v22 "visited" meant "the area is in
   *      the save", which stopped meaning anything for the surface once it became one area holding every town. A v21
   *      save has no such record, so MIGRATIONS[21] (toDiscovery) works it out from what the save does show: see there.
+  * v23: the Throne's roads. The overworld grew from 240 to 272 tiles wide: a west road (24 tiles) was set down before
+  *      Westwake, and an 8-tile strip for the Throne Road between the town and the old road. Everything on the
+  *      surface moved east with the ground it stands on (Westwake 24 tiles, the old road and the ruins 32): actors,
+  *      tasks, jobs, the people's goals and paths, scheduled builds, a dug floor's way up, built props, dropped
+  *      stacks, decals and edited tiles (re-indexed for the wider grid). Ids do not change (they are site-local).
+  *      A surface saved as a whole grid (thousands of edited tiles, which nothing in play does) is dropped.
   */
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 type PropState = { open?: boolean; taken?: boolean; lit?: boolean; item?: ItemId | null; dmg?: number; inventory?: Slot[]; name?: string };
 
@@ -148,7 +154,7 @@ export interface AreaSave {
 }
 
 export interface SaveData {
-  version: 22;
+  version: 23;
   seed: number;
   rng: number;
   time: number;
@@ -396,6 +402,8 @@ export const MIGRATIONS: Record<number, Migration> = {
   20: (s) => toOverworld(s),
   // v22: discovery (see toDiscovery below).
   21: (s) => toDiscovery(s),
+  // v23: the Throne's roads (see toWiderOverworld below).
+  22: (s) => toWiderOverworld(s),
 };
 
 /**
@@ -473,6 +481,73 @@ function toDiscovery(s: any): any {
   const discovered: Record<string, string[]> = {};
   for (const id of [...found.keys()].sort()) discovered[id] = [...found.get(id)!].sort();
   return { ...s, version: 22, discovered };
+}
+
+/**
+ * v23: the surface moves east. Frozen as it was (a migration must not read a table that keeps changing): the old
+ * overworld was 240 tiles wide and Westwake's own map began at its west edge; everything from its east edge on (the
+ * old road, then the ruins; tile 96) lay 32 tiles further east afterwards, and Westwake itself 24.
+ */
+const V23_AREA = "surface", V23_OLD_W = 240, V23_NEW_W = 272, V23_SPLIT = 96, V23_WEST = 24, V23_EAST = 32;
+const v23tx = (tx: number) => tx + (tx < V23_SPLIT ? V23_WEST : V23_EAST);
+const v23px = (x: number) => x + (x < V23_SPLIT * TS ? V23_WEST : V23_EAST) * TS;
+/** The same move run backwards (new tile -> old tile). Tests use it to make a save "as v22 had it" from a world of today. */
+const v23txBack = (tx: number) => tx - (tx >= V23_SPLIT + V23_EAST ? V23_EAST : V23_WEST);
+const v23pxBack = (x: number) => x - (x >= (V23_SPLIT + V23_EAST) * TS ? V23_EAST : V23_WEST) * TS;
+
+function toWiderOverworld(s: any): any {
+  return shiftSurface(s, v23px, v23tx, (i) => Math.floor(i / V23_OLD_W) * V23_NEW_W + v23tx(i % V23_OLD_W), 23);
+}
+
+/** A v23 save written in v22's layout (for tests): the surface's ground and everything on it moved back west. */
+export function asV22Layout(s: any): any {
+  return { ...shiftSurface(s, v23pxBack, v23txBack, (i) => Math.floor(i / V23_NEW_W) * V23_OLD_W + v23txBack(i % V23_NEW_W), 22) };
+}
+
+function shiftSurface(s: any, v23px: (x: number) => number, v23tx: (tx: number) => number, reindex: (i: number) => number, version: number): any {
+  const px = (o: any) => (o && typeof o.x === "number" ? { ...o, x: v23px(o.x) } : o);
+  const effect = (e: any) => (e && e.op === "build" && typeof e.tx === "number" ? { ...e, tx: v23tx(e.tx) } : e);
+  const target = (t: any) => {
+    if (!t) return t;
+    const o = px(t);
+    return typeof o.tx === "number" ? { ...o, tx: v23tx(o.tx) } : o;
+  };
+  /** A task was started in `t.area`, or (untagged) where its actor stands. */
+  const task = (t: any, here: unknown) => {
+    if (!t || (t.area ?? here) !== V23_AREA) return t;
+    return { ...t, ...(t.target ? { target: target(t.target) } : {}), ...(t.effect ? { effect: effect(t.effect) } : {}) };
+  };
+  const actors = (s.actors ?? []).map((a: any) => {
+    const here = a.area, on = here === V23_AREA;
+    const o: any = on ? px(a) : { ...a };
+    o.task = task(a.task, here);
+    o.queue = (a.queue ?? []).map((t: any) => task(t, here));
+    if (a.job) {
+      const args: any = { ...(a.job.args ?? {}) };
+      if (a.job.kind === "walk" && args.area === V23_AREA && typeof args.x === "number") args.x = v23px(args.x);
+      o.job = { ...a.job, args, nav: a.job.nav && on ? { ...a.job.nav, path: (a.job.nav.path ?? []).map(px) } : a.job.nav };
+    }
+    if (a.life) {
+      const duty = a.life.duty && a.life.duty.area === V23_AREA ? px(a.life.duty) : a.life.duty;
+      o.life = { ...a.life, ...(a.life.goal && on ? { goal: px(a.life.goal) } : {}), ...(on ? { path: (a.life.path ?? []).map(px) } : {}), ...(a.life.duty !== undefined ? { duty } : {}) };
+    }
+    return o;
+  });
+  const areas: Record<string, any> = { ...(s.areas ?? {}) };
+  const d = areas[V23_AREA];
+  if (d) {
+    const { gridRle: _dropped, ...rest } = d;
+    areas[V23_AREA] = {
+      ...rest,
+      tiles: (d.tiles ?? []).map(([i, t]: [number, number]) => [reindex(i), t]),
+      looseAdded: (d.looseAdded ?? []).map(px), propsAdded: (d.propsAdded ?? []).map(px), decalsAdded: (d.decalsAdded ?? []).map(px),
+    };
+  }
+  return {
+    ...s, version, actors, areas,
+    scheduled: (s.scheduled ?? []).map((e: any) => (e.area === V23_AREA ? { ...e, effect: effect(e.effect) } : e)),
+    specs: (s.specs ?? []).map((sp: any) => (sp.link && sp.link.area === V23_AREA ? { ...sp, link: px(sp.link) } : sp)),
+  };
 }
 
 /**
